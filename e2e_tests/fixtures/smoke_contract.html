@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PromptVeil — Защита личных данных перед отправкой в ИИ</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./smoke_contract.css">
+</head>
+<body>
+  <header class="pv-header">
+    <div class="pv-brand-group">
+      <strong>PromptVeil</strong>
+      <span class="pill" data-testid="brand-badge">Только в браузере</span>
+    </div>
+    <nav role="tablist" aria-label="Шаги работы" class="pv-tabs">
+      <button id="tab-sanitize" data-testid="mode-sanitize" type="button" role="tab" aria-selected="true">1. Скрыть данные</button>
+      <button id="tab-rehydrate" data-testid="mode-rehydrate" type="button" role="tab" aria-selected="false">2. Вернуть в ответ ИИ</button>
+    </nav>
+    <div class="pv-header-actions">
+      <div class="lang-switch" data-testid="lang-switch" role="group" aria-label="Язык">
+        <button type="button" data-testid="lang-ru" aria-pressed="true">RU</button>
+        <button type="button" data-testid="lang-en" aria-pressed="false">EN</button>
+      </div>
+      <button id="btn-open-rules" data-testid="open-rulebook-btn" type="button" aria-expanded="false">Свои слова (0)</button>
+      <button id="btn-open-audit" data-testid="open-audit-btn" type="button" aria-expanded="false">Журнал</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="status-banner" data-testid="status-banner" class="status-banner hidden" role="status" aria-live="polite"></div>
+
+    <section class="hero" data-testid="hero-summary">
+      <h1 id="hero-title">Скройте личные данные перед отправкой текста в ИИ</h1>
+      <p id="hero-desc">1. Вставьте текст → 2. Скопируйте безопасную версию для ИИ → 3. Вставьте ответ ИИ и верните исходные значения. Всё работает локально в браузере.</p>
+    </section>
+
+    <section class="preset-bar" data-testid="preset-bar" aria-label="Примеры">
+      <span id="preset-label">Попробовать пример:</span>
+      <button type="button" data-testid="preset-btn-client_contract">Договор</button>
+      <button type="button" data-testid="preset-btn-bilingual_cis_hr">Резюме</button>
+      <button type="button" data-testid="preset-btn-prod_env_trace">Логи и ключи</button>
+      <button type="button" id="apply-preset-rules-btn" data-testid="apply-preset-rules-btn" class="hidden">Скрыть предложенные имена</button>
+    </section>
+
+    <section id="pane-sanitize" data-testid="panel-sanitize" role="tabpanel">
+      <div class="toolbar">
+        <div class="chips" data-testid="category-chips" aria-label="Категории данных">
+          <button type="button" class="chip" data-category="EMAIL" data-count="0">Почта (0)</button>
+          <button type="button" class="chip" data-category="IPV4" data-count="0">IP-адреса (0)</button>
+          <button type="button" class="chip" data-category="CUSTOM" data-count="0">Свои слова (0)</button>
+          <button type="button" class="chip" data-category="PHONE" data-count="0">Телефоны (0)</button>
+          <button type="button" class="chip hidden" data-category="IBAN" data-count="0">Счета (IBAN) (0)</button>
+        </div>
+        <button type="button" id="toggle-all-categories-btn" data-testid="toggle-all-categories-btn">Все категории</button>
+      </div>
+
+      <div class="file-row">
+        <label for="file-upload" id="upload-file-btn" data-testid="upload-file-btn">Загрузить файл</label>
+        <input id="file-upload" data-testid="file-upload-input" type="file" accept=".txt,.md,.csv,.json,.log,.env">
+        <label class="inline-check">
+          <input id="auto-sanitize-toggle" data-testid="auto-sanitize-toggle" type="checkbox" checked>
+          <span id="auto-sanitize-label">Автоматически скрывать при вводе</span>
+        </label>
+        <button type="button" id="sanitize-now-btn" data-testid="sanitize-now-btn">Проверить сейчас</button>
+        <button type="button" id="clear-input-btn" data-testid="clear-input-btn">Очистить</button>
+      </div>
+
+      <div class="split">
+        <div>
+          <label for="sanitize-input" id="raw-input-label">Исходный текст</label>
+          <textarea id="sanitize-input" data-testid="raw-prompt-input" placeholder="Вставьте текст с почтой, телефоном или ключом..."></textarea>
+        </div>
+        <div>
+          <div class="pane-head">
+            <label for="sanitize-output" id="sanitized-output-label">Безопасный текст для ИИ</label>
+            <div class="pane-actions">
+              <button id="btn-copy-sanitize" data-testid="copy-sanitized-btn" type="button">Скопировать</button>
+              <button id="btn-download-sanitize" data-testid="download-sanitized-btn" type="button">Скачать</button>
+              <button id="btn-go-rehydrate" data-testid="go-rehydrate-btn" type="button">Перейти к ответу ИИ</button>
+            </div>
+          </div>
+          <div id="sanitize-output" data-testid="sanitized-output" class="output-box" aria-label="Безопасный текст для ИИ" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div class="vault-header">
+        <h2 id="vault-heading">Что скрыто</h2>
+        <span id="telemetry-masked-count" data-testid="telemetry-masked-count" class="count-pill">0</span>
+        <button type="button" id="toggle-hide-values-btn" data-testid="toggle-hide-values-btn">Скрыть значения</button>
+      </div>
+
+      <div id="entity-vault-list" data-testid="entity-vault-list" class="vault-list">
+        <p id="vault-empty" data-empty="true" class="empty-state">Пока пусто — вставьте текст или загрузите файл.</p>
+      </div>
+    </section>
+
+    <section id="pane-rehydrate" data-testid="panel-rehydrate" role="tabpanel" class="hidden" hidden>
+      <div class="pane-actions">
+        <button type="button" id="back-sanitize-btn" data-testid="back-sanitize-btn">Назад к шагу 1</button>
+        <button type="button" id="rehydrate-now-btn" data-testid="rehydrate-now-btn">Вернуть исходные данные</button>
+      </div>
+      <div class="split">
+        <div>
+          <label for="rehydrate-input" id="rehydrate-input-label">Ответ ИИ с метками</label>
+          <textarea id="rehydrate-input" data-testid="llm-reply-input" placeholder="Вставьте ответ ИИ, чтобы вернуть исходные данные..."></textarea>
+        </div>
+        <div>
+          <div class="pane-head">
+            <label for="rehydrate-output" id="rehydrate-output-label">Готовый ответ</label>
+            <div class="pane-actions">
+              <button type="button" id="copy-restored-btn" data-testid="copy-restored-btn" disabled>Скопировать</button>
+              <button type="button" id="download-restored-btn" data-testid="download-restored-btn" disabled>Скачать</button>
+            </div>
+          </div>
+          <div id="rehydrate-output" data-testid="restored-output" class="output-box" aria-label="Готовый ответ" aria-live="polite"></div>
+        </div>
+      </div>
+      <div id="unresolved-box" data-testid="unresolved-warning" class="warning-box hidden" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <dialog id="drawer-rules" data-testid="drawer-rulebook" class="drawer" aria-label="Свои слова">
+    <h2 id="rules-heading">Свои слова для скрытия</h2>
+    <div class="drawer-form">
+      <label for="rule-term-input" id="rule-term-label">Слово или фраза</label>
+      <input id="rule-term-input" data-testid="rule-term-input" type="text" placeholder="Например, ООО «Север»">
+      <label for="rule-category-input" id="rule-cat-label">Тип</label>
+      <select id="rule-category-input" data-testid="rule-category-input">
+        <option value="CUSTOM">Своё слово</option>
+        <option value="PERSON">Имя</option>
+        <option value="ORG">Компания</option>
+        <option value="PROJECT">Проект</option>
+        <option value="SECRET">Секрет</option>
+      </select>
+      <label class="inline-check">
+        <input id="rule-case-input" data-testid="rule-case-input" type="checkbox">
+        <span id="rule-case-label">Учитывать регистр</span>
+      </label>
+      <button id="btn-add-rule" data-testid="add-rule-btn" type="button">Добавить</button>
+    </div>
+    <ul id="rules-list" data-testid="rules-list"></ul>
+    <div class="drawer-actions">
+      <button id="btn-export-rules" data-testid="export-rules-btn" type="button">Сохранить список</button>
+      <label for="rules-import-input" id="import-rules-label">Загрузить список</label>
+      <input id="rules-import-input" data-testid="import-rules-input" type="file" accept=".json">
+      <button id="btn-close-rules" data-testid="close-rulebook-btn" type="button">Закрыть</button>
+    </div>
+  </dialog>
+
+  <dialog id="drawer-audit" data-testid="drawer-audit" class="drawer" aria-label="Журнал проверок">
+    <h2 id="audit-heading">Журнал проверок</h2>
+    <ul id="audit-list" data-testid="audit-list"></ul>
+    <div class="drawer-actions">
+      <button id="btn-export-audit" data-testid="export-audit-btn" type="button">Сохранить журнал</button>
+      <button id="btn-clear-audit" data-testid="clear-audit-btn" type="button">Очистить</button>
+      <button id="btn-close-audit" data-testid="close-audit-btn" type="button">Закрыть</button>
+    </div>
+  </dialog>
+
+  <script src="./smoke_contract.js"></script>
+</body>
+</html>
