@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T17:56Z (`20:56+03:00`)  
-**Session Status:** v2 Audit Remediation — Stage E / Milestone M5 (Safe Growth Features, Items 28, 31–34, 36) COMPLETE  
-**Exact Stop Point:** Stage E / M5 (Items 28, 31–34, 36 + documentation for deferred/rejected items 29, 30, 35, 37) implemented, Gate-verified (Gate PASS: Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`; deterministic `esbuild` bundle `7d1ffd0739`, `48/48` `node:test`, `25/25` `pytest`, `172` E2E self-test, `16/16` targeted live E2E), and committed locally (`checkpoint: stage E safe growth features`). Stage A (`5636cd9`), E2E Alignment (`664f816`), Stage B (`2d91890`), Stage C (`3c6fb1f`), and Stage D (`4d944a4`) are preserved below; `e2e_tests/` remains untouched by M5. Next planned stage: `Milestone M6` (fix `T5_32` SW hook + full `--tier all` verification gate) -> `Milestone M7` (Netlify deploy, live browser & Lighthouse, completion email).
+**Checkpoint Date:** 2026-11-20T18:38Z (`21:38+03:00`)  
+**Session Status:** v2 Audit Remediation — Milestone M6 (`Final Verification Gate: 100% pass`) COMPLETE  
+**Exact Stop Point:** Milestone M6 (`Final Verification Gate: 100% pass`) complete and Gate-verified (Gate PASS: Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`). Aligned `e2e_tests/` (`T5_32` isolated HTTP `/sw.js` update harness, `T1_F8_01` `--static-only` `/health` 404 branch, `T2_F4_06` `role="status"` success alert, `T5_25` active `maskedCount` contract) with `0` changes to `app/` or `tests/`, verified `100%` pass across `npm run build` (`7d1ffd0739`), `pytest` (`25/25`), `node --test` (`48/48`), E2E `--mode self-test` (`172`), E2E `--mode live --start-server --tier all` (`172/172`), and E2E `--mode live --static-only --tier all` (`172/172`), with port `8000` free. Stage A (`5636cd9`), E2E Alignment (`664f816`), Stage B (`2d91890`), Stage C (`3c6fb1f`), Stage D (`4d944a4`), and Stage E (`8370b0c`) are preserved below. Next planned stage: `Milestone M7` (production Netlify deploy, live browser verification, Desktop + Mobile Lighthouse outside repo, and completion email to `kilkauciha@gmail.com`).
 
 ---
 
@@ -209,6 +209,27 @@
 
 ---
 
+## 6d. v2 Audit Remediation — Milestone M6 (Final Verification Gate: 100% pass)
+
+### Completed E2E Alignment (`e2e_tests/` only; `app/` and `tests/` untouched)
+1. **`T5_32` Real HTTP `/sw.js` Update Harness (`e2e_tests/conftest.py`, `e2e_tests/test_tier5_adversarial.py`):**
+   - Added `sw_body_provider` hook to `_StaticAppRequestHandler` / `start_static_dir_server` (plus `/manifest.webmanifest` `Cache-Control: public, max-age=300` parity) and updated `test_T5_32_stage_d_headers_template_modals_and_sw_update_banner` Part B to serve rotated `/sw.js` payloads from an isolated `127.0.0.1:0` HTTP origin with full security headers, `NetworkMonitor`, and `ConsoleErrorMonitor`.
+2. **Suite Contract Alignments (`e2e_tests/test_tier1_features.py`, `e2e_tests/test_tier2_boundaries.py`, `e2e_tests/test_tier5_adversarial.py`):**
+   - `T1_F8_01`: Branched on `--static-only` to assert HTTP `404` on `/health` in static Netlify-parity mode (matching `ACC_05`) and `200` JSON in FastAPI mode.
+   - `T2_F4_06`: Updated valid rule addition assertion to check `role="status"` + `inline-alert--success` (`pipeline.js:324`) while preserving `novalidate`, empty-submit focus, and `role="alert"` error checks.
+   - `T5_25`: Updated post-collapse `get_telemetry_masked_count()` assertions from `"1"` to `"2"` per M2 `result.maskedCount` contract while keeping unique vault collapse (`len(rows) == 1`) checks intact.
+
+### Milestone M6 Gate Verification Results (Gate PASS)
+- **Gate Result:** **PASS** (Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`; `0` listening/active sockets on port `8000`).
+- **`npm run build`:** `Built PromptVeil dist (7d1ffd0739)` (deterministic, `app/` clean).
+- **`.\.venv\Scripts\python.exe -m pytest tests\test_server.py -v`:** **`25 passed, 0 failed`**.
+- **`"C:\Program Files\nodejs\node.exe" --test tests\js\*.test.mjs`:** **`48 passed, 0 failed`** (`13` suites across `6` files).
+- **`.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`172` unique tests).
+- **`.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`172 passed, 0 failed, 0 skipped`**.
+- **`.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode live --static-only --tier all`:** **`172 passed, 0 failed, 0 skipped`**.
+
+---
+
 ## 7. GitHub Remote & Push Instructions (Item 4)
 No GitHub credentials or `origin` remote are configured in this local environment. Once ready to publish the repository to `https://github.com/Aquanti/promptveil`, run:
 
@@ -223,5 +244,8 @@ git push -u origin master
 ---
 
 ## 8. Next Steps
-1. **Next Planned Stage — `Milestone M6: Final Verification Gate`:** Fix `T5_32` `/sw.js` update harness (replacing `page.context.route("**/sw.js")` with a real HTTP version-bump hook), then run `pytest tests\test_server.py -v`, `node --test tests\js\*.test.mjs`, `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all` (`0` failures, port `8000` free) + `PROGRESS.md` checkpoint.
-2. **`Milestone M7: Production Netlify Deploy & Delivery`:** Deploy via `netlify_netlify` MCP + confirm via `netlify-open-deployments`, verify live `https://promptveil.netlify.app` in browser, run Desktop & Mobile Lighthouse outside the repo, update `PROGRESS.md` + commit, and send completion email to `kilkauciha@gmail.com`.
+1. **Next Planned Stage — `Milestone M7: Production Netlify Deploy, Live Verification, Lighthouse & Delivery`:**
+   - Deploy the verified build (`7d1ffd0739`) to production Netlify (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`) via `netlify_netlify` MCP and confirm ready via `netlify-open-deployments`.
+   - Verify the live site (`https://promptveil.netlify.app`) in a real browser (P0 masking/roundtrip, `/manifest.webmanifest` MIME, COOP/CORP headers, 0 CSP/egress violations, EN `/en/` parity, mobile `390×844` layout).
+   - Run Desktop and Mobile Lighthouse audits on live `https://promptveil.netlify.app` (saving reports outside the repository) and record scores in `PROGRESS.md` + final checkpoint commit.
+   - Send completion email to `kilkauciha@gmail.com` via `gmail` CLI.

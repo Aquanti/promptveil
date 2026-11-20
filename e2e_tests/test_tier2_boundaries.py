@@ -419,14 +419,18 @@ def test_T2_F4_06_rulebook_novalidate_empty_focus_and_stale_duplicate_clear(
 
     drawer.locator("[data-testid='add-rule-btn']").click()
     assert drawer.locator("#rulebook-alert").is_visible()
+    assert drawer.locator("#rulebook-alert").get_attribute("role") == "alert"
     assert e2e_session.page.evaluate(
         "() => document.activeElement === document.querySelector(\"[data-testid='rule-term-input']\")"
     ) is True
 
     e2e_session.ui.add_custom_rule("AcmeDup")
-    assert not drawer.locator("#rulebook-alert").is_visible()
+    assert drawer.locator("#rulebook-alert").is_visible()
+    assert drawer.locator("#rulebook-alert").get_attribute("role") == "status"
+    assert "inline-alert--success" in (drawer.locator("#rulebook-alert").get_attribute("class") or "")
     e2e_session.ui.add_custom_rule("AcmeDup")
     assert drawer.locator("#rulebook-alert").is_visible()
+    assert drawer.locator("#rulebook-alert").get_attribute("role") == "alert"
 
     term_input = drawer.locator("[data-testid='rule-term-input']")
     term_input.fill("AcmeNext")
@@ -435,6 +439,7 @@ def test_T2_F4_06_rulebook_novalidate_empty_focus_and_stale_duplicate_clear(
 
     e2e_session.ui.add_custom_rule("AcmeDup")
     assert drawer.locator("#rulebook-alert").is_visible()
+    assert drawer.locator("#rulebook-alert").get_attribute("role") == "alert"
     drawer.locator("#rule-case-input").click()
     assert not drawer.locator("#rulebook-alert").is_visible()
 

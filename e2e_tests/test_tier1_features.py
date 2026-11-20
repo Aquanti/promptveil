@@ -731,7 +731,14 @@ def test_T1_F7_05_clear_audit_log(e2e_session: E2ESession) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_T1_F8_01_health_endpoint_contract(raw_session: E2ESession) -> None:
+def test_T1_F8_01_health_endpoint_contract(
+    raw_session: E2ESession,
+    request: pytest.FixtureRequest,
+) -> None:
+    if request.config.getoption("--static-only"):
+        status, _, _ = fetch_http_response(f"{raw_session.base_url}/health")
+        assert status == 404, f"Static-only mode must return 404 on /health, got {status}"
+        return
     data = verify_health_endpoint(raw_session.base_url)
     assert data["status"] == "ok"
     assert data["mode"] == "client-side-zero-egress"

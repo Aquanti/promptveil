@@ -8,10 +8,17 @@ import re
 from pathlib import Path
 
 import pytest
-from playwright.sync_api import Locator, Page
+from playwright.sync_api import Browser, Locator, Page
 
-from conftest import E2ESession
-from monitors import fetch_http_response, verify_csp_and_security_headers, verify_russian_purity
+from conftest import E2ESession, STATIC_APP_DIR, start_static_dir_server
+from locators import PromptVeilUI
+from monitors import (
+    ConsoleErrorMonitor,
+    NetworkMonitor,
+    fetch_http_response,
+    verify_csp_and_security_headers,
+    verify_russian_purity,
+)
 
 
 pytestmark = [pytest.mark.tier5]
@@ -1282,7 +1289,7 @@ def test_T5_25_vault_evolve_transient_existing_token_collapse_and_multi_span_reu
     assert e2e_session.ui.get_sanitize_output_text().strip() == (
         "A_API_KEY=[API_KEY_1]\nB_API_KEY=[API_KEY_1]"
     )
-    assert str(e2e_session.ui.get_telemetry_masked_count()) == "1"
+    assert str(e2e_session.ui.get_telemetry_masked_count()) == "2"
     rows_api = e2e_session.ui.get_vault_rows()
     assert len(rows_api) == 1
     assert rows_api[0].token == "[API_KEY_1]"
@@ -1310,7 +1317,7 @@ def test_T5_25_vault_evolve_transient_existing_token_collapse_and_multi_span_reu
     inp.press_sequentially("m", delay=5)
     e2e_session.page.wait_for_timeout(240)
     assert e2e_session.ui.get_sanitize_output_text().strip() == "A=[EMAIL_1]\nB=[EMAIL_1]"
-    assert str(e2e_session.ui.get_telemetry_masked_count()) == "1"
+    assert str(e2e_session.ui.get_telemetry_masked_count()) == "2"
     rows_email = e2e_session.ui.get_vault_rows()
     assert len(rows_email) == 1
     assert rows_email[0].token == "[EMAIL_1]"
@@ -1332,7 +1339,7 @@ def test_T5_25_vault_evolve_transient_existing_token_collapse_and_multi_span_reu
     assert e2e_session.ui.get_sanitize_output_text().strip() == (
         "KEEP=[SSN_1]\nMY_SECRET=[SSN_1]"
     )
-    assert str(e2e_session.ui.get_telemetry_masked_count()) == "1"
+    assert str(e2e_session.ui.get_telemetry_masked_count()) == "2"
     rows_ssn = e2e_session.ui.get_vault_rows()
     assert len(rows_ssn) == 1
     assert rows_ssn[0].token == "[SSN_1]"
@@ -1873,6 +1880,7 @@ def test_T5_31_stage_b_counter_sync_rulebook_validation_and_copy_timer_clear(
 
 def test_T5_32_stage_d_headers_template_modals_and_sw_update_banner(
     raw_session: E2ESession,
+    playwright_browser: Browser,
 ) -> None:
     """Stage D adversarial: COOP/CORP headers, /dist/* assets, <template> modal hydration, and SW update banner."""
     base_url = raw_session.base_url
@@ -1929,29 +1937,83 @@ def test_T5_32_stage_d_headers_template_modals_and_sw_update_banner(
     )
     assert sw_ready is True
 
-    # Simulate an incoming updated Service Worker script so updatefound -> installed -> #sw-update-banner
-    _, _, orig_sw = fetch_http_response(f"{base_url}/sw.js")
-    updated_sw = orig_sw + "\n// e2e-sw-update-probe\n"
-    page.context.route(
-        "**/sw.js",
-        lambda route: route.fulfill(
-            status=200,
-            headers={"Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "no-cache"},
-            body=updated_sw,
-        ),
+    # Part B: Simulate an incoming updated Service Worker script on an isolated static origin
+    # (Chromium's ServiceWorkerRegistration.update() bypasses page.context.route("**/sw.js"))
+    orig_sw = (STATIC_APP_DIR / "sw.js").read_text(encoding="utf-8")
+    updated_sw = (
+        orig_sw.replace('const CACHE_NAME = "promptveil-build-', 'const CACHE_NAME = "promptveil-build-e2e-v2-', 1)
+        + "\n// e2e-sw-update-probe\n"
     )
-    try:
-        page.evaluate("async () => { const r = await navigator.serviceWorker.getRegistration(); if (r) await r.update(); }")
-        page.locator("[data-testid='sw-update-banner'], #sw-update-banner").first.wait_for(
-            state="visible", timeout=5000
-        )
-        banner = ui.get_sw_update_banner()
-        assert banner.is_visible()
-        verify_russian_purity(page)
-        ui.click_sw_update()
-        page.wait_for_load_state("networkidle")
-    finally:
-        page.context.unroute("**/sw.js")
+    sw_state: dict[str, str] = {"body": orig_sw}
+
+    with start_static_dir_server(
+        STATIC_APP_DIR,
+        sw_body_provider=lambda: sw_state["body"],
+    ) as sw_url:
+        sw_ctx = playwright_browser.new_context(viewport={"width": 1440, "height": 900})
+        sw_page = sw_ctx.new_page()
+        sw_net = NetworkMonitor(page=sw_page)
+        sw_console = ConsoleErrorMonitor(page=sw_page)
+        sw_net.attach()
+        sw_console.attach()
+        sw_ui = PromptVeilUI(sw_page)
+        try:
+            sw_page.goto(f"{sw_url}/", wait_until="networkidle")
+            sw_net.assert_clean_load()
+            sw_console.assert_no_errors()
+
+            v1_activated = sw_page.evaluate(
+                """async () => {
+                    const reg = await navigator.serviceWorker.ready;
+                    if (!reg || !reg.active) return false;
+                    if (reg.active.state === 'activated') return true;
+                    await new Promise((resolve) => {
+                        const sw = reg.active;
+                        if (sw.state === 'activated') return resolve();
+                        sw.addEventListener('statechange', () => {
+                            if (sw.state === 'activated') resolve();
+                        });
+                    });
+                    return reg.active.state === 'activated';
+                }"""
+            )
+            assert v1_activated is True
+
+            sw_state["body"] = updated_sw
+            sw_status, sw_hdrs, sw_body = fetch_http_response(f"{sw_url}/sw.js")
+            assert sw_status == 200
+            assert sw_hdrs.get("cache-control", "").lower() == "no-cache"
+            assert "// e2e-sw-update-probe" in sw_body
+
+            sw_page.evaluate(
+                "async () => { const r = await navigator.serviceWorker.getRegistration(); if (r) await r.update(); }"
+            )
+            sw_page.locator("[data-testid='sw-update-banner'], #sw-update-banner").first.wait_for(
+                state="visible", timeout=5000
+            )
+            banner = sw_ui.get_sw_update_banner()
+            assert banner.is_visible()
+            verify_russian_purity(sw_page)
+
+            sw_page.evaluate("() => { window.__pvBeforeSwReload = true; }")
+            sw_ui.click_sw_update()
+            sw_page.wait_for_function("() => window.__pvBeforeSwReload === undefined", timeout=5000)
+            sw_page.wait_for_load_state("networkidle")
+
+            assert not sw_page.locator("[data-testid='sw-update-banner'], #sw-update-banner").first.is_visible()
+            sw_after = sw_page.evaluate(
+                """async () => {
+                    const r = await navigator.serviceWorker.getRegistration();
+                    return Boolean(r && r.active && !r.waiting && navigator.serviceWorker.controller);
+                }"""
+            )
+            assert sw_after is True
+            sw_net.assert_clean_load()
+            sw_console.assert_no_errors()
+        finally:
+            sw_net.detach()
+            sw_console.detach()
+            sw_ctx.close()
 
     raw_session.console.assert_no_errors()
 

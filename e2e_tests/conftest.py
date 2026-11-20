@@ -18,7 +18,7 @@ import urllib.parse
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 import pytest
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
@@ -103,6 +103,8 @@ class _StaticAppRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "public, max-age=31536000, immutable")
         elif req_path == "/sw.js":
             self.send_header("Cache-Control", "no-cache")
+        elif req_path == "/manifest.webmanifest":
+            self.send_header("Cache-Control", "public, max-age=300")
         elif (
             req_path == "/styles.css"
             or req_path.startswith("/js/")
@@ -123,6 +125,17 @@ class _StaticAppRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
+        sw_provider = getattr(self.server, "sw_body_provider", None)
+        if req_path == "/sw.js" and callable(sw_provider):
+            override = sw_provider()
+            if override is not None:
+                payload = override.encode("utf-8") if isinstance(override, str) else bytes(override)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/javascript; charset=utf-8")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
         if req_path == "/en" and (Path(self.directory) / "en" / "index.html").is_file():
             self.path = "/en/index.html" + (f"?{parsed.query}" if parsed.query else "")
         super().do_GET()
@@ -142,6 +155,7 @@ def start_static_dir_server(
     static_dir: Path | None = None,
     host: str = "127.0.0.1",
     port: int = 0,
+    sw_body_provider: Callable[[], str | bytes | None] | None = None,
 ) -> Iterator[str]:
     """Serve static_dir (default app/static/) with netlify.toml headers and NO /health route."""
     target = static_dir if static_dir is not None else STATIC_APP_DIR
@@ -152,6 +166,7 @@ def start_static_dir_server(
     mimetypes.add_type("font/woff2", ".woff2")
     handler = functools.partial(_StaticAppRequestHandler, directory=str(target))
     server = _ThreadingStaticServer((host, port), handler)
+    setattr(server, "sw_body_provider", sw_body_provider)
     bound_port = int(server.server_address[1])
     url = f"http://{host}:{bound_port}"
     thread = threading.Thread(target=server.serve_forever, daemon=True)
