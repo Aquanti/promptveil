@@ -151,8 +151,12 @@ function isPlaceholderEnvValue(value) {
   return false;
 }
 
+function hasMixedCardSeparators(value) {
+  return value.includes(" ") && value.includes("-");
+}
+
 function resolveCardSpan(text, matchIndex, raw) {
-  if (luhnCheck(raw)) {
+  if (!hasMixedCardSeparators(raw) && luhnCheck(raw)) {
     return { value: raw, end: matchIndex + raw.length };
   }
   let candidate = raw;
@@ -164,7 +168,7 @@ function resolveCardSpan(text, matchIndex, raw) {
         if (stripped.replace(/[ -]/g, "").length < 13) {
           break;
         }
-        if (luhnCheck(stripped)) {
+        if (!hasMixedCardSeparators(stripped) && luhnCheck(stripped)) {
           return { value: stripped, end: matchIndex + stripped.length };
         }
       }
@@ -177,7 +181,7 @@ function resolveCardSpan(text, matchIndex, raw) {
     if (candidate.replace(/[ -]/g, "").length < 13) {
       break;
     }
-    if (luhnCheck(candidate)) {
+    if (!hasMixedCardSeparators(candidate) && luhnCheck(candidate)) {
       return { value: candidate, end: matchIndex + candidate.length };
     }
   }

@@ -1421,3 +1421,231 @@ def test_T5_25_vault_evolve_transient_existing_token_collapse_and_multi_span_reu
         "size": 2,
         "tokens": ["[EMAIL_1]", "[EMAIL_2]"],
     }
+
+
+# ---------------------------------------------------------------------------
+# 6. M3 Phase 2 Regressions (Live Banner Re-Translation, Manual Clear, WCAG AA Unmasked Row)
+# ---------------------------------------------------------------------------
+
+
+def test_T5_26_live_banner_and_inline_alert_retranslation_on_lang_toggle(
+    e2e_session: E2ESession,
+) -> None:
+    """Status banner, inline alerts (Step 1 & Step 2), and audit drawer entries re-translate live on RU | EN toggle without reload."""
+    # Trigger global status banner (presetLoaded with dynamic localized title) + Step 1 inline error banner simultaneously
+    e2e_session.ui.select_preset("bilingual_cis_hr")
+    bad_file = e2e_session.io.uploads / "unsupported.png"
+    bad_file.write_bytes(b"\x89PNG\r\n\x1a\n")
+    e2e_session.ui.get_workbench_file_input().set_input_files(str(bad_file))
+    e2e_session.page.wait_for_timeout(120)
+
+    status_banner = e2e_session.page.locator("[data-testid='status-banner']")
+    input_err = e2e_session.page.locator("#input-error-banner")
+    assert status_banner.is_visible()
+    assert input_err.is_visible()
+    assert "Загружен пример «Письмо и реквизиты»" in status_banner.inner_text()
+    assert "Формат «.png» не поддерживается" in input_err.inner_text()
+
+    # Toggle RU -> EN without reload: both banners must re-translate immediately
+    e2e_session.ui.switch_language("en")
+    assert e2e_session.ui.get_document_lang() == "en"
+    assert status_banner.is_visible()
+    assert input_err.is_visible()
+    assert 'Loaded example "HR & Payout Brief (RU/EN)"' in status_banner.inner_text()
+    assert 'Unsupported format ".png"' in input_err.inner_text()
+
+    # Toggle EN -> RU without reload: both banners must revert to Russian
+    e2e_session.ui.switch_language("ru")
+    assert e2e_session.ui.get_document_lang() == "ru"
+    assert status_banner.is_visible()
+    assert input_err.is_visible()
+    assert "Загружен пример «Письмо и реквизиты»" in status_banner.inner_text()
+    assert "Формат «.png» не поддерживается" in input_err.inner_text()
+
+    # Verify Step 2 inline alert (#rehydrate-error-banner) also re-translates live RU -> EN -> RU
+    e2e_session.ui.switch_mode("rehydrate")
+    e2e_session.page.locator("[data-testid='rehydrate-now-btn']").first.click()
+    reh_err = e2e_session.page.locator("#rehydrate-error-banner")
+    assert reh_err.is_visible()
+    assert "Сначала вставьте ответ нейросети" in reh_err.inner_text()
+
+    e2e_session.ui.switch_language("en")
+    assert reh_err.is_visible()
+    assert "Paste an AI reply first." in reh_err.inner_text()
+
+    e2e_session.ui.switch_language("ru")
+    assert reh_err.is_visible()
+    assert "Сначала вставьте ответ нейросети" in reh_err.inner_text()
+
+    # Verify audit drawer action labels and locale-aware timestamps update across RU <-> EN
+    audit_ru = e2e_session.ui.get_audit_drawer_text()
+    assert "Скрытие данных" in audit_ru
+    assert re.search(r"\d{2}\.\d{2}\.\d{4}", audit_ru)
+    e2e_session.ui.close_open_drawer()
+
+    e2e_session.ui.switch_language("en")
+    audit_en = e2e_session.ui.get_audit_drawer_text()
+    assert "Masked" in audit_en
+    assert re.search(r"\d{1,2}/\d{1,2}/\d{2}", audit_en)
+    e2e_session.ui.close_open_drawer()
+    e2e_session.ui.switch_language("ru")
+
+
+def test_T5_27_manual_clear_with_auto_sanitize_unchecked_resets_preset_and_banners(
+    e2e_session: E2ESession,
+) -> None:
+    """With auto-sanitize unchecked, clicking Clear resets input, output, vault, activePresetId/active pill, and inline/preset banners."""
+    e2e_session.ui.set_auto_sanitize(False)
+    live_toggle = e2e_session.page.locator("[data-testid='auto-sanitize-toggle']")
+    assert not live_toggle.is_checked()
+
+    # Populate input, output, vault, and activePresetId via preset, then add an inline input error banner
+    e2e_session.ui.select_preset("bilingual_cis_hr")
+    preset_btn = e2e_session.page.locator("[data-testid='preset-btn-bilingual_cis_hr']")
+    apply_rules_btn = e2e_session.page.locator("[data-testid='apply-preset-rules-btn']")
+    preset_hint = e2e_session.page.locator("#preset-rule-hint")
+
+    assert e2e_session.ui.get_prompt_input().input_value().strip() != ""
+    assert "[EMAIL_1]" in e2e_session.ui.get_sanitize_output_text()
+    assert len(e2e_session.ui.get_vault_rows()) >= 1
+    assert preset_btn.evaluate("el => el.classList.contains('is-active')") is True
+    assert preset_btn.get_attribute("aria-pressed") == "true"
+    assert apply_rules_btn.is_visible()
+    assert preset_hint.is_visible()
+
+    bad_file = e2e_session.io.uploads / "bad_clear.xyz"
+    bad_file.write_text("bad", encoding="utf-8")
+    e2e_session.ui.get_workbench_file_input().set_input_files(str(bad_file))
+    e2e_session.page.wait_for_timeout(120)
+    input_err = e2e_session.page.locator("#input-error-banner")
+    assert input_err.is_visible()
+
+    # Click Clear while auto-sanitize is still unchecked
+    e2e_session.ui.click_clear_input()
+
+    assert e2e_session.ui.get_prompt_input().input_value() == ""
+    assert e2e_session.ui.get_sanitize_output_text() == ""
+    assert e2e_session.ui.get_vault_rows() == []
+    assert e2e_session.page.locator("#vault-empty-state").is_visible()
+    assert e2e_session.ui.get_telemetry_masked_count() == 0
+    assert e2e_session.page.locator("[data-testid='copy-sanitized-btn']").is_disabled()
+    assert e2e_session.page.locator("[data-testid='download-sanitized-btn']").is_disabled()
+    assert preset_btn.evaluate("el => el.classList.contains('is-active')") is False
+    assert preset_btn.get_attribute("aria-pressed") == "false"
+    assert not apply_rules_btn.is_visible()
+    assert not preset_hint.is_visible()
+    assert not input_err.is_visible()
+
+    # Confirm auto-sanitize remained unchecked and manual sanitize still works cleanly after Clear
+    inp = e2e_session.ui.get_prompt_input()
+    inp.fill("Manual after clear test@example.com")
+    inp.evaluate("el => el.dispatchEvent(new Event('input', { bubbles: true }))")
+    e2e_session.page.wait_for_timeout(200)
+    assert e2e_session.ui.get_sanitize_output_text() == ""
+
+    e2e_session.page.locator("[data-testid='sanitize-now-btn']").first.click()
+    assert e2e_session.ui.get_sanitize_output_text().strip() == "Manual after clear [EMAIL_1]"
+
+
+def test_T5_28_vault_unmasked_row_wcag_aa_contrast_opacity_and_strikethrough(
+    e2e_session: E2ESession,
+) -> None:
+    """Unmasked .vault-row.is-unmasked renders with opacity 1, strikethrough value text, and >= 4.5:1 WCAG AA contrast."""
+    out = e2e_session.ui.sanitize_text("Email alice@example.com and IP 192.0.2.10")
+    assert "[EMAIL_1]" in out and "[IP_1]" in out
+
+    e2e_session.ui.toggle_vault_entity("[EMAIL_1]")
+    sanitized_after = e2e_session.ui.get_sanitize_output_text()
+    assert "alice@example.com" in sanitized_after
+    assert "[IP_1]" in sanitized_after
+
+    def _inspect_unmasked_row() -> dict[str, object]:
+        return dict(
+            e2e_session.page.evaluate(
+                """() => {
+                    const parseColor = (str) => {
+                        const m = String(str || '').match(/rgba?\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)(?:\\s*,\\s*([\\d.]+))?\\s*\\)/i);
+                        if (!m) return null;
+                        return {
+                            r: Number(m[1]),
+                            g: Number(m[2]),
+                            b: Number(m[3]),
+                            a: m[4] === undefined ? 1 : Number(m[4]),
+                        };
+                    };
+                    const blend = (fg, bg) => {
+                        const a = fg.a;
+                        return {
+                            r: fg.r * a + bg.r * (1 - a),
+                            g: fg.g * a + bg.g * (1 - a),
+                            b: fg.b * a + bg.b * (1 - a),
+                            a: 1,
+                        };
+                    };
+                    const effectiveBg = (el) => {
+                        const layers = [];
+                        let cur = el;
+                        while (cur && cur.nodeType === 1) {
+                            const bg = parseColor(window.getComputedStyle(cur).backgroundColor);
+                            if (bg && bg.a > 0) layers.push(bg);
+                            cur = cur.parentElement;
+                        }
+                        let acc = { r: 255, g: 255, b: 255, a: 1 };
+                        for (let i = layers.length - 1; i >= 0; i -= 1) {
+                            acc = blend(layers[i], acc);
+                        }
+                        return acc;
+                    };
+                    const luminance = (c) => {
+                        const ch = [c.r, c.g, c.b].map((v) => {
+                            const s = v / 255;
+                            return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+                        });
+                        return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+                    };
+                    const contrastRatio = (el) => {
+                        const fg = parseColor(window.getComputedStyle(el).color);
+                        const bg = effectiveBg(el);
+                        const fgComp = fg.a < 1 ? blend(fg, bg) : fg;
+                        const l1 = luminance(fgComp);
+                        const l2 = luminance(bg);
+                        return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+                    };
+
+                    const row = document.querySelector("[data-testid='entity-vault-list'] [data-testid='vault-item'][data-token='[EMAIL_1]']");
+                    const valEl = row.querySelector("[data-testid='vault-value']");
+                    const hitsEl = row.querySelector(".vault-hits-badge");
+                    const tagEl = row.querySelector(".vault-category-tag");
+                    const switchEl = row.querySelector("[data-testid='vault-item-toggle']");
+                    const rowSt = window.getComputedStyle(row);
+                    const valSt = window.getComputedStyle(valEl);
+                    return {
+                        hasUnmaskedClass: row.classList.contains("is-unmasked"),
+                        dataEnabled: row.getAttribute("data-enabled"),
+                        rowOpacity: Number(rowSt.opacity),
+                        valTextDecorationLine: valSt.textDecorationLine || valSt.textDecoration,
+                        valueContrast: contrastRatio(valEl),
+                        hitsContrast: contrastRatio(hitsEl),
+                        tagContrast: contrastRatio(tagEl),
+                        switchContrast: contrastRatio(switchEl),
+                    };
+                }"""
+            )
+        )
+
+    metrics_shown = _inspect_unmasked_row()
+    assert metrics_shown["hasUnmaskedClass"] is True
+    assert metrics_shown["dataEnabled"] == "false"
+    assert metrics_shown["rowOpacity"] == 1.0
+    assert "line-through" in str(metrics_shown["valTextDecorationLine"])
+    for key in ("valueContrast", "hitsContrast", "tagContrast", "switchContrast"):
+        assert float(metrics_shown[key]) >= 4.5, f"WCAG AA contrast failed for {key}: {metrics_shown}"
+
+    # Also verify obfuscated unmasked state (Hide Values toggled ON) keeps opacity=1, strikethrough, and >= 4.5:1 contrast
+    e2e_session.ui.toggle_hide_values()
+    metrics_hidden = _inspect_unmasked_row()
+    assert metrics_hidden["hasUnmaskedClass"] is True
+    assert metrics_hidden["rowOpacity"] == 1.0
+    assert "line-through" in str(metrics_hidden["valTextDecorationLine"])
+    assert float(metrics_hidden["valueContrast"]) >= 4.5
+

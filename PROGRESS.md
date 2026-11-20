@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-19T22:02+03:00  
-**Session Status:** Paused & Conserved Before Shutdown  
-**Exact Stop Point:** Round 2 Overhaul — **Milestone M3 (`final-verification`), Phase 2 Iteration 1** (Challenger 1 & 2 code fixes in `detector.js`, `app.js`, `render-drawers.js`, and `components.css` are implemented cleanly and passed live acceptance smoke tests; remaining work is adding regression tests for those fixes + running the full `139`-test live sweep and visual check before public launch).
+**Checkpoint Date:** 2026-11-20T14:26+03:00  
+**Session Status:** Milestone M3 `final-verification` complete — ready for local user preview  
+**Exact Stop Point:** Round 2 Overhaul — **Milestone M3 (`final-verification`), Phase 2 Complete** (All M3 Phase 2 regression tests added, mixed-separator `resolveCardSpan` bug in `app/static/js/detector.js` fixed and re-verified, `17/17` server tests + `142/142` live Playwright E2E tests + `10/10` desktop/mobile screenshots verified clean; awaiting local user preview sign-off before any public Netlify deployment).
 
 ---
 
@@ -29,23 +29,26 @@
    - Updated `e2e_tests/{locators,monitors,conftest,run_e2e}.py`, `e2e_tests/fixtures/smoke_contract.{html,css,js}`, `e2e_tests/test_tier2_boundaries.py`, `test_tier4_scenarios.py`, `test_tier5_adversarial.py`, and added `e2e_tests/test_acceptance.py` (RU purity, `RU | EN` persistence, full PII cycle + zero-egress monitor, `1440×900` & `390×844` layout/overlap checks, FastAPI vs static parity).
 4. **M3 Phase 1 — Baseline Verification (`DONE`, `APPROVE`):**
    - Verified `12/12` server tests, `run_e2e.py --mode self-test`, `114/114` live Tiers 1–4 + Acceptance tests on `http://127.0.0.1:8000`, and `5/5` static-only acceptance tests.
-5. **M3 Phase 2 Iteration 1 — Partial Polish Fixes Applied Cleanly Before Shutdown:**
-   - Updated `app/static/js/detector.js`, `app/static/js/app.js` (live `RU | EN` translation refresh for status/inline banners via `activeStatusBanner`/`activeInlineAlerts`, `activePresetId` & output reset on manual clear even when auto-sanitize is unchecked, reduced-motion scroll handling), `app/static/js/render-drawers.js` (locale-aware audit timestamp formatting), and `app/static/css/components.css` (WCAG AA muted contrast + strikethrough on `.vault-row.is-unmasked` instead of `opacity: 0.68`, adjusted `.status-banner` z-index).
+5. **M3 Phase 2 — Regression Tests, Bug Fix & Final Verification (`DONE`, `17/17` server + `142/142` live E2E):**
+   - `app/static/js/detector.js`: Added `hasMixedCardSeparators()` guard in `resolveCardSpan()` so adjacent hyphenated SSNs (`900-45-6789 123-00-6789`) cannot be falsely merged as a mixed space+hyphen Luhn card (`900-45-6789 123-00`) while preserving trailing-dash suffix stripping on space-delimited cards (`4111 1111 1111 1111-99`).
+   - `tests/test_server.py`: Added 5 security & parity regression tests (`test_path_traversal_probes_client_and_raw_asgi`, `test_disallowed_http_methods_and_options_head_matrix`, `test_all_routes_security_headers_and_strict_mime_types`, `test_unknown_routes_404_no_stack_trace_leakage`, `test_cache_control_and_netlify_parity`) plus shared `_assert_security_headers`, `EXPECTED_SECURITY_HEADERS`, and `FORBIDDEN_LEAK_SUBSTRINGS`.
+   - `e2e_tests/test_tier5_adversarial.py` & `e2e_tests/run_e2e.py`: Added `test_T5_26_live_banner_and_inline_alert_retranslation_on_lang_toggle`, `test_T5_27_manual_clear_with_auto_sanitize_unchecked_resets_preset_and_banners`, and `test_T5_28_vault_unmasked_row_wcag_aa_contrast_opacity_and_strikethrough` (non-skipping), and updated `run_e2e.py` collection expectation from `25` Tier 5 (`139` total) to `28` Tier 5 (`142` total).
+   - `e2e_tests/test_acceptance.py`: Extended `test_ACC_04` to capture `acc_{desktop,mobile}_rulebook_drawer` and `acc_{desktop,mobile}_audit_drawer` PNGs (`full_page=False`, `250ms` settle) into `e2e_tests/artifacts/acceptance/` (10 PNGs total).
 
 ---
 
-## 3. Pre-Shutdown Verification Status
-- **Active background processes / local servers / subagents:** `0` (all stopped cleanly; listening ports on `8000..8099` and `8760..8775` = `0`).
+## 3. Final M3 Verification Status
+- **Active background processes / local servers / subagents:** `0` (listening ports on `8000..8099` = `0`, port `8000` free; no public Netlify deployment executed).
 - **`py_compile` across `app/`, `tests/`, `e2e_tests/`:** Exit `0` (`16` files, `0` syntax errors).
-- **`pytest tests/test_server.py -q`:** **`12 passed`** (exit `0`).
-- **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`139` unique tests collected, smoke & monitor checks green, exit `0`).
-- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier acceptance`:** **`5 passed`** (`23.53s`, exit `0`) verifying the latest M3 Phase 2 JS/CSS edits live in Chromium with `0` console/page errors.
+- **`pytest tests/test_server.py -v`:** **`17 passed`** (`1.14s`, exit `0`).
+- **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`109` Tier 1–4 + `28` Tier 5 + `5` Acceptance = `142` unique tests, exit `0`).
+- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`142 passed`** (`284.96s`, exit `0`, `0` skipped, `0` console/page errors).
+- **Visual Inspection (`e2e_tests/artifacts/acceptance/*.png`):** Inspected all 10 desktop (`1440×900`) and mobile (`390×844`) screenshots (`empty`, `step1_masked`, `step2_restored`, `rulebook_drawer`, `audit_drawer`) — zero overlap/clipping, zero horizontal overflow, WCAG AA contrast, proper header/banner/drawer z-index layering, and Spark Admin styling confirmed.
 
 ---
 
-## 4. Exact Next Step When Resuming Next Session
-1. **Add regression test coverage & verify full M3 suite:**
-   - Add targeted tests for the M3 Phase 2 fixes (`tests/test_server.py` security edge probes and `e2e_tests/test_tier5_adversarial.py` checks for banner re-translation on `RU | EN` toggle, manual clear with auto-sanitize off, and `.vault-row.is-unmasked` WCAG AA styling).
-   - Run full verification sequentially: `.\.venv\Scripts\python.exe -m pytest tests/test_server.py -v` and `.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`, plus inspect desktop (`1440×900`) & mobile (`390×844`) screenshots.
-2. **Live Local User Walkthrough & Public Launch:**
-   - Start `uvicorn app.main:app --host 127.0.0.1 --port 8000`, open `http://127.0.0.1:8000` in the browser for the user to inspect the new **Spark Admin** Russian UI, and upon user confirmation deploy `app/static/` to public hosting via Netlify (`netlify.toml`).
+## 4. Exact Next Step (Local Preview & Public Launch Gate)
+1. **Live Local User Walkthrough:**
+   - Start `.\.venv\Scripts\uvicorn.exe app.main:app --host 127.0.0.1 --port 8000` and inspect `http://127.0.0.1:8000` locally.
+2. **Public Launch (Only After User Confirmation):**
+   - Deploy `app/static/` to public hosting via Netlify (`netlify.toml`).

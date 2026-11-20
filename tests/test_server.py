@@ -1,5 +1,7 @@
 """Server, CSP security header, zero-egress, and static bundle hygiene tests."""
 
+import asyncio
+from collections.abc import Mapping
 from pathlib import Path
 import re
 import tomllib
@@ -14,6 +16,33 @@ from app.schemas import HealthResponse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "app" / "static"
+
+EXPECTED_SECURITY_HEADERS: dict[str, str] = {
+    "content-security-policy": CSP_POLICY,
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "no-referrer",
+    "permissions-policy": "camera=(), microphone=(), geolocation=()",
+}
+
+FORBIDDEN_LEAK_SUBSTRINGS: tuple[str, ...] = (
+    "Traceback",
+    'File "',
+    "starlette",
+    "fastapi",
+    "uvicorn",
+    "StaticFiles",
+    "app/main",
+    "app\\main",
+    "C:\\",
+)
+
+
+def _assert_security_headers(headers: Mapping[str, str]) -> None:
+    """Assert all 5 strict security headers match expected values and CORS is absent."""
+    for key, expected in EXPECTED_SECURITY_HEADERS.items():
+        assert headers.get(key) == expected, f"Header {key!r} mismatch: {headers.get(key)!r}"
+    assert "access-control-allow-origin" not in headers
 
 
 def test_load_settings_defaults_and_validation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -348,3 +377,191 @@ def test_netlify_toml_matches_publish_dir_and_csp() -> None:
         cache_headers = next((h for h in data["headers"] if h.get("for") == cached_path), None)
         assert cache_headers is not None, f"Missing [[headers]] block for {cached_path} in netlify.toml"
         assert cache_headers["values"]["Cache-Control"] == "public, max-age=300"
+
+
+def test_path_traversal_probes_client_and_raw_asgi() -> None:
+    """Verify encoded TestClient traversal probes and raw unnormalized ASGI path probes all return 404 + security headers."""
+    client = TestClient(app)
+    client_probes = (
+        "/../app/main.py",
+        "/..%2fapp/main.py",
+        "/%2e%2e%2fapp%2fmain.py",
+        "/js/../../app/main.py",
+        "/js/%2e%2e/%2e%2e/app/main.py",
+        "/%252e%252e%252fapp%252fmain.py",
+        "/..\\app\\main.py",
+        "/%2e%2e%5capp%5cmain.py",
+        "/css/",
+        "/js/",
+    )
+    for probe in client_probes:
+        resp = client.get(probe)
+        assert resp.status_code == 404, f"Expected 404 for {probe!r}, got {resp.status_code}"
+        assert resp.json() == {"detail": "Not Found"}
+        _assert_security_headers(resp.headers)
+
+    async def _raw_asgi_get(raw_path: str) -> tuple[int, dict[str, str], bytes]:
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": "2.3"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": raw_path,
+            "raw_path": raw_path.encode("latin-1"),
+            "query_string": b"",
+            "root_path": "",
+            "headers": [(b"host", b"127.0.0.1:8000")],
+            "client": ("127.0.0.1", 12345),
+            "server": ("127.0.0.1", 8000),
+        }
+        sent = False
+        status_code = 0
+        raw_headers: list[tuple[bytes, bytes]] = []
+        body_chunks: list[bytes] = []
+
+        async def _receive() -> dict[str, object]:
+            nonlocal sent
+            if not sent:
+                sent = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+            return {"type": "http.disconnect"}
+
+        async def _send(message: dict[str, object]) -> None:
+            nonlocal status_code, raw_headers
+            if message["type"] == "http.response.start":
+                status_code = int(message["status"])  # type: ignore[arg-type]
+                raw_headers = list(message.get("headers", []))  # type: ignore[arg-type]
+            elif message["type"] == "http.response.body":
+                body_chunks.append(bytes(message.get("body", b"")))  # type: ignore[arg-type]
+
+        await app(scope, _receive, _send)
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in raw_headers}
+        return status_code, headers, b"".join(body_chunks)
+
+    raw_probes = (
+        "/../app/main.py",
+        "/js/../../app/main.py",
+        "/..\\app\\main.py",
+        "/../../.env",
+        "/\x00",
+    )
+    for raw_probe in raw_probes:
+        status, asgi_headers, body = asyncio.run(_raw_asgi_get(raw_probe))
+        assert status == 404, f"Raw ASGI probe {raw_probe!r} returned {status}"
+        assert body == b'{"detail":"Not Found"}', f"Unexpected raw ASGI body for {raw_probe!r}: {body!r}"
+        _assert_security_headers(asgi_headers)
+
+
+def test_disallowed_http_methods_and_options_head_matrix() -> None:
+    """Verify POST/PUT/DELETE/PATCH/OPTIONS/TRACE return 405 with Allow: GET, HEAD and HEAD returns 200 empty body."""
+    client = TestClient(app)
+
+    for path in ("/", "/health", "/styles.css", "/js/app.js", "/favicon.svg", "/nonexistent"):
+        for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE"):
+            resp = client.request(method, path)
+            assert resp.status_code == 405, f"{method} {path} returned {resp.status_code}"
+            assert resp.json() == {"detail": "Method Not Allowed"}
+            assert resp.headers.get("allow") == "GET, HEAD", f"{method} {path} Allow={resp.headers.get('allow')!r}"
+            _assert_security_headers(resp.headers)
+
+    head_expectations = (
+        ("/", "text/html"),
+        ("/health", "application/json"),
+        ("/styles.css", "text/css"),
+        ("/css/tokens.css", "text/css"),
+        ("/js/app.js", "text/javascript"),
+        ("/favicon.svg", "image/svg+xml"),
+    )
+    for path, expected_mime_prefix in head_expectations:
+        resp = client.head(path)
+        assert resp.status_code == 200, f"HEAD {path} returned {resp.status_code}"
+        assert resp.content == b"", f"HEAD {path} returned non-empty body"
+        assert resp.headers["content-type"].startswith(expected_mime_prefix), (
+            f"HEAD {path} unexpected content-type {resp.headers['content-type']!r}"
+        )
+        _assert_security_headers(resp.headers)
+
+
+def test_all_routes_security_headers_and_strict_mime_types() -> None:
+    """Verify all 5 security headers on /, /health, and every static asset with strict MIME prefixes and counts."""
+    client = TestClient(app)
+
+    root_resp = client.get("/")
+    assert root_resp.status_code == 200
+    assert root_resp.headers["content-type"].startswith("text/html")
+    _assert_security_headers(root_resp.headers)
+
+    health_resp = client.get("/health")
+    assert health_resp.status_code == 200
+    assert health_resp.headers["content-type"].startswith("application/json")
+    _assert_security_headers(health_resp.headers)
+
+    seen_counts = {".js": 0, ".css": 0, ".svg": 0}
+    for asset_path in sorted(STATIC_DIR.rglob("*")):
+        if not asset_path.is_file():
+            continue
+        suffix = asset_path.suffix.lower()
+        if suffix not in seen_counts:
+            continue
+        rel_url = "/" + asset_path.relative_to(STATIC_DIR).as_posix()
+        resp = client.get(rel_url)
+        assert resp.status_code == 200, f"Failed serving {rel_url}"
+        _assert_security_headers(resp.headers)
+        content_type = resp.headers["content-type"]
+        if suffix == ".js":
+            assert content_type.startswith("text/javascript"), f"{rel_url}: {content_type!r}"
+        elif suffix == ".css":
+            assert content_type.startswith("text/css"), f"{rel_url}: {content_type!r}"
+        elif suffix == ".svg":
+            assert content_type == "image/svg+xml", f"{rel_url}: {content_type!r}"
+        seen_counts[suffix] += 1
+
+    assert seen_counts[".js"] >= 9, f"Expected >= 9 .js files, saw {seen_counts['.js']}"
+    assert seen_counts[".css"] >= 5, f"Expected >= 5 .css files, saw {seen_counts['.css']}"
+    assert seen_counts[".svg"] >= 1, f"Expected >= 1 .svg files, saw {seen_counts['.svg']}"
+
+
+def test_unknown_routes_404_no_stack_trace_leakage() -> None:
+    """Verify unknown routes return clean 404 JSON with all 5 security headers and zero stack/path leaks."""
+    client = TestClient(app)
+    unknown_routes = (
+        "/nonexistent-route-probe",
+        "/static/index.html",
+        "/static/js/app.js",
+        "/api/v1/secret",
+        "/favicon.ico",
+        "/robots.txt",
+        "/admin/debug",
+    )
+    for route in unknown_routes:
+        resp = client.get(route)
+        assert resp.status_code == 404, f"Expected 404 for {route!r}, got {resp.status_code}"
+        assert resp.json() == {"detail": "Not Found"}
+        _assert_security_headers(resp.headers)
+        for marker in FORBIDDEN_LEAK_SUBSTRINGS:
+            assert marker not in resp.text, f"Leak marker {marker!r} found in 404 response for {route!r}"
+
+
+def test_cache_control_and_netlify_parity() -> None:
+    """Verify netlify.toml cache rules and FastAPI non-public Cache-Control behavior (Option A)."""
+    netlify_path = BASE_DIR / "netlify.toml"
+    data = tomllib.loads(netlify_path.read_text(encoding="utf-8"))
+    header_blocks = data["headers"]
+    assert {block["for"] for block in header_blocks} == {"/*", "/js/*", "/styles.css", "/css/*", "/fonts/*"}
+
+    root_block = next(block for block in header_blocks if block["for"] == "/*")
+    assert "Cache-Control" not in root_block["values"]
+    assert "Access-Control-Allow-Origin" not in root_block["values"]
+
+    for cached_target in ("/js/*", "/styles.css", "/css/*", "/fonts/*"):
+        block = next(block for block in header_blocks if block["for"] == cached_target)
+        assert block["values"]["Cache-Control"] == "public, max-age=300"
+
+    client = TestClient(app)
+    for route in ("/", "/health", "/nonexistent"):
+        resp = client.get(route)
+        cache_control = resp.headers.get("cache-control")
+        assert "public" not in (cache_control or "").lower()
+        assert cache_control is None
+

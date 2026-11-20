@@ -219,12 +219,30 @@ def test_ACC_04_responsive_layout_no_overlap_clipping_and_screenshots(e2e_sessio
         rulebook_drawer = ui.open_rulebook_drawer()
         assert rulebook_drawer.locator("[data-testid='rules-list'] > *").count() >= 3
         verify_responsive_layout(page, width, height)
+        page.wait_for_timeout(250)
+        capture_viewport_screenshot(
+            page,
+            f"acc_{label_prefix}_rulebook_drawer",
+            width,
+            height,
+            output_dir=ACCEPTANCE_SCREENSHOTS_DIR,
+            full_page=False,
+        )
         ui.close_open_drawer()
 
         audit_drawer = ui.open_audit_drawer()
         assert len(ui.get_audit_hashes()) >= 1
         assert audit_drawer.locator("[data-testid='audit-list'] > *").count() >= 1
         verify_responsive_layout(page, width, height)
+        page.wait_for_timeout(250)
+        capture_viewport_screenshot(
+            page,
+            f"acc_{label_prefix}_audit_drawer",
+            width,
+            height,
+            output_dir=ACCEPTANCE_SCREENSHOTS_DIR,
+            full_page=False,
+        )
         ui.close_open_drawer()
 
     e2e_session.net.assert_zero_egress()
