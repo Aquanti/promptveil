@@ -185,9 +185,9 @@ export const TRANSLATIONS = Object.freeze({
     "proof.storageDetail":
       "sessionStorage: {sessionKeys} ключей, cookies: {cookies}, неизвестные ключи: {unknownKeys}. В хранилище настроек хранятся только ваши правила/язык/SHA-256 ({prefKeys} служебных ключа без исходных текстов).",
     "proof.trackersTitle": "Рекламные трекеры, аналитика и транспорт",
-    "proof.trackersMetricHttps": "0 трекеров • HTTPS / TLS",
-    "proof.trackersMetricLocal": "0 трекеров • Локальный стенд",
-    "proof.trackersMetricHttp": "0 трекеров • Проверить TLS",
+    "proof.trackersMetricHttps": "{trackers} трекеров • HTTPS / TLS",
+    "proof.trackersMetricLocal": "{trackers} трекеров • Локальный стенд",
+    "proof.trackersMetricHttp": "{trackers} трекеров • Проверить TLS",
     "proof.trackersDetail":
       "Сторонних скриптов и счётчиков аналитики: {trackers}. Режим соединения: {transport}.",
     "proof.transportHttps": "защищённый канал HTTPS / TLS",
@@ -470,9 +470,9 @@ export const TRANSLATIONS = Object.freeze({
     "proof.storageDetail":
       "sessionStorage: {sessionKeys} keys, cookies: {cookies}, unknown keys: {unknownKeys}. Preference storage holds only your rules/language/SHA-256 digests ({prefKeys} non-PII keys).",
     "proof.trackersTitle": "Ad trackers, analytics & transport",
-    "proof.trackersMetricHttps": "0 trackers • HTTPS / TLS",
-    "proof.trackersMetricLocal": "0 trackers • Local host",
-    "proof.trackersMetricHttp": "0 trackers • Check TLS",
+    "proof.trackersMetricHttps": "{trackers} trackers • HTTPS / TLS",
+    "proof.trackersMetricLocal": "{trackers} trackers • Local host",
+    "proof.trackersMetricHttp": "{trackers} trackers • Check TLS",
     "proof.trackersDetail":
       "Third-party scripts and analytics counters: {trackers}. Transport: {transport}.",
     "proof.transportHttps": "encrypted HTTPS / TLS",

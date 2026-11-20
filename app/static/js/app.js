@@ -65,6 +65,7 @@ const state = {
   llmReply: "",
   activePresetId: "",
   lastSanitizeResult: null,
+  lastSanitizedInput: "",
   lastRehydrateResult: null,
   revealVaultValues: true,
   showAllCategories: false,
@@ -442,10 +443,10 @@ function renderPrivacyProofModal(lang = getLang()) {
         ? t("proof.transportLocal", {}, lang)
         : t("proof.transportHttp", {}, lang);
     const trackersBadge = report.trackers.isHttps
-      ? t("proof.trackersMetricHttps", {}, lang)
+      ? t("proof.trackersMetricHttps", { trackers: report.trackers.trackerCount }, lang)
       : report.trackers.isLocalStand
-        ? t("proof.trackersMetricLocal", {}, lang)
-        : t("proof.trackersMetricHttp", {}, lang);
+        ? t("proof.trackersMetricLocal", { trackers: report.trackers.trackerCount }, lang)
+        : t("proof.trackersMetricHttp", { trackers: report.trackers.trackerCount }, lang);
 
     const rows = [
       {
@@ -644,7 +645,7 @@ function openPlanRequestModal(plan, triggerEl) {
 function isValidContactInput(val) {
   const trimmed = String(val || "").trim();
   if (!trimmed) return false;
-  const emailLike = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  const emailLike = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/;
   const telegramLike = /^@[A-Za-z0-9_]{3,64}$/;
   return emailLike.test(trimmed) || telegramLike.test(trimmed);
 }
@@ -660,6 +661,7 @@ function resetSessionToZero({ silent = false, wipeDomOnly = false } = {}) {
   state.llmReply = "";
   state.activePresetId = "";
   state.lastSanitizeResult = null;
+  state.lastSanitizedInput = "";
   state.lastRehydrateResult = null;
   state.showAllCategories = false;
   state.highlightedToken = "";
@@ -674,9 +676,7 @@ function resetSessionToZero({ silent = false, wipeDomOnly = false } = {}) {
   if (fileInput) fileInput.value = "";
 
   if (wipeDomOnly) {
-    clearEl(getEl("sanitized-output"));
-    clearEl(getEl("restored-output"));
-    clearEl(getEl("entity-vault-list"));
+    refreshWorkbenchUi();
     return;
   }
 
@@ -734,6 +734,7 @@ async function recordAuditEntry(
 function runSanitizePipeline(recordAudit = false, { evolveTransient = false } = {}) {
   const result = state.vault.sanitize(state.rawText, state.rules, { evolveTransient });
   state.lastSanitizeResult = result;
+  state.lastSanitizedInput = state.rawText;
   refreshWorkbenchUi();
 
   if (recordAudit && state.rawText.trim().length > 0) {
@@ -748,6 +749,26 @@ function runSanitizePipeline(recordAudit = false, { evolveTransient = false } = 
     );
   }
   return result;
+}
+
+function ensureFreshSanitizedOutput() {
+  const rawInput = getEl("raw-prompt-input");
+  if (rawInput && rawInput.value !== state.rawText) {
+    state.rawText = rawInput.value;
+  }
+  const hadPendingLive = liveSanitizeTimer !== null;
+  const needsSync =
+    hadPendingLive ||
+    state.rawText !== state.lastSanitizedInput ||
+    !state.lastSanitizeResult;
+  if (needsSync) {
+    cancelPendingLiveSanitize();
+    cancelPendingLiveAudit();
+    runSanitizePipeline(state.rawText.trim().length > 0, {
+      evolveTransient: hadPendingLive,
+    });
+  }
+  return state.lastSanitizeResult?.sanitizedText || "";
 }
 
 function switchMode(nextMode) {
@@ -869,7 +890,7 @@ function bindEvents() {
   });
   getEl("goto-rehydrate-btn")?.addEventListener("click", () => switchMode("rehydrate"));
   getEl("copy-goto-step2-btn")?.addEventListener("click", async () => {
-    const text = state.lastSanitizeResult?.sanitizedText || "";
+    const text = ensureFreshSanitizedOutput();
     if (!text) return;
     const ok = await copyTextToClipboard(text);
     showStatusBanner(ok ? "banner.copied" : "banner.copyFailed", {}, !ok);
@@ -1044,7 +1065,8 @@ function bindEvents() {
   });
 
   getEl("copy-sanitized-btn")?.addEventListener("click", async () => {
-    const text = state.lastSanitizeResult?.sanitizedText || "";
+    const text = ensureFreshSanitizedOutput();
+    if (!text) return;
     const ok = await copyTextToClipboard(text);
     if (ok) {
       showCopyFeedback(
@@ -1057,7 +1079,7 @@ function bindEvents() {
   });
 
   getEl("download-sanitized-btn")?.addEventListener("click", () => {
-    const text = state.lastSanitizeResult?.sanitizedText || "";
+    const text = ensureFreshSanitizedOutput();
     if (!text) return;
     downloadTextFile("promptveil-sanitized.txt", text);
     showStatusBanner("banner.downloaded");
@@ -1204,7 +1226,8 @@ function bindEvents() {
     const isTeam = state.activeRequestPlan === "team";
     const nameVal = (getEl("plan-req-name")?.value || "").trim();
     const contactVal = (getEl("plan-req-contact")?.value || "").trim();
-    const seatsRaw = Number(getEl("plan-req-seats")?.value || 10);
+    const seatsInputRaw = (getEl("plan-req-seats")?.value ?? "").trim();
+    const seatsRaw = seatsInputRaw === "" ? NaN : Number(seatsInputRaw);
     const noteVal = (getEl("plan-req-note")?.value || "").trim();
 
     if (!nameVal) {
@@ -1312,7 +1335,13 @@ function bindEvents() {
   });
 
   window.addEventListener("pagehide", () => {
-    resetSessionToZero({ silent: true, wipeDomOnly: true });
+    resetSessionToZero({ silent: true });
+  });
+
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      resetSessionToZero({ silent: true });
+    }
   });
 
   // Rulebook Form & Export/Import

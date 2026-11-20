@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T16:08+03:00  
-**Session Status:** Pre-Release Product, Branding & UX Update (R1–R6) complete — ready for Netlify deployment  
-**Exact Stop Point:** Pre-Release Product, Branding & UX Update (R1–R6) Complete — replaced shield/check branding with geometric prism/veil monogram, removed obsolete local-browser nagging copy, added interactive `Zero-Retention Proof` modal with passive live self-test + instant `resetSessionToZero()` + `pagehide` scrub, added Step 1/2 Paste (with Ctrl/Cmd+V fallback) and `"Скопировать и перейти к шагу 2 →"`, added free-access `#pricing-section` (Month/Year −20%, Free/Pro/Team) with client-only request modals, added Trust Footer with centralized real owner contacts (`app/static/js/contacts.js`: `@supv1rus`, `kilkauciha@gmail.com`, `github.com/Aquanti`, `SupV1rus`) and Privacy Policy modal, updated `.gitignore`, `tests/test_server.py` (`20/20` PASS), and `e2e_tests/` (`146/146` live PASS, `16` screenshots inspected); port `8000` free, no Netlify deployment executed.
+**Checkpoint Date:** 2026-11-20T16:28+03:00  
+**Session Status:** Pre-Release Product, Branding & UX Update (R1–R6, Cycle 1 Iteration 2 Hardening) complete — ready for Netlify deployment  
+**Exact Stop Point:** Cycle 1 Iteration 2 Hardening Complete — synchronized `pagehide` / `pageshow` (`persisted=true`) bfcache reset with full workbench UI/button/counter refresh (`localStorage` prefs preserved), added `ensureFreshSanitizedOutput()` to `#copy-goto-step2-btn` / `#copy-sanitized-btn` / `#download-sanitized-btn` to flush pending live-sanitize timers and handle unchecked `#live-sanitize-toggle`, tightened Team `#plan-req-seats` empty check & `isValidContactInput()` email regex (`<`/`>` rejected), parameterized `{trackers}` in `proof.trackersMetric*` (RU & EN), and added regression checks in `e2e_tests/test_acceptance.py` (`test_ACC_06`..`test_ACC_08`); `py_compile` (`16` files), `pytest tests/test_server.py` (`20/20`), `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --tier all` (`146/146`, `320.80s`) all PASS; port `8000` free, `.agents/` absent, no Netlify deployment executed.
 
 ---
 
@@ -35,9 +35,10 @@
 ## 3. Verification Status
 - **Active background processes / local servers / subagents:** `0` (port `8000` free; `.agents/` absent from `C:\Users\User\Desktop\коды\AGY`; no public Netlify deployment executed).
 - **`py_compile` across `app/`, `tests/`, `e2e_tests/`:** Exit `0` (`16` files, `0` syntax errors).
-- **`pytest tests/test_server.py -v`:** **`20 passed`** (`1.12s`, exit `0`).
+- **`pytest tests/test_server.py -v`:** **`20 passed`** (`1.27s`, exit `0`).
 - **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`109` Tier 1–4 + `29` Tier 5 + `8` Acceptance = `146` unique tests, exit `0`).
-- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`146 passed`** (`308.39s`, exit `0`, `0` skipped, `0` console/page errors).
+- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`146 passed`** (`320.80s`, exit `0`, `0` skipped, `0` console/page errors).
+- **Iteration 2 Hardening Regressions (`test_ACC_06`..`test_ACC_08`):** Verified `pagehide` + `pageshow(persisted=true)` reset counters/disabled buttons while keeping `localStorage` prefs, `<140ms` fast-click & unchecked live-toggle flush on `#copy-goto-step2-btn`, Team empty seats & `<`/`>` email validation rejection, and dynamic `{trackers}` anomaly badge (`1 трекеров` / `1 trackers`).
 - **Visual Inspection (`e2e_tests/artifacts/acceptance/*.png`):** Inspected `1440×900` and `390×844` screenshots (`empty`, `step1_masked`, `step2_restored`, `pricing_footer`, `proof_modal`, `request_modal`) — zero overlaps, zero clipping, zero horizontal overflow, mobile `.top-rail` `<= 64px` with clean 2-line proof trigger, WCAG AA contrast, and Spark Admin styling confirmed.
 
 ---

@@ -424,7 +424,7 @@ def test_ACC_06_zero_retention_proof_and_session_reset(e2e_session: E2ESession) 
     # Preferences & custom rules in localStorage remain preserved
     assert ui.get_rulebook_badge_count() == 1
 
-    # Re-open from footer trigger and check pagehide scrub
+    # Re-open from footer trigger and check pagehide + pageshow (bfcache) scrub
     ui.open_privacy_proof_modal("footer")
     ui.close_active_modal()
     ui.sanitize_text("Снова secret2@example.ru")
@@ -433,8 +433,49 @@ def test_ACC_06_zero_retention_proof_and_session_reset(e2e_session: E2ESession) 
     assert ui.get_prompt_input().input_value() == ""
     assert ui.get_sanitize_output_text() == ""
     assert ui.get_vault_rows() == []
+    assert page.locator("[data-testid='telemetry-masked-count']").get_attribute("data-count") == "0"
+    assert page.locator("[data-testid='copy-sanitized-btn']").is_disabled()
+    assert page.locator("[data-testid='download-sanitized-btn']").is_disabled()
+    assert page.locator("[data-testid='copy-goto-step2-btn']").is_disabled()
 
-    e2e_session.net.assert_zero_egress([secret_email, "secret2@example.ru"])
+    # bfcache restoration via pageshow(persisted=true) also scrubs session while preserving localStorage prefs
+    ui.sanitize_text("Снова secret3@example.ru")
+    assert len(ui.get_vault_rows()) == 1
+    assert not page.locator("[data-testid='copy-goto-step2-btn']").is_disabled()
+    page.evaluate(
+        """() => {
+            const ev = new Event('pageshow');
+            Object.defineProperty(ev, 'persisted', { value: true });
+            window.dispatchEvent(ev);
+        }"""
+    )
+    assert ui.get_prompt_input().input_value() == ""
+    assert ui.get_sanitize_output_text() == ""
+    assert ui.get_vault_rows() == []
+    assert page.locator("[data-testid='telemetry-masked-count']").get_attribute("data-count") == "0"
+    assert page.locator("[data-testid='copy-sanitized-btn']").is_disabled()
+    assert page.locator("[data-testid='download-sanitized-btn']").is_disabled()
+    assert page.locator("[data-testid='copy-goto-step2-btn']").is_disabled()
+    assert ui.get_rulebook_badge_count() == 1
+    assert page.evaluate("() => Boolean(localStorage.getItem('promptveil_rules_v1'))")
+
+    # Dynamic tracker badge count on anomaly (RU & EN)
+    page.evaluate("() => { window.gtag = () => {}; }")
+    try:
+        modal = ui.open_privacy_proof_modal("header")
+        assert "1 трекеров" in modal.inner_text()
+        assert page.locator("#proof-summary-card.proof-summary-card--warn").count() == 1
+        ui.close_active_modal()
+
+        ui.switch_language("en")
+        modal = ui.open_privacy_proof_modal("header")
+        assert "1 trackers" in modal.inner_text()
+        ui.close_active_modal()
+    finally:
+        page.evaluate("() => { delete window.gtag; }")
+        ui.switch_language("ru")
+
+    e2e_session.net.assert_zero_egress([secret_email, "secret2@example.ru", "secret3@example.ru"])
     e2e_session.console.assert_no_errors()
 
 
@@ -466,6 +507,46 @@ def test_ACC_07_ux_paste_and_copy_goto_step2(e2e_session: E2ESession) -> None:
     assert "maria.ivanova@example.ru" in restored
     assert "+7 (916) 555-01-44" in restored
 
+    # Fast-click (<140ms debounce) on #copy-goto-step2-btn must flush and copy fresh masked text
+    ui.click_back_sanitize()
+    page.evaluate(
+        """() => {
+            const inp = document.getElementById('raw-prompt-input');
+            inp.value = 'Срочно для fast.click@example.ru';
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            document.getElementById('copy-goto-step2-btn').click();
+        }"""
+    )
+    page.wait_for_timeout(120)
+    assert ui.get_rehydrate_input().is_visible()
+    fast_clip = ui.read_clipboard_text() or ""
+    assert "Срочно для [EMAIL_" in fast_clip
+    assert "fast.click@example.ru" not in fast_clip
+    assert "maria.ivanova@example.ru" not in fast_clip
+
+    # Unchecked live-sanitize toggle + #copy-goto-step2-btn must also mask current rawText before copy
+    ui.click_back_sanitize()
+    live_toggle = page.locator("#live-sanitize-toggle")
+    if live_toggle.is_checked():
+        live_toggle.uncheck()
+    page.evaluate(
+        """() => {
+            const inp = document.getElementById('raw-prompt-input');
+            inp.value = 'Офлайн для manual.sync@example.ru';
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            document.getElementById('copy-goto-step2-btn').click();
+        }"""
+    )
+    page.wait_for_timeout(120)
+    assert ui.get_rehydrate_input().is_visible()
+    manual_clip = ui.read_clipboard_text() or ""
+    assert "Офлайн для [EMAIL_" in manual_clip
+    assert "manual.sync@example.ru" not in manual_clip
+    ui.click_back_sanitize()
+    if not live_toggle.is_checked():
+        live_toggle.check()
+    ui.click_copy_goto_step2()
+
     # Verify graceful fallback when Clipboard readText rejects
     page.evaluate(
         """() => {
@@ -488,7 +569,14 @@ def test_ACC_07_ux_paste_and_copy_goto_step2(e2e_session: E2ESession) -> None:
     assert "Ctrl+V" in ui.get_status_banner_text()
     assert page.evaluate("() => document.activeElement?.id") == "raw-prompt-input"
 
-    e2e_session.net.assert_zero_egress(["maria.ivanova@example.ru", "+7 (916) 555-01-44"])
+    e2e_session.net.assert_zero_egress(
+        [
+            "maria.ivanova@example.ru",
+            "+7 (916) 555-01-44",
+            "fast.click@example.ru",
+            "manual.sync@example.ru",
+        ]
+    )
     e2e_session.console.assert_no_errors()
 
 
@@ -517,6 +605,11 @@ def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2E
     page.locator("[data-testid='plan-req-submit-btn']").click()
     assert page.locator("[data-testid='plan-request-alert']").is_visible()
 
+    page.locator("[data-testid='plan-req-contact']").fill("test<img src=x onerror=alert(1)>@evil.com")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    assert page.locator("[data-testid='plan-request-alert']").is_visible()
+    assert not page.locator("[data-testid='plan-request-result']").is_visible()
+
     page.locator("[data-testid='plan-req-contact']").fill("ivan@company.ru")
     page.locator("[data-testid='plan-req-note']").fill("Нужна обработка docx")
     page.locator("[data-testid='plan-req-submit-btn']").click()
@@ -530,6 +623,13 @@ def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2E
 
     ui.open_plan_request_modal("team")
     assert page.locator("[data-testid='plan-req-seats']").is_visible()
+    page.locator("[data-testid='plan-req-seats']").fill("")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    seats_alert = page.locator("[data-testid='plan-request-alert']")
+    assert seats_alert.is_visible()
+    assert "5000" in seats_alert.inner_text()
+    assert not page.locator("[data-testid='plan-request-result']").is_visible()
+
     page.locator("[data-testid='plan-req-seats']").fill("15")
     page.locator("[data-testid='plan-req-submit-btn']").click()
     team_preview = page.locator("[data-testid='plan-request-preview']").inner_text()
