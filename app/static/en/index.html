@@ -59,46 +59,56 @@
           aria-haspopup="dialog"
           aria-expanded="false"
           aria-controls="modal-privacy-proof"
-          data-testid="brand-badge"
-          data-i18n="proof.triggerLabel"
-          data-i18n-title="proof.triggerTitle"
+          aria-label="Open live client-side Zero-Retention Proof"
           title="Open live client-side Zero-Retention Proof"
-        >Zero-Retention • Verify</button>
+          data-testid="brand-badge"
+          data-i18n-aria="proof.triggerTitle"
+          data-i18n-title="proof.triggerTitle"
+        >
+          <svg class="brand-badge-lock" viewBox="0 0 16 16" width="16" height="16" fill="none" aria-hidden="true">
+            <path d="M5 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            <rect x="3" y="7" width="10" height="7" rx="2" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+          <span class="brand-badge-dot" aria-hidden="true"></span>
+          <span class="brand-badge-text" data-i18n="proof.triggerLabel">Zero-Retention • Verify</span>
+        </button>
       </div>
     </div>
 
     <div class="rail-actions">
-      <a
-        href="#pricing-section"
-        id="nav-pricing-link"
-        class="rail-nav-link"
-        data-testid="nav-pricing-link"
-        data-i18n="nav.pricing"
-      >Pricing</a>
-      <button
-        type="button"
-        id="open-rulebook-btn"
-        class="rail-btn"
-        aria-haspopup="dialog"
-        aria-expanded="false"
-        aria-controls="drawer-rulebook"
-        data-testid="open-rulebook-btn"
-      >
-        <span class="rail-btn-label" data-i18n="nav.rulebook">Custom Words</span>
-        <span id="rulebook-count" class="rail-count tabular-nums">0</span>
-      </button>
-      <button
-        type="button"
-        id="open-audit-btn"
-        class="rail-btn"
-        aria-haspopup="dialog"
-        aria-expanded="false"
-        aria-controls="drawer-audit"
-        data-testid="open-audit-btn"
-      >
-        <span class="rail-btn-label" data-i18n="nav.audit">History</span>
-        <span id="audit-count" class="rail-count tabular-nums" hidden>0</span>
-      </button>
+      <nav class="top-rail-nav" aria-label="Sections" data-i18n-aria="nav.railAria">
+        <a
+          href="#pricing-section"
+          id="nav-pricing-link"
+          class="rail-nav-link"
+          data-testid="nav-pricing-link"
+          data-i18n="nav.pricing"
+        >Pricing</a>
+        <button
+          type="button"
+          id="open-rulebook-btn"
+          class="rail-btn"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="drawer-rulebook"
+          data-testid="open-rulebook-btn"
+        >
+          <span class="rail-btn-label" data-i18n="nav.rulebook">Custom Words</span>
+          <span id="rulebook-count" class="rail-count tabular-nums">0</span>
+        </button>
+        <button
+          type="button"
+          id="open-audit-btn"
+          class="rail-btn"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="drawer-audit"
+          data-testid="open-audit-btn"
+        >
+          <span class="rail-btn-label" data-i18n="nav.audit">History</span>
+          <span id="audit-count" class="rail-count tabular-nums" hidden>0</span>
+        </button>
+      </nav>
       <div
         class="lang-switch"
         role="group"
@@ -123,6 +133,15 @@
       </div>
       <button
         type="button"
+        id="lang-mobile-toggle"
+        class="lang-mobile-toggle"
+        data-lang="en"
+        aria-label="Switch language to Russian (current: EN)"
+        title="Switch language to Russian (current: EN)"
+        data-testid="lang-mobile-toggle"
+      >EN</button>
+      <button
+        type="button"
         id="theme-toggle-btn"
         class="theme-toggle-btn"
         aria-pressed="false"
@@ -136,6 +155,58 @@
           <path d="M16.2 12.6A6.8 6.8 0 0 1 7.4 3.8a7 7 0 1 0 8.8 8.8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
         </svg>
       </button>
+      <div class="mobile-more-wrap">
+        <button
+          type="button"
+          id="mobile-more-btn"
+          class="mobile-more-btn"
+          aria-haspopup="true"
+          aria-expanded="false"
+          aria-controls="mobile-more-menu"
+          aria-label="More sections"
+          title="More sections"
+          data-i18n-aria="nav.moreAria"
+          data-i18n-title="nav.moreAria"
+          data-testid="mobile-more-btn"
+        ><span aria-hidden="true">⋯</span></button>
+        <div
+          id="mobile-more-menu"
+          class="mobile-more-menu"
+          aria-labelledby="mobile-more-btn"
+          hidden
+          data-testid="mobile-more-menu"
+        >
+          <button
+            type="button"
+            id="mobile-open-rulebook-btn"
+            class="mobile-more-item"
+            aria-haspopup="dialog"
+            aria-controls="drawer-rulebook"
+            data-testid="mobile-open-rulebook-btn"
+          >
+            <span data-i18n="nav.rulebook">Custom Words</span>
+            <span id="mobile-rulebook-count" class="rail-count tabular-nums">0</span>
+          </button>
+          <button
+            type="button"
+            id="mobile-open-audit-btn"
+            class="mobile-more-item"
+            aria-haspopup="dialog"
+            aria-controls="drawer-audit"
+            data-testid="mobile-open-audit-btn"
+          >
+            <span data-i18n="nav.audit">History</span>
+            <span id="mobile-audit-count" class="rail-count tabular-nums" hidden>0</span>
+          </button>
+          <a
+            href="#pricing-section"
+            id="mobile-pricing-btn"
+            class="mobile-more-item"
+            data-testid="mobile-pricing-btn"
+            data-i18n="nav.pricing"
+          >Pricing</a>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -259,7 +330,7 @@
           data-mode="rehydrate"
           data-testid="mode-rehydrate"
         >
-          <span data-i18n="nav.step2">2. Restore in AI Reply</span>
+          <span data-i18n="nav.step2"><span class="tab-label-short">2. Restore</span><span class="tab-label-tail"> in AI Reply</span></span>
           <span id="rehydrate-ready-badge" class="tab-badge tabular-nums" hidden>0</span>
         </button>
       </div>
@@ -445,7 +516,7 @@
         </section>
       </div>
 
-      <section class="vault-section" aria-labelledby="vault-title">
+      <section id="vault-section" class="vault-section is-mobile-collapsed" aria-labelledby="vault-title">
         <div class="vault-header">
           <div class="pane-title-group">
             <h2 id="vault-title" class="pane-title" data-i18n="step1.vaultHeading">What was hidden</h2>
@@ -460,23 +531,45 @@
               data-testid="toggle-hide-values-btn"
               data-i18n="step1.hideValues"
             >Hide values</button>
+            <button
+              type="button"
+              id="vault-collapse-btn"
+              class="btn-ghost-sm vault-collapse-btn"
+              aria-expanded="false"
+              aria-controls="vault-collapsible-body"
+              data-testid="vault-collapse-btn"
+              data-i18n="step1.vaultExpandBtn"
+            >Expand</button>
           </div>
         </div>
 
-        <div class="category-bar">
-          <span class="category-bar-label" data-i18n="step1.filtersHeading">Data types</span>
-          <div
-            id="category-chips"
-            class="category-chips"
-            role="group"
-            aria-label="Detected data categories"
-            data-i18n-aria="step1.filtersAria"
-            data-testid="category-chips"
-          ></div>
-        </div>
+        <div id="vault-collapsible-body" class="vault-collapsible-body">
+          <div class="category-bar">
+            <span class="category-bar-label" data-i18n="step1.filtersHeading">Data types</span>
+            <div
+              id="category-chips"
+              class="category-chips"
+              role="group"
+              aria-label="Detected data categories"
+              data-i18n-aria="step1.filtersAria"
+              data-testid="category-chips"
+            ></div>
+          </div>
 
-        <ul id="entity-vault-list" class="vault-list" data-testid="entity-vault-list"></ul>
+          <ul id="entity-vault-list" class="vault-list" data-testid="entity-vault-list"></ul>
+        </div>
       </section>
+
+      <div id="mobile-sticky-cta" class="mobile-sticky-cta" data-testid="mobile-sticky-cta">
+        <button
+          type="button"
+          id="mobile-sticky-copy-btn"
+          class="btn-lime mobile-sticky-copy-btn"
+          disabled
+          data-testid="mobile-sticky-copy-btn"
+          data-i18n="step1.mobileStickyCta"
+        >Copy → Open AI</button>
+      </div>
     </section>
 
     <section

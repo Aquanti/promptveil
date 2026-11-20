@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T16:27Z (`19:27+03:00`)  
-**Session Status:** v2 Audit Remediation — Stage B / Milestone M2 (State, Validation & i18n Parity, Items 6–13) COMPLETE  
-**Exact Stop Point:** Stage B / M2 (Items 6–13) implemented, gate-verified (Gate Iteration 1 PASS: Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `CONFIRM`), and committed locally (`checkpoint: stage B state validation and i18n parity`). E2E suite in `e2e_tests/` (`172` unique tests) remains aligned in working tree (`self-test` PASS) and Stage A / M1 (`master @ 5636cd9`) is preserved below. Next planned stage: `M3 — Stage C: Mobile UX 390x844`.
+**Checkpoint Date:** 2026-11-20T17:04Z (`20:04+03:00`)  
+**Session Status:** v2 Audit Remediation — Stage C / Milestone M3 (Mobile UX `390×844`, Items 14–18) COMPLETE  
+**Exact Stop Point:** Stage C / M3 (Items 14–18) implemented, Iteration 2 gate-verified (Gate PASS: Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`; `node --check`, `25/25` `node:test`, `24/24` `pytest`, `7/7` targeted Playwright E2E + `548` & `92+3` live viewport/adversarial checks), and committed locally (`checkpoint: stage C mobile ux and viewport fit`). Stage A (`5636cd9`), E2E Alignment (`664f816`), and Stage B (`2d91890`) are preserved below; `e2e_tests/` remains untouched by M3. Next planned stage: `Milestone M4: Stage D Performance, Security Headers, Hygiene & CI`.
 
 ---
 
@@ -118,6 +118,33 @@
 
 ---
 
+## 6a. v2 Audit Remediation — Stage C (Milestone M3: Mobile UX `390×844`, Items 14–18)
+
+### Completed Items (Items 14–18)
+1. **Item 14 — Compact Mobile Header (`app/static/index.html`, `app/static/en/index.html`, `app/static/css/{layout,components}.css`, `app/static/js/{i18n,app}.js`):**
+   - Compacted `header.top-rail` to `56.25px` (`<= 64.5px`) at `390×844`: converted `#open-proof-btn` into a `44×44` geometric padlock + lime-dot badge (`.brand-badge-lock`, `.brand-badge-dot`, `.sr-only` on `.brand-badge-text`, preserving SVG across `applyLanguage()` switches).
+   - Added single `44×44` `[data-testid="lang-mobile-toggle"]` (`RU` / `EN`) and `"⋯"` overflow menu (`#mobile-more-btn`, `#mobile-more-menu`) hosting `"Свои слова"` (`#mobile-open-rulebook-btn` + `#mobile-rulebook-count`), `"Журнал"` (`#mobile-open-audit-btn` + `#mobile-audit-count`), and `"Тарифы"` (`#mobile-pricing-btn`), with Escape/outside-click/resize-to-desktop dismissal and focus restoration.
+   - Enforced `@media (min-width: 640px)` cascade override at the end of `app/static/css/components.css` hiding `.lang-mobile-toggle`, `.mobile-more-wrap`, `.mobile-more-btn`, `.vault-collapse-btn`, and `.mobile-sticky-cta` on desktop (`>= 640px`), guarded by regression assertions in `tests/test_server.py::test_stage_c_mobile_ux_contracts`.
+2. **Item 15 — Mobile Step 2 Tab Label (`app/static/index.html`, `app/static/en/index.html`, `app/static/css/components.css`, `app/static/js/i18n.js`):**
+   - Split `[data-i18n="nav.step2"]` into `.tab-label-short` (`"2. Вернуть"` / `"2. Restore"`) and `.tab-label-tail` (`" в ответ ИИ"` / `" in AI Reply"`), hiding `.tab-label-tail` at `<= 639px` so Step 2 stays single-line with zero wrapping or clipping.
+3. **Item 16 — Mobile Tap Targets `>= 44px` (`app/static/css/{layout,components,sections}.css`):**
+   - Enforced `min-height: 44px` across mobile header buttons, `.ai-launcher-pill`, `.footer-nav-link`, `.footer-link-btn`, `.footer-proof-btn`, `a.footer-contact-value`, and `.btn-copy-xs`, plus `padding-bottom: 5.25rem` on `.site-footer` so bottom footer controls clear `#mobile-sticky-cta`.
+4. **Item 17 — Collapsible Vault & Sticky Bottom CTA (`app/static/index.html`, `app/static/en/index.html`, `app/static/css/{layout,components}.css`, `app/static/js/{app,render-workbench,i18n}.js`):**
+   - Added RAM-only `state.mobileVaultExpanded` (default `false` on mobile, preserving the 5-key `localStorage` allowlist), `#vault-collapse-btn`, and `#vault-collapsible-body`, auto-expanding and centering (`block: "center"` + `html { scroll-padding-bottom: 5.25rem; }`) on `scrollToVaultItem(token)` so scrolled items stay clear above `#mobile-sticky-cta`.
+   - Added `#mobile-sticky-cta` / `#mobile-sticky-copy-btn` (`"Скопировать → открыть ИИ"` / `"Copy → open AI"`) inside `#panel-sanitize` (auto-hidden on Step 2, disabled when empty, synchronized with `clearCopyFeedback()`).
+5. **Item 18 — Drawer & Modal Viewport Width Fix (`app/static/css/{drawers,modals}.css`):**
+   - Replaced all `100vw` declarations with `100%` (`min(460px, 100%)`, `min(600px, calc(100% - 1.5rem))`, `calc(100% - 1rem)`), eliminating scrollbar-induced left-edge overflow on `390×844` and `360×800`.
+
+### Stage C Verification Results (Iteration 2 Gate PASS)
+- **Gate Iteration 2 Result:** **PASS** (Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`).
+- **`node --check` (`app.js`, `modals.js`, `render-workbench.js`, `i18n.js`):** Exit `0` (`0` syntax errors).
+- **`node --test tests\js\*.test.mjs`:** **`25/25` passed** (`7` suites, `0` failures).
+- **`pytest tests\test_server.py -v`:** **`24/24` passed** (`0` failures).
+- **Targeted Live Playwright E2E (`ACC_01`, `ACC_02`, `ACC_04`, `ACC_06`, `ACC_12`, `T4_05`, `T4_06`):** **`7/7` passed** (`0` failures).
+- **Live Viewport & Adversarial Playwright Probes (`/` & `/en/`, light & dark across `390×844`, `360×800`, `639×844`, `640×800`, `1440×900`):** **`548/548`** Challenger 1 checks + **`92/92 + 3/3`** Challenger 2 edge checks passed (`0` horizontal overflow, `0` console/page/CSP errors, `0` unallowed `localStorage` keys, `scrollToVaultItem` and footer clear above `#mobile-sticky-cta`).
+
+---
+
 ## 7. GitHub Remote & Push Instructions (Item 4)
 No GitHub credentials or `origin` remote are configured in this local environment. Once ready to publish the repository to `https://github.com/Aquanti/promptveil`, run:
 
@@ -132,8 +159,7 @@ git push -u origin master
 ---
 
 ## 8. Next Steps
-1. **Next Planned Stage — `M3 — Stage C: Mobile UX 390x844` (Items 14–18):** Compact header (`<= 64px`, `44×44` lock+dot badge, single RU/EN toggle, `"⋯"` overflow menu), shortened Step 2 tab label, `>= 44px` tap targets, collapsible vault + sticky CTA bar, drawer `min(100%, ...)` width fix.
-2. **`M4` — Bundling / SW / COOP-CORP / CI (Items 19–27):** `esbuild` CSS/JS bundling, immutable cache headers, lazy i18n & `<template>` modals, SW update banner, COOP/CORP headers, dead code removal, modularization, GitHub Actions CI workflow.
-3. **`M5` — Stage E Growth Features:** Safe static client-side growth items (Items 28, 31–34, 36 + out-of-scope roadmap notes).
-4. **`M6` — Full Live E2E (`172` tests):** Run `pytest`, `node --test`, `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all` (`172/172` with `0` failures).
-5. **`M7` — Production Netlify Deploy & Delivery:** Deploy to production Netlify + confirm via `netlify-open-deployments`, verify live `https://promptveil.netlify.app` in browser, run Desktop & Mobile Lighthouse outside repo, update `PROGRESS.md` + commit, and send completion email to `kilkauciha@gmail.com`.
+1. **Next Planned Stage — `Milestone M4: Stage D Performance, Security Headers, Hygiene & CI` (Items 19–26):** Eliminate CSS `@import` chain, `esbuild` CSS/JS bundling & minification into `app/static/dist/` with immutable cache headers, lazy i18n & `<template>` modals, SW network-first HTML + SWR + `"Обновить"` banner, COOP/CORP headers, dead code removal, `app.js` modularization (`notifications.js`, `pipeline.js`), `.gitattributes`, `CHANGELOG.md`, and GitHub Actions CI workflow.
+2. **`M5` — Stage E Growth Features:** Safe static client-side growth items (Items 28, 31–34, 36 + out-of-scope roadmap notes).
+3. **`M6` — Full Live E2E (`172` tests):** Run `pytest`, `node --test`, `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all` (`172/172` with `0` failures).
+4. **`M7` — Production Netlify Deploy & Delivery:** Deploy to production Netlify + confirm via `netlify-open-deployments`, verify live `https://promptveil.netlify.app` in browser, run Desktop & Mobile Lighthouse outside repo, update `PROGRESS.md` + commit, and send completion email to `kilkauciha@gmail.com`.

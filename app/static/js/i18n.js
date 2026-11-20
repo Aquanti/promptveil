@@ -24,6 +24,10 @@ export const TRANSLATIONS = Object.freeze({
     "proof.triggerLabel": "Гарантия 0 хранения • Проверить",
     "proof.triggerTitle": "Открыть клиентскую проверку конфиденциальности (0 хранения)",
     "lang.switchAria": "Переключение языка",
+    "lang.mobileToggleToEn": "Переключить язык на английский (сейчас RU)",
+    "lang.mobileToggleToRu": "Переключить язык на русский (сейчас EN)",
+    "nav.railAria": "Разделы",
+    "nav.moreAria": "Дополнительные разделы",
     "nav.pricing": "Тарифы",
     "nav.resetSession": "Сбросить сессию в 0",
     "hero.title": "Защитите личные данные перед отправкой текста в ИИ",
@@ -37,6 +41,8 @@ export const TRANSLATIONS = Object.freeze({
     "nav.tablistAria": "Режим работы",
     "nav.step1": "1. Скрыть данные",
     "nav.step2": "2. Вернуть в ответ ИИ",
+    "nav.step2Short": "2. Вернуть",
+    "nav.step2Tail": " в ответ ИИ",
     "nav.rulebook": "Свои слова",
     "nav.audit": "Журнал",
     "presets.heading": "Попробуйте на готовом примере:",
@@ -76,6 +82,9 @@ export const TRANSLATIONS = Object.freeze({
       "Пока пусто: вставьте текст или выберите пример выше, чтобы сервис нашёл личные данные.",
     "step1.hideValues": "Скрыть значения",
     "step1.showValues": "Показать значения",
+    "step1.vaultExpandBtn": "Развернуть",
+    "step1.vaultCollapseBtn": "Свернуть",
+    "step1.mobileStickyCta": "Скопировать → открыть ИИ",
     "step1.itemOn": "Скрыто",
     "step1.itemOff": "Открыто",
     "step1.tokenTooltip": "{label}: нажмите, чтобы найти в списке",
@@ -359,6 +368,10 @@ export const TRANSLATIONS = Object.freeze({
     "proof.triggerLabel": "Zero-Retention • Verify",
     "proof.triggerTitle": "Open live client-side Zero-Retention Proof",
     "lang.switchAria": "Language switcher",
+    "lang.mobileToggleToEn": "Switch language to English (current: RU)",
+    "lang.mobileToggleToRu": "Switch language to Russian (current: EN)",
+    "nav.railAria": "Sections",
+    "nav.moreAria": "More sections",
     "nav.pricing": "Pricing",
     "nav.resetSession": "Reset session to 0",
     "hero.title": "Protect private details before sending text to AI",
@@ -372,6 +385,8 @@ export const TRANSLATIONS = Object.freeze({
     "nav.tablistAria": "Workbench mode",
     "nav.step1": "1. Hide Data",
     "nav.step2": "2. Restore in AI Reply",
+    "nav.step2Short": "2. Restore",
+    "nav.step2Tail": " in AI Reply",
     "nav.rulebook": "Custom Words",
     "nav.audit": "History",
     "presets.heading": "Try a ready example:",
@@ -411,6 +426,9 @@ export const TRANSLATIONS = Object.freeze({
       "Nothing hidden yet: paste text or pick an example above to detect private data.",
     "step1.hideValues": "Hide values",
     "step1.showValues": "Show values",
+    "step1.vaultExpandBtn": "Expand",
+    "step1.vaultCollapseBtn": "Collapse",
+    "step1.mobileStickyCta": "Copy → Open AI",
     "step1.itemOn": "Hidden",
     "step1.itemOff": "Visible",
     "step1.tokenTooltip": "{label}: click to locate in list",
@@ -772,6 +790,18 @@ export function applyLanguage(lang, hooks = {}) {
     enBtn.classList.toggle("is-active", next === "en");
     enBtn.setAttribute("aria-pressed", next === "en" ? "true" : "false");
   }
+  const mobileLangBtn = document.querySelector('[data-testid="lang-mobile-toggle"]');
+  if (mobileLangBtn) {
+    const mobileAria = t(
+      next === "ru" ? "lang.mobileToggleToEn" : "lang.mobileToggleToRu",
+      {},
+      next
+    );
+    mobileLangBtn.textContent = next.toUpperCase();
+    mobileLangBtn.setAttribute("data-lang", next);
+    mobileLangBtn.setAttribute("aria-label", mobileAria);
+    mobileLangBtn.setAttribute("title", mobileAria);
+  }
 
   for (const el of document.querySelectorAll("[data-i18n]")) {
     if (el.hasAttribute("data-copied")) {
@@ -779,6 +809,15 @@ export function applyLanguage(lang, hooks = {}) {
       continue;
     }
     const key = el.getAttribute("data-i18n");
+    if (key === "nav.step2" && typeof el.querySelector === "function") {
+      const shortEl = el.querySelector(".tab-label-short");
+      const tailEl = el.querySelector(".tab-label-tail");
+      if (shortEl && tailEl) {
+        shortEl.textContent = t("nav.step2Short", {}, next);
+        tailEl.textContent = t("nav.step2Tail", {}, next);
+        continue;
+      }
+    }
     if (key) el.textContent = t(key, {}, next);
   }
   for (const el of document.querySelectorAll("[data-i18n-placeholder]")) {

@@ -311,6 +311,7 @@ export function renderTelemetryAndActions(
     rehydrateBadgeEl,
     vaultReadyMetaEl,
     copySanitizedBtn,
+    mobileStickyCopyBtn,
     downloadSanitizedBtn,
     copyGoStep2Btn,
     toggleRevealBtn,
@@ -336,6 +337,14 @@ export function renderTelemetryAndActions(
       clearCopyFeedback(copySanitizedBtn, () => t("step1.copyBtn", {}, lang));
     } else if (!copySanitizedBtn.hasAttribute("data-copied")) {
       copySanitizedBtn.textContent = t("step1.copyBtn", {}, lang);
+    }
+  }
+  if (mobileStickyCopyBtn) {
+    mobileStickyCopyBtn.disabled = !hasOutput;
+    if (!hasOutput) {
+      clearCopyFeedback(mobileStickyCopyBtn, () => t("step1.mobileStickyCta", {}, lang));
+    } else if (!mobileStickyCopyBtn.hasAttribute("data-copied")) {
+      mobileStickyCopyBtn.textContent = t("step1.mobileStickyCta", {}, lang);
     }
   }
   if (downloadSanitizedBtn) {

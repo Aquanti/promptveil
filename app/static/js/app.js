@@ -56,7 +56,12 @@ import {
   renderTelemetryAndActions,
   renderVaultList,
 } from "./render-workbench.js";
-import { renderAuditList, renderRulebookList } from "./render-drawers.js";
+import {
+  getOpenDialogEl,
+  openDrawer,
+  renderAuditList,
+  renderRulebookList,
+} from "./render-drawers.js";
 
 const state = {
   lang: "ru",
@@ -68,6 +73,7 @@ const state = {
   lastSanitizedInput: "",
   lastRehydrateResult: null,
   revealVaultValues: true,
+  mobileVaultExpanded: false,
   showAllCategories: false,
   highlightedToken: "",
   pinnedToken: "",
@@ -252,7 +258,26 @@ function handleVaultItemBlur(token) {
   }
 }
 
+function renderVaultCollapseState(lang = getLang()) {
+  const vaultSection = getEl("vault-section");
+  const collapseBtn = getEl("vault-collapse-btn");
+  const expanded = Boolean(state.mobileVaultExpanded);
+  if (vaultSection) {
+    vaultSection.classList.toggle("is-mobile-collapsed", !expanded);
+  }
+  if (collapseBtn) {
+    collapseBtn.setAttribute("aria-expanded", expanded ? "true" : "false");
+    collapseBtn.textContent = expanded
+      ? t("step1.vaultCollapseBtn", {}, lang)
+      : t("step1.vaultExpandBtn", {}, lang);
+  }
+}
+
 function scrollToVaultItem(token) {
+  if (!state.mobileVaultExpanded) {
+    state.mobileVaultExpanded = true;
+    renderVaultCollapseState();
+  }
   const items = document.querySelectorAll('#entity-vault-list [data-testid="vault-item"]');
   const prefersReducedMotion =
     typeof window.matchMedia === "function" &&
@@ -263,7 +288,7 @@ function scrollToVaultItem(token) {
       setTokenHighlight(token, true);
       item.scrollIntoView({
         behavior: prefersReducedMotion ? "auto" : "smooth",
-        block: "nearest",
+        block: "center",
       });
       item.focus({ preventScroll: true });
       break;
@@ -346,6 +371,7 @@ function refreshWorkbenchUi() {
       rehydrateBadgeEl: getEl("rehydrate-ready-badge"),
       vaultReadyMetaEl: getEl("vault-ready-meta"),
       copySanitizedBtn: getEl("copy-sanitized-btn"),
+      mobileStickyCopyBtn: getEl("mobile-sticky-copy-btn"),
       downloadSanitizedBtn: getEl("download-sanitized-btn"),
       copyGoStep2Btn: getEl("copy-goto-step2-btn"),
       toggleRevealBtn: getEl("toggle-reveal-btn"),
@@ -376,6 +402,7 @@ function refreshWorkbenchUi() {
     }
   );
   refreshPresetsUi();
+  renderVaultCollapseState(lang);
   const launchersBar = getEl("ai-launchers-bar");
   if (launchersBar) {
     launchersBar.classList.toggle(
@@ -413,6 +440,10 @@ function refreshDrawersUi() {
       },
     }
   );
+  const mobileRulebookCount = getEl("mobile-rulebook-count");
+  if (mobileRulebookCount) {
+    mobileRulebookCount.textContent = String(state.rules.length);
+  }
   renderAuditList(
     {
       listEl: getEl("audit-list"),
@@ -424,6 +455,16 @@ function refreshDrawersUi() {
     state.auditLog,
     lang
   );
+  const mobileAuditCount = getEl("mobile-audit-count");
+  if (mobileAuditCount) {
+    const validAuditCount = Array.isArray(state.auditLog)
+      ? state.auditLog.filter(
+          (receipt) => receipt && typeof receipt === "object" && !Array.isArray(receipt)
+        ).length
+      : 0;
+    mobileAuditCount.textContent = String(validAuditCount);
+    mobileAuditCount.hidden = validAuditCount === 0;
+  }
   const persistToggle = getEl("audit-persist-toggle");
   if (persistToggle) {
     persistToggle.checked = Boolean(state.auditPersist);
@@ -437,6 +478,7 @@ function resetSessionToZero({ silent = false, wipeDomOnly = false } = {}) {
   hideInlineAlert("input-error-banner");
   hideInlineAlert("rehydrate-error-banner");
   clearCopyFeedback(getEl("copy-sanitized-btn"), () => t("step1.copyBtn"));
+  clearCopyFeedback(getEl("mobile-sticky-copy-btn"), () => t("step1.mobileStickyCta"));
   clearCopyFeedback(getEl("copy-restored-btn"), () => t("step2.copyBtn"));
 
   state.rawText = "";
@@ -445,6 +487,7 @@ function resetSessionToZero({ silent = false, wipeDomOnly = false } = {}) {
   state.lastSanitizeResult = null;
   state.lastSanitizedInput = "";
   state.lastRehydrateResult = null;
+  state.mobileVaultExpanded = false;
   state.showAllCategories = false;
   state.highlightedToken = "";
   state.pinnedToken = "";
@@ -609,6 +652,72 @@ function bindEvents() {
     state.lang = saveLanguage("en");
     applyLanguage(state.lang, { onAfterApply: rerenderAll });
   });
+  getEl("lang-mobile-toggle")?.addEventListener("click", () => {
+    const nextLang = getLang() === "en" ? "ru" : "en";
+    state.lang = saveLanguage(nextLang);
+    applyLanguage(state.lang, { onAfterApply: rerenderAll });
+  });
+
+  const setMobileMoreOpen = (open, { restoreFocus = false } = {}) => {
+    const btn = getEl("mobile-more-btn");
+    const menu = getEl("mobile-more-menu");
+    if (!btn || !menu) return;
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open && restoreFocus) {
+      btn.focus();
+    }
+  };
+
+  getEl("mobile-more-btn")?.addEventListener("click", () => {
+    const menu = getEl("mobile-more-menu");
+    if (!menu) return;
+    setMobileMoreOpen(menu.hidden);
+  });
+  getEl("mobile-open-rulebook-btn")?.addEventListener("click", () => {
+    setMobileMoreOpen(false);
+    hideInlineAlert("rulebook-alert");
+    openDrawer("drawer-rulebook", getEl("mobile-more-btn"), state);
+  });
+  getEl("mobile-open-audit-btn")?.addEventListener("click", () => {
+    setMobileMoreOpen(false);
+    openDrawer("drawer-audit", getEl("mobile-more-btn"), state);
+  });
+  getEl("mobile-pricing-btn")?.addEventListener("click", () => {
+    setMobileMoreOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const menu = getEl("mobile-more-menu");
+    if (menu && !menu.hidden && !getOpenDialogEl()) {
+      event.preventDefault();
+      setMobileMoreOpen(false, { restoreFocus: true });
+    }
+  });
+  document.addEventListener("click", (event) => {
+    const menu = getEl("mobile-more-menu");
+    if (!menu || menu.hidden) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest("#mobile-more-btn, #mobile-more-menu")
+    ) {
+      return;
+    }
+    setMobileMoreOpen(false);
+  });
+  if (typeof window.matchMedia === "function") {
+    const mobileMediaQuery = window.matchMedia("(max-width: 639px)");
+    const handleMobileMediaChange = (event) => {
+      if (!event.matches) {
+        setMobileMoreOpen(false);
+      }
+    };
+    if (typeof mobileMediaQuery.addEventListener === "function") {
+      mobileMediaQuery.addEventListener("change", handleMobileMediaChange);
+    } else if (typeof mobileMediaQuery.addListener === "function") {
+      mobileMediaQuery.addListener(handleMobileMediaChange);
+    }
+  }
 
   // Mode tabs & navigation
   getEl("mode-btn-sanitize")?.addEventListener("click", () => switchMode("sanitize"));
@@ -738,6 +847,7 @@ function bindEvents() {
     cancelPendingLiveAudit();
     hideInlineAlert("input-error-banner");
     clearCopyFeedback(getEl("copy-sanitized-btn"), () => t("step1.copyBtn"));
+    clearCopyFeedback(getEl("mobile-sticky-copy-btn"), () => t("step1.mobileStickyCta"));
     state.rawText = "";
     state.activePresetId = "";
     state.showAllCategories = false;
@@ -774,6 +884,11 @@ function bindEvents() {
     refreshWorkbenchUi();
   });
 
+  getEl("vault-collapse-btn")?.addEventListener("click", () => {
+    state.mobileVaultExpanded = !state.mobileVaultExpanded;
+    renderVaultCollapseState(getLang());
+  });
+
   getEl("copy-sanitized-btn")?.addEventListener("click", async () => {
     const text = ensureFreshSanitizedOutput();
     await copyWithFeedback({
@@ -782,6 +897,25 @@ function bindEvents() {
       resetLabelGetter: () => t("step1.copyBtn"),
       showStatusBanner,
       skipEmpty: true,
+    });
+  });
+
+  getEl("mobile-sticky-copy-btn")?.addEventListener("click", async () => {
+    const text = ensureFreshSanitizedOutput();
+    if (!text) return;
+    await copyWithFeedback({
+      text,
+      buttonEl: getEl("mobile-sticky-copy-btn"),
+      resetLabelGetter: () => t("step1.mobileStickyCta"),
+      showStatusBanner,
+      skipEmpty: true,
+    });
+    const prefersReducedMotion =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    getEl("ai-launchers-bar")?.scrollIntoView({
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+      block: "center",
     });
   });
 

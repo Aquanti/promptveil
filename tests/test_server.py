@@ -890,3 +890,84 @@ def test_service_worker_and_stage2_p1_contracts() -> None:
     assert "THEME_STORAGE_KEY" in proof_js
 
 
+def test_stage_c_mobile_ux_contracts() -> None:
+    """Verify M3 Mobile UX HTML hooks, RU/EN parity, and zero 100vw overflow in CSS."""
+    index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    en_html = (STATIC_DIR / "en" / "index.html").read_text(encoding="utf-8")
+
+    required_hooks = (
+        'id="lang-mobile-toggle"',
+        'data-testid="lang-mobile-toggle"',
+        'id="mobile-more-btn"',
+        'data-testid="mobile-more-btn"',
+        'id="mobile-more-menu"',
+        'data-testid="mobile-more-menu"',
+        'id="mobile-open-rulebook-btn"',
+        'data-testid="mobile-open-rulebook-btn"',
+        'id="mobile-open-audit-btn"',
+        'data-testid="mobile-open-audit-btn"',
+        'id="mobile-pricing-btn"',
+        'data-testid="mobile-pricing-btn"',
+        'id="mobile-rulebook-count"',
+        'id="mobile-audit-count"',
+        'class="brand-badge-lock"',
+        'class="brand-badge-dot"',
+        'class="brand-badge-text"',
+        'id="mode-btn-rehydrate"',
+        'data-testid="mode-rehydrate"',
+        'class="tab-label-short"',
+        'class="tab-label-tail"',
+        'id="vault-section"',
+        'id="vault-collapse-btn"',
+        'data-testid="vault-collapse-btn"',
+        'id="vault-collapsible-body"',
+        'id="mobile-sticky-cta"',
+        'data-testid="mobile-sticky-cta"',
+        'id="mobile-sticky-copy-btn"',
+        'data-testid="mobile-sticky-copy-btn"',
+    )
+    for hook in required_hooks:
+        assert hook in index_html, f"Missing M3 hook {hook} in index.html"
+        assert hook in en_html, f"Missing M3 hook {hook} in en/index.html"
+
+    # #mobile-more-menu items must not use role="menuitem" so Playwright get_by_role("button") matches.
+    for html_name, html_src in (("index.html", index_html), ("en/index.html", en_html)):
+        menu_match = re.search(
+            r'id="mobile-more-menu".*?</div>\s*</div>',
+            html_src,
+            re.DOTALL,
+        )
+        assert menu_match is not None, f"Could not locate #mobile-more-menu block in {html_name}"
+        assert 'role="menuitem"' not in menu_match.group(0), (
+            f'Unexpected role="menuitem" inside #mobile-more-menu in {html_name}'
+        )
+        assert html_src.count('data-i18n="nav.step2"') == 1, (
+            f"Expected single [data-i18n='nav.step2'] in {html_name}"
+        )
+
+    for css_path in sorted((STATIC_DIR / "css").glob("*.css")):
+        css_text = css_path.read_text(encoding="utf-8")
+        assert "100vw" not in css_text, f"Forbidden 100vw width found in {css_path.name}"
+
+    components_css = (STATIC_DIR / "css" / "components.css").read_text(encoding="utf-8")
+    desktop_hide_blocks = re.findall(
+        r"@media\s*\(\s*min-width:\s*640px\s*\)\s*\{([^}]*display\s*:\s*none[^}]*)\}",
+        components_css,
+        re.DOTALL,
+    )
+    assert desktop_hide_blocks, "components.css must hide mobile-only controls at @media (min-width: 640px)"
+    last_desktop_hide_pos = components_css.rfind(desktop_hide_blocks[-1])
+    after_desktop_hide = components_css[last_desktop_hide_pos + len(desktop_hide_blocks[-1]):]
+    assert ".lang-mobile-toggle" in desktop_hide_blocks[-1], (
+        "components.css @media (min-width: 640px) must hide .lang-mobile-toggle so it does not override layout.css"
+    )
+    for mobile_only_cls in (".mobile-more-wrap", ".mobile-more-btn", ".vault-collapse-btn", ".mobile-sticky-cta"):
+        assert mobile_only_cls in desktop_hide_blocks[-1], (
+            f"components.css @media (min-width: 640px) must hide {mobile_only_cls}"
+        )
+    assert ".lang-mobile-toggle" not in after_desktop_hide, (
+        "components.css must not re-declare .lang-mobile-toggle after the @media (min-width: 640px) hide block"
+    )
+
+
+

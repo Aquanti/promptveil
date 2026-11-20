@@ -13,6 +13,7 @@ import {
 import { LANG_STORAGE_KEY, detectPathLanguage, loadLanguage } from "../../app/static/js/storage.js";
 import { clearCopyFeedback, showCopyFeedback } from "../../app/static/js/dom.js";
 import { isValidContactInput } from "../../app/static/js/pricing.js";
+import { renderTelemetryAndActions } from "../../app/static/js/render-workbench.js";
 
 function createMockLocalStorage() {
   const store = new Map();
@@ -296,5 +297,95 @@ describe("PromptVeil M2 Copy Feedback Reset & Contact Validation (Items 7 & 11)"
     assert.equal(isValidContactInput(""), false);
     assert.equal(isValidContactInput("not-a-contact"), false);
     assert.equal(isValidContactInput("@ab"), false);
+  });
+});
+
+describe("PromptVeil M3 Mobile UX Helpers (Items 14, 15, 17)", () => {
+  let prevDocument;
+  let prevWindow;
+
+  beforeEach(() => {
+    prevDocument = globalThis.document;
+    prevWindow = globalThis.window;
+  });
+
+  afterEach(() => {
+    globalThis.document = prevDocument;
+    globalThis.window = prevWindow;
+    setLang("ru");
+  });
+
+  test("applyLanguage syncs mobile language toggle and Step 2 dual-span label with fallback", () => {
+    const mobileLangBtn = createMockEl({ "data-lang": "ru" });
+    const shortSpan = createMockEl();
+    const tailSpan = createMockEl();
+    const step2DualEl = createMockEl({ "data-i18n": "nav.step2" });
+    step2DualEl.querySelector = (sel) => {
+      if (sel === ".tab-label-short") return shortSpan;
+      if (sel === ".tab-label-tail") return tailSpan;
+      return null;
+    };
+    const step2FallbackEl = createMockEl({ "data-i18n": "nav.step2" });
+
+    globalThis.document = {
+      documentElement: { lang: "ru" },
+      title: "",
+      querySelector(selector) {
+        if (selector === '[data-testid="lang-mobile-toggle"]') return mobileLangBtn;
+        return null;
+      },
+      querySelectorAll(selector) {
+        if (selector === "[data-i18n]") return [step2DualEl, step2FallbackEl];
+        return [];
+      },
+    };
+
+    applyLanguage("en");
+    assert.equal(mobileLangBtn.textContent, "EN");
+    assert.equal(mobileLangBtn.getAttribute("data-lang"), "en");
+    assert.equal(mobileLangBtn.getAttribute("aria-label"), TRANSLATIONS.en["lang.mobileToggleToRu"]);
+    assert.equal(mobileLangBtn.getAttribute("title"), TRANSLATIONS.en["lang.mobileToggleToRu"]);
+    assert.equal(shortSpan.textContent, "2. Restore");
+    assert.equal(tailSpan.textContent, " in AI Reply");
+    assert.equal(step2FallbackEl.textContent, "2. Restore in AI Reply");
+
+    applyLanguage("ru");
+    assert.equal(mobileLangBtn.textContent, "RU");
+    assert.equal(mobileLangBtn.getAttribute("data-lang"), "ru");
+    assert.equal(mobileLangBtn.getAttribute("aria-label"), TRANSLATIONS.ru["lang.mobileToggleToEn"]);
+    assert.equal(shortSpan.textContent, "2. Вернуть");
+    assert.equal(tailSpan.textContent, " в ответ ИИ");
+    assert.equal(step2FallbackEl.textContent, "2. Вернуть в ответ ИИ");
+  });
+
+  test("renderTelemetryAndActions toggles and resets mobileStickyCopyBtn state", () => {
+    let nextTimerId = 1;
+    globalThis.window = {
+      setTimeout() {
+        return nextTimerId++;
+      },
+      clearTimeout() {},
+    };
+
+    const copyBtn = createMockEl();
+    const stickyBtn = createMockEl();
+
+    renderTelemetryAndActions(
+      { copySanitizedBtn: copyBtn, mobileStickyCopyBtn: stickyBtn },
+      { rawText: "hello", result: { sanitizedText: "hello" }, maskedCount: 1, revealValues: true, lang: "ru" }
+    );
+    assert.equal(stickyBtn.disabled, false);
+    assert.equal(stickyBtn.textContent, TRANSLATIONS.ru["step1.mobileStickyCta"]);
+
+    showCopyFeedback(stickyBtn, TRANSLATIONS.ru["action.copiedFeedback"], () => TRANSLATIONS.ru["step1.mobileStickyCta"]);
+    assert.equal(stickyBtn.getAttribute("data-copied"), "true");
+
+    renderTelemetryAndActions(
+      { copySanitizedBtn: copyBtn, mobileStickyCopyBtn: stickyBtn },
+      { rawText: "", result: null, maskedCount: 0, revealValues: true, lang: "en" }
+    );
+    assert.equal(stickyBtn.disabled, true);
+    assert.equal(stickyBtn.hasAttribute("data-copied"), false);
+    assert.equal(stickyBtn.textContent, TRANSLATIONS.en["step1.mobileStickyCta"]);
   });
 });
