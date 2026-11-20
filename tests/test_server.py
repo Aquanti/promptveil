@@ -314,14 +314,20 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
     """Verify static HTML/CSS/JS comply with strict CSP and zero-network guarantees."""
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
-    # No external http(s)/ws(s) URLs anywhere in HTML (allowing standard SVG xmlns only).
-    html_without_svg_ns = re.sub(
+    # No external http(s)/ws(s) URLs anywhere in HTML (allowing standard SVG xmlns and canonical/OG/Twitter meta on own origin).
+    html_cleaned = re.sub(
         r"""xmlns\s*=\s*['"]http://www\.w3\.org/2000/svg['"]""",
         "",
         index_html,
         flags=re.IGNORECASE,
     )
-    assert not re.search(r"(?:https?|wss?)://", html_without_svg_ns, re.IGNORECASE), (
+    html_cleaned = re.sub(
+        r"""<(?:link|meta)\b[^>]*(?:rel\s*=\s*['"]canonical['"]|property\s*=\s*['"]og:(?:url|image)['"]|name\s*=\s*['"]twitter:image['"])[^>]*https://promptveil\.netlify\.app/(?:og-image\.png)?['"][^>]*>""",
+        "",
+        html_cleaned,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    assert not re.search(r"(?:https?|wss?)://", html_cleaned, re.IGNORECASE), (
         "External http(s)/ws(s) URL found in app/static/index.html"
     )
     favicon_without_svg_ns = re.sub(
@@ -411,10 +417,19 @@ def test_path_traversal_probes_client_and_raw_asgi() -> None:
         "/css/",
         "/js/",
     )
+    def _assert_clean_404_body(body_text: str, probe: str) -> None:
+        is_json_404 = body_text.strip() in ('{"detail":"Not Found"}', '{"detail": "Not Found"}')
+        is_branded_404 = "Страница не найдена" in body_text and "PromptVeil" in body_text
+        assert is_json_404 or is_branded_404, (
+            f"Unexpected 404 body for {probe!r}: {body_text[:120]!r}"
+        )
+        for marker in FORBIDDEN_LEAK_SUBSTRINGS:
+            assert marker not in body_text, f"Leak marker {marker!r} in 404 body for {probe!r}"
+
     for probe in client_probes:
         resp = client.get(probe)
         assert resp.status_code == 404, f"Expected 404 for {probe!r}, got {resp.status_code}"
-        assert resp.json() == {"detail": "Not Found"}
+        _assert_clean_404_body(resp.text, probe)
         _assert_security_headers(resp.headers)
 
     async def _raw_asgi_get(raw_path: str) -> tuple[int, dict[str, str], bytes]:
@@ -433,6 +448,7 @@ def test_path_traversal_probes_client_and_raw_asgi() -> None:
             "server": ("127.0.0.1", 8000),
         }
         sent = False
+        done_event = asyncio.Event()
         status_code = 0
         raw_headers: list[tuple[bytes, bytes]] = []
         body_chunks: list[bytes] = []
@@ -442,6 +458,7 @@ def test_path_traversal_probes_client_and_raw_asgi() -> None:
             if not sent:
                 sent = True
                 return {"type": "http.request", "body": b"", "more_body": False}
+            await done_event.wait()
             return {"type": "http.disconnect"}
 
         async def _send(message: dict[str, object]) -> None:
@@ -451,6 +468,8 @@ def test_path_traversal_probes_client_and_raw_asgi() -> None:
                 raw_headers = list(message.get("headers", []))  # type: ignore[arg-type]
             elif message["type"] == "http.response.body":
                 body_chunks.append(bytes(message.get("body", b"")))  # type: ignore[arg-type]
+                if not message.get("more_body", False):
+                    done_event.set()
 
         await app(scope, _receive, _send)
         headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in raw_headers}
@@ -466,7 +485,12 @@ def test_path_traversal_probes_client_and_raw_asgi() -> None:
     for raw_probe in raw_probes:
         status, asgi_headers, body = asyncio.run(_raw_asgi_get(raw_probe))
         assert status == 404, f"Raw ASGI probe {raw_probe!r} returned {status}"
-        assert body == b'{"detail":"Not Found"}', f"Unexpected raw ASGI body for {raw_probe!r}: {body!r}"
+        body_text = body.decode("utf-8", errors="replace")
+        is_json_404 = body_text.strip() in ('{"detail":"Not Found"}', '{"detail": "Not Found"}')
+        is_branded_404 = "Страница не найдена" in body_text and "PromptVeil" in body_text
+        assert is_json_404 or is_branded_404, f"Unexpected raw ASGI 404 body for {raw_probe!r}: {body!r}"
+        for marker in FORBIDDEN_LEAK_SUBSTRINGS:
+            assert marker not in body_text, f"Leak marker {marker!r} in raw ASGI 404 for {raw_probe!r}"
         _assert_security_headers(asgi_headers)
 
 
@@ -548,13 +572,14 @@ def test_unknown_routes_404_no_stack_trace_leakage() -> None:
         "/static/js/app.js",
         "/api/v1/secret",
         "/favicon.ico",
-        "/robots.txt",
         "/admin/debug",
     )
     for route in unknown_routes:
         resp = client.get(route)
         assert resp.status_code == 404, f"Expected 404 for {route!r}, got {resp.status_code}"
-        assert resp.json() == {"detail": "Not Found"}
+        is_json_404 = resp.text.strip() in ('{"detail":"Not Found"}', '{"detail": "Not Found"}')
+        is_branded_404 = "Страница не найдена" in resp.text and "PromptVeil" in resp.text
+        assert is_json_404 or is_branded_404, f"Unexpected 404 page for {route!r}: {resp.text[:120]!r}"
         _assert_security_headers(resp.headers)
         for marker in FORBIDDEN_LEAK_SUBSTRINGS:
             assert marker not in resp.text, f"Leak marker {marker!r} found in 404 response for {route!r}"
@@ -624,8 +649,9 @@ def test_r2_obsolete_local_browser_nagging_removed() -> None:
 
 
 def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
-    """Verify Zero-Retention Proof, UX paste/combo controls, pricing, trust footer, and real owner contacts."""
+    """Verify Zero-Retention Proof, UX paste/combo controls, honest waitlist pricing, trust footer, and contacts."""
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    i18n_js = (STATIC_DIR / "js" / "i18n.js").read_text(encoding="utf-8")
     contacts_js = (STATIC_DIR / "js" / "contacts.js").read_text(encoding="utf-8")
     proof_js = (STATIC_DIR / "js" / "privacy-proof.js").read_text(encoding="utf-8")
 
@@ -640,15 +666,25 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
         'id="paste-rehydrate-btn"',
         'id="copy-goto-step2-btn"',
         'id="goto-rehydrate-btn"',
+        'data-testid="preset-btn-ru_requisites"',
         'id="pricing-section"',
-        'id="billing-month-btn"',
-        'id="billing-year-btn"',
         'id="open-pro-modal-btn"',
         'id="open-team-modal-btn"',
         'id="modal-plan-request"',
         'id="modal-privacy-policy"',
+        'id="open-terms-btn"',
+        'id="modal-terms"',
     ):
         assert hook in index_html, f"Missing required R2-R5 hook {hook} in index.html"
+
+    # Unimplemented billing claims must not remain.
+    for forbidden_claim in ("30 дней бесплатно", "30 days free", "490 ₽", "390 ₽", "1 990 ₽", "1 590 ₽", "billing-month-btn"):
+        assert forbidden_claim not in index_html, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in index.html"
+        assert forbidden_claim not in i18n_js, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in i18n.js"
+
+    assert "0 логов ваших текстов" in index_html
+    assert "0 логов ваших текстов" in i18n_js
+    assert "0 Text Logs" in i18n_js
 
     for contact_literal in ("@supv1rus", "kilkauciha@gmail.com", "github.com/Aquanti", "SupV1rus"):
         assert contact_literal in contacts_js, f"Missing owner contact {contact_literal!r} in contacts.js"
@@ -657,5 +693,56 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
     assert 'href="mailto:kilkauciha@gmail.com"' in index_html
     assert "runZeroRetentionSelfTest" in proof_js
     assert "securitypolicyviolation" in proof_js
+
+
+def test_seo_pwa_static_assets_and_meta_tags() -> None:
+    """Verify SEO/OG meta tags and robots.txt, sitemap.xml, 404.html, manifest, and branded PNG assets."""
+    client = TestClient(app)
+    index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    for meta_snippet in (
+        'name="description"',
+        'name="theme-color" content="#051C12"',
+        'rel="canonical" href="https://promptveil.netlify.app/"',
+        'rel="manifest" href="./manifest.webmanifest"',
+        'rel="apple-touch-icon"',
+        'property="og:type" content="website"',
+        'property="og:url" content="https://promptveil.netlify.app/"',
+        'property="og:image" content="https://promptveil.netlify.app/og-image.png"',
+        'name="twitter:card" content="summary_large_image"',
+        'name="twitter:image" content="https://promptveil.netlify.app/og-image.png"',
+    ):
+        assert meta_snippet in index_html, f"Missing SEO/OG tag {meta_snippet!r} in index.html"
+
+    routes = (
+        ("/robots.txt", "text/plain", b"Sitemap: https://promptveil.netlify.app/sitemap.xml"),
+        ("/sitemap.xml", "application/xml", b"<loc>https://promptveil.netlify.app/</loc>"),
+        ("/404.html", "text/html", b"404"),
+        ("/manifest.webmanifest", "application/manifest+json", b'"short_name": "PromptVeil"'),
+    )
+    for route, mime_prefix, expected_bytes in routes:
+        resp = client.get(route)
+        assert resp.status_code == 200, f"GET {route} failed: {resp.status_code}"
+        assert resp.headers["content-type"].startswith(mime_prefix), (
+            f"Unexpected MIME for {route}: {resp.headers['content-type']!r}"
+        )
+        _assert_security_headers(resp.headers)
+        assert expected_bytes in resp.content, f"Expected payload missing in {route}"
+
+    for png_route, exp_w, exp_h in (
+        ("/og-image.png", 1200, 630),
+        ("/apple-touch-icon.png", 180, 180),
+        ("/icon-192.png", 192, 192),
+        ("/icon-512.png", 512, 512),
+    ):
+        resp = client.get(png_route)
+        assert resp.status_code == 200, f"GET {png_route} failed: {resp.status_code}"
+        assert resp.headers["content-type"] == "image/png"
+        _assert_security_headers(resp.headers)
+        data = resp.content
+        assert data.startswith(b"\x89PNG\r\n\x1a\n"), f"{png_route} missing PNG signature"
+        width = int.from_bytes(data[16:20], "big")
+        height = int.from_bytes(data[20:24], "big")
+        assert (width, height) == (exp_w, exp_h), f"{png_route} size {width}x{height} != {exp_w}x{exp_h}"
 
 

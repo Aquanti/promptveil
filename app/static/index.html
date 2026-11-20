@@ -3,8 +3,35 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="description"
+    content="Бесплатная защита личных данных перед отправкой текста в нейросети: ИНН, СНИЛС, паспорт РФ, карты, телефоны, пароли и ключи скрываются на устройстве без отправки на сервер."
+  />
+  <meta name="theme-color" content="#051C12" />
   <title>PromptVeil — скрытие личных данных перед отправкой в ИИ</title>
+  <link rel="canonical" href="https://promptveil.netlify.app/" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="ru_RU" />
+  <meta property="og:site_name" content="PromptVeil" />
+  <meta property="og:title" content="PromptVeil — скрытие личных данных перед отправкой в ИИ" />
+  <meta
+    property="og:description"
+    content="ИНН, СНИЛС, паспорт РФ, ОГРН, БИК, банковские карты, телефоны и API-ключи заменяются безопасными метками в памяти вкладки без отправки текста на сервер."
+  />
+  <meta property="og:url" content="https://promptveil.netlify.app/" />
+  <meta property="og:image" content="https://promptveil.netlify.app/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="PromptVeil — скрытие личных данных перед отправкой в ИИ" />
+  <meta
+    name="twitter:description"
+    content="Бесплатная защита текстов, реквизитов РФ и ключей перед отправкой в нейросети с нулевым хранением данных."
+  />
+  <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
   <link rel="stylesheet" href="./styles.css" />
   <script type="module" src="./js/app.js"></script>
 </head>
@@ -163,6 +190,12 @@
               data-preset-id="prod_env_trace"
               data-testid="preset-btn-prod_env_trace"
             >Ключи и настройки (.env)</button>
+            <button
+              type="button"
+              class="preset-pill"
+              data-preset-id="ru_requisites"
+              data-testid="preset-btn-ru_requisites"
+            >Договор и реквизиты РФ</button>
             <button
               type="button"
               id="apply-preset-rules-btn"
@@ -537,33 +570,8 @@
     >
       <div class="pricing-header">
         <div class="pricing-title-group">
-          <h2 id="pricing-title" class="pricing-title" data-i18n="pricing.title">Тарифы</h2>
-          <p class="pricing-subtitle" data-i18n="pricing.subtitle">Весь базовый функционал сервиса полностью бесплатен и открыт для старта.</p>
-        </div>
-
-        <div
-          class="billing-toggle"
-          role="group"
-          aria-label="Период оплаты"
-          data-i18n-aria="pricing.toggleAria"
-          data-testid="billing-toggle"
-        >
-          <button
-            type="button"
-            id="billing-month-btn"
-            class="billing-btn is-active"
-            aria-pressed="true"
-            data-testid="billing-month-btn"
-            data-i18n="pricing.toggleMonth"
-          >Месяц</button>
-          <button
-            type="button"
-            id="billing-year-btn"
-            class="billing-btn"
-            aria-pressed="false"
-            data-testid="billing-year-btn"
-            data-i18n="pricing.toggleYear"
-          >Год −20%</button>
+          <h2 id="pricing-title" class="pricing-title" data-i18n="pricing.title">Тарифы и развитие сервиса</h2>
+          <p class="pricing-subtitle" data-i18n="pricing.subtitle">Все текущие функции защиты текстов, файлов и российских реквизитов полностью бесплатны.</p>
         </div>
       </div>
 
@@ -576,14 +584,14 @@
           <div class="pricing-price-block">
             <div class="pricing-price-row">
               <span id="price-free-value" class="pricing-price-value tabular-nums" data-i18n="pricing.freePrice">0 ₽</span>
-              <span class="pricing-price-period" data-i18n="pricing.periodMonth">/ мес</span>
+              <span class="pricing-price-period" data-i18n="pricing.freePeriod">/ навсегда</span>
             </div>
-            <p class="pricing-price-note" data-i18n="pricing.noteFree">Открыт без регистрации и карты</p>
+            <p class="pricing-price-note" data-i18n="pricing.noteFree">Открыт без регистрации, карты и ограничений</p>
           </div>
           <ul class="pricing-features">
-            <li data-i18n="pricing.freeFeat1">Полная защита текстов и файлов до 2 МБ (11 категорий)</li>
+            <li data-i18n="pricing.freeFeat1">Реквизиты РФ и секреты до 2 МБ: ИНН, СНИЛС, паспорт, ОГРН, БИК, счета, ОМС, карты и ключи</li>
             <li data-i18n="pricing.freeFeat2">Возврат данных в ответ ИИ в 1 клик</li>
-            <li data-i18n="pricing.freeFeat3">Свои слова-исключения и экспорт правил</li>
+            <li data-i18n="pricing.freeFeat3">Свои слова-исключения и экспорт правил (.json)</li>
             <li data-i18n="pricing.freeFeat4">Живая проверка «0 хранения» и сброс сессии в 0</li>
           </ul>
           <div class="pricing-card-footer">
@@ -600,20 +608,19 @@
         <article class="pricing-card pricing-card--featured" data-testid="pricing-card-pro">
           <div class="pricing-card-top">
             <h3 class="pricing-plan-name" data-i18n="pricing.proName">Pro</h3>
-            <span class="pricing-plan-badge" data-i18n="pricing.proBadge">Ранний доступ</span>
+            <span class="pricing-plan-badge pricing-plan-badge--dev" data-i18n="pricing.proBadge">В разработке</span>
           </div>
           <div class="pricing-price-block">
             <div class="pricing-price-row">
-              <span id="price-pro-value" class="pricing-price-value tabular-nums" data-testid="price-pro-value">490 ₽</span>
-              <span class="pricing-price-period" data-i18n="pricing.periodMonth">/ мес</span>
+              <span id="price-pro-value" class="pricing-waitlist-status" data-testid="price-pro-value" data-i18n="pricing.proWaitlistTitle">Лист ожидания</span>
             </div>
-            <p id="price-pro-note" class="pricing-price-note" data-i18n="pricing.noteMonthly">Помесячная оплата</p>
+            <p id="price-pro-note" class="pricing-price-note" data-i18n="pricing.proWaitlistNote">Без оплаты и списаний — уведомим о готовности</p>
           </div>
           <ul class="pricing-features">
-            <li data-i18n="pricing.proFeat1">Пакетная обработка .docx, .pdf, .xlsx до 50 МБ</li>
-            <li data-i18n="pricing.proFeat2">Расширение для браузера поверх ChatGPT / Claude / DeepSeek</li>
-            <li data-i18n="pricing.proFeat3">Отдельные профили правил под рабочие проекты</li>
-            <li data-i18n="pricing.proFeat4">Авто-распознавание реквизитов РФ/СНГ (ИНН, СНИЛС, паспорт)</li>
+            <li data-i18n="pricing.proFeat1">В планах: пакетная обработка .docx, .pdf, .xlsx до 50 МБ на устройстве</li>
+            <li data-i18n="pricing.proFeat2">В планах: расширение для браузера поверх ChatGPT / Claude / DeepSeek</li>
+            <li data-i18n="pricing.proFeat3">В планах: отдельные профили правил под рабочие проекты</li>
+            <li data-i18n="pricing.proFeat4">В планах: расширенный словарь терминов и шаблонов договоров</li>
           </ul>
           <div class="pricing-card-footer">
             <button
@@ -624,27 +631,26 @@
               aria-controls="modal-plan-request"
               data-testid="open-pro-modal-btn"
               data-i18n="pricing.proCta"
-            >Ранний доступ • 30 дней бесплатно</button>
+            >Записаться в лист ожидания</button>
           </div>
         </article>
 
         <article class="pricing-card" data-testid="pricing-card-team">
           <div class="pricing-card-top">
             <h3 class="pricing-plan-name" data-i18n="pricing.teamName">Бизнес / Команда</h3>
-            <span class="pricing-plan-badge pricing-plan-badge--team" data-i18n="pricing.teamBadge">Для команд</span>
+            <span class="pricing-plan-badge pricing-plan-badge--dev" data-i18n="pricing.teamBadge">В разработке</span>
           </div>
           <div class="pricing-price-block">
             <div class="pricing-price-row">
-              <span id="price-team-value" class="pricing-price-value tabular-nums" data-testid="price-team-value">1 990 ₽</span>
-              <span class="pricing-price-period" data-i18n="pricing.periodMonth">/ мес</span>
+              <span id="price-team-value" class="pricing-waitlist-status" data-testid="price-team-value" data-i18n="pricing.teamWaitlistTitle">Лист ожидания</span>
             </div>
-            <p id="price-team-note" class="pricing-price-note" data-i18n="pricing.noteTeamSeats">до 10 человек</p>
+            <p id="price-team-note" class="pricing-price-note" data-i18n="pricing.teamWaitlistNote">Для команд и пилотного внедрения после запуска</p>
           </div>
           <ul class="pricing-features">
-            <li data-i18n="pricing.teamFeat1">Общий корпоративный словарь NDA-терминов</li>
-            <li data-i18n="pricing.teamFeat2">Брендированные сертификаты проверки для ИБ (152-ФЗ / GDPR)</li>
-            <li data-i18n="pricing.teamFeat3">Единый вход (SSO) и управление ролями</li>
-            <li data-i18n="pricing.teamFeat4">Приоритетная поддержка и помощь с внедрением</li>
+            <li data-i18n="pricing.teamFeat1">В планах: общий корпоративный словарь NDA-терминов</li>
+            <li data-i18n="pricing.teamFeat2">В планах: локальные отчёты соответствия 152-ФЗ / GDPR</li>
+            <li data-i18n="pricing.teamFeat3">В планах: единый вход (SSO) и управление ролями</li>
+            <li data-i18n="pricing.teamFeat4">В планах: приоритетная поддержка и помощь с внедрением</li>
           </ul>
           <div class="pricing-card-footer">
             <button
@@ -655,7 +661,7 @@
               aria-controls="modal-plan-request"
               data-testid="open-team-modal-btn"
               data-i18n="pricing.teamCta"
-            >Оставить корпоративную заявку</button>
+            >Оставить заявку на пилот</button>
           </div>
         </article>
       </div>
@@ -689,6 +695,15 @@
             data-testid="open-privacy-policy-btn"
             data-i18n="footer.privacyPolicyBtn"
           >Политика конфиденциальности</button>
+          <button
+            type="button"
+            id="open-terms-btn"
+            class="footer-link-btn"
+            aria-haspopup="dialog"
+            aria-controls="modal-terms"
+            data-testid="open-terms-btn"
+            data-i18n="footer.termsBtn"
+          >Пользовательское соглашение</button>
         </div>
       </div>
 
@@ -696,7 +711,7 @@
         <h2 class="footer-heading" data-i18n="footer.trustHeading">Архитектура доверия</h2>
         <div class="trust-badges-grid">
           <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeTls">HTTPS / TLS</span></span>
-          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeZero">Zero-Retention (0 логов)</span></span>
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeZero">0 логов ваших текстов</span></span>
           <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeCsp">Strict CSP</span></span>
           <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeNoTrack">Без cookies и трекеров</span></span>
         </div>
@@ -996,8 +1011,8 @@
   >
     <div class="modal-header">
       <div>
-        <h2 id="plan-modal-title" class="modal-title">Ранний доступ к PromptVeil Pro</h2>
-        <p id="plan-modal-subtitle" class="modal-subtitle">Предзаказ: 30 дней бесплатно после запуска без сбора текстов промптов.</p>
+        <h2 id="plan-modal-title" class="modal-title">Лист ожидания — PromptVeil Pro</h2>
+        <p id="plan-modal-subtitle" class="modal-subtitle">Функции Pro ещё в разработке. Оставьте контакт без оплаты и без публичной оферты.</p>
       </div>
       <button
         type="button"
@@ -1010,9 +1025,9 @@
     </div>
 
     <div class="modal-body">
-      <div id="plan-summary-pill" class="plan-summary-pill tabular-nums">Pro • 490 ₽ / мес</div>
+      <div id="plan-summary-pill" class="plan-summary-pill tabular-nums">Pro • Лист ожидания</div>
       <div class="plan-privacy-note" data-i18n="request.privacyNote">
-        Полностью клиентская форма: никаких сетевых запросов и сбора ваших промптов. Готовый текст заявки формируется на вашем устройстве.
+        Полностью клиентская форма: никаких сетевых запросов и сбора ваших промптов. Заявка не является публичной офертой и не требует оплаты.
       </div>
 
       <form id="plan-request-form" class="plan-request-form" novalidate>
@@ -1129,19 +1144,23 @@
     <div class="modal-body">
       <ul class="policy-list">
         <li class="policy-item">
-          <h3 class="policy-item-title" data-i18n="policy.item1Title">1. Нулевое хранение текстов и секретов</h3>
-          <p class="policy-item-body" data-i18n="policy.item1Body">Исходный текст, ответ ИИ и таблица временных замен существуют только в оперативной памяти текущей вкладки и очищаются при сбросе или закрытии страницы.</p>
+          <h3 class="policy-item-title" data-i18n="policy.item1Title">1. Нулевое хранение ваших текстов и секретов</h3>
+          <p class="policy-item-body" data-i18n="policy.item1Body">Исходный текст, ответ ИИ и таблица временных замен существуют только в оперативной памяти текущей вкладки и очищаются при сбросе или закрытии страницы. Статический хостинг Netlify ведёт только стандартные технические access-логи HTTP-запросов (IP, URL), куда ваши тексты никогда не попадают.</p>
         </li>
         <li class="policy-item">
-          <h3 class="policy-item-title" data-i18n="policy.item2Title">2. Нулевая сетевая передача</h3>
-          <p class="policy-item-body" data-i18n="policy.item2Body">Политика безопасности CSP (connect-src 'self') технически блокирует любые сторонние запросы. Тексты не передаются на сервер или в аналитику.</p>
+          <h3 class="policy-item-title" data-i18n="policy.item2Title">2. Нулевая сетевая передача промптов</h3>
+          <p class="policy-item-body" data-i18n="policy.item2Body">Политика безопасности CSP (connect-src 'self') технически блокирует любые сторонние запросы. Тексты и файлы не передаются на сервер или в аналитику.</p>
         </li>
         <li class="policy-item">
-          <h3 class="policy-item-title" data-i18n="policy.item3Title">3. Что хранится локально по желанию</h3>
-          <p class="policy-item-body" data-i18n="policy.item3Body">В настройках устройства могут сохраняться выбранный язык, список ваших слов-исключений и журнал цифровых отпечатков (SHA-256 без исходного текста), которые можно удалить в любой момент.</p>
+          <h3 class="policy-item-title" data-i18n="policy.item3Title">3. Ограничение ответственности (Disclaimer)</h3>
+          <p class="policy-item-body" data-i18n="policy.item3Body">Автоматическое распознавание основано на детерминированных правилах и эвристиках и не может гарантировать 100% выявления всех нестандартных персональных данных. Обязательно проверяйте полученный текст перед отправкой во внешние нейросети.</p>
         </li>
         <li class="policy-item">
-          <h3 class="policy-item-title" data-i18n="policy.item4Title">4. Контакты владельца проекта</h3>
+          <h3 class="policy-item-title" data-i18n="policy.item4Title">4. Что хранится локально по желанию</h3>
+          <p class="policy-item-body" data-i18n="policy.item4Body">В настройках устройства могут сохраняться выбранный язык, тема оформления, список ваших слов-исключений и журнал цифровых отпечатков (SHA-256 без исходного текста), которые можно удалить в любой момент.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="policy.item5Title">5. Контакты владельца проекта</h3>
           <p id="policy-owner-contact-body" class="policy-item-body">По вопросам безопасности, поддержки и сотрудничества: kilkauciha@gmail.com или Telegram @supv1rus.</p>
         </li>
       </ul>
@@ -1152,6 +1171,62 @@
       <button
         type="button"
         id="close-policy-footer-btn"
+        class="btn-secondary"
+        data-i18n="common.close"
+      >Закрыть</button>
+    </div>
+  </section>
+
+  <section
+    id="modal-terms"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="terms-modal-title"
+    hidden
+    data-testid="modal-terms"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="terms-modal-title" class="modal-title" data-i18n="terms.title">Пользовательское соглашение</h2>
+        <p class="modal-subtitle" data-i18n="terms.subtitle">Условия использования бесплатного веб-инструмента PromptVeil.</p>
+      </div>
+      <button
+        type="button"
+        id="close-terms-modal-btn"
+        class="drawer-close"
+        aria-label="Закрыть"
+        data-i18n-aria="common.close"
+        data-testid="close-terms-modal-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <ul class="policy-list">
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="terms.item1Title">1. Предоставление сервиса «как есть»</h3>
+          <p class="policy-item-body" data-i18n="terms.item1Body">Сервис PromptVeil предоставляется бесплатно по принципу «как есть» (as-is) для клиентской подготовки текстов перед работой с ИИ.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="terms.item2Title">2. Ответственность пользователя</h3>
+          <p class="policy-item-body" data-i18n="terms.item2Body">Эвристические и шаблонные детекторы снижают риск случайной утечки, но не гарантируют 100% полноты маскирования. Пользователь самостоятельно проверяет безопасный текст перед отправкой в сторонние сервисы.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="terms.item3Title">3. Лист ожидания Pro и Команда</h3>
+          <p class="policy-item-body" data-i18n="terms.item3Body">Формы записи в лист ожидания работают без сетевой отправки и предназначены только для информирования о будущих функциях. Заявка не является публичной офертой и не влечёт обязательств по оплате.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="terms.item4Title">4. Обратная связь</h3>
+          <p id="terms-owner-contact-body" class="policy-item-body">Автор проекта: SupV1rus. По всем вопросам обращайтесь на kilkauciha@gmail.com или в Telegram @supv1rus.</p>
+        </li>
+      </ul>
+    </div>
+
+    <div class="modal-footer">
+      <span></span>
+      <button
+        type="button"
+        id="close-terms-footer-btn"
         class="btn-secondary"
         data-i18n="common.close"
       >Закрыть</button>

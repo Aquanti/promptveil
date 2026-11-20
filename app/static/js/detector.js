@@ -6,15 +6,22 @@
 export const CATEGORIES = Object.freeze([
   { category: "API_KEY", tokenPrefix: "API_KEY", priority: 100, label: "API Key" },
   { category: "JWT", tokenPrefix: "JWT", priority: 95, label: "JWT Token" },
-  { category: "CREDIT_CARD", tokenPrefix: "CARD", priority: 90, label: "Credit Card" },
   { category: "IBAN", tokenPrefix: "IBAN", priority: 92, label: "IBAN" },
-  { category: "SSN", tokenPrefix: "SSN", priority: 85, label: "US SSN" },
+  { category: "RU_ACCOUNT", tokenPrefix: "BANK_ACC", priority: 91, label: "RU Bank Account" },
+  { category: "RU_OMS", tokenPrefix: "OMS", priority: 91, label: "RU OMS Policy" },
+  { category: "CREDIT_CARD", tokenPrefix: "CARD", priority: 90, label: "Credit Card" },
+  { category: "RU_SNILS", tokenPrefix: "SNILS", priority: 89, label: "RU SNILS" },
+  { category: "RU_INN", tokenPrefix: "INN", priority: 88, label: "RU INN" },
+  { category: "RU_OGRN", tokenPrefix: "OGRN", priority: 88, label: "RU OGRN" },
+  { category: "RU_PASSPORT", tokenPrefix: "PASSPORT", priority: 87, label: "RU Passport" },
+  { category: "RU_BIK", tokenPrefix: "BIK", priority: 86, label: "RU BIK" },
   { category: "ENV_SECRET", tokenPrefix: "ENV_SECRET", priority: 82, label: ".env Secret" },
   { category: "CUSTOM", tokenPrefix: "CUSTOM", priority: 80, label: "Custom Rule" },
   { category: "EMAIL", tokenPrefix: "EMAIL", priority: 75, label: "Email" },
   { category: "PHONE", tokenPrefix: "PHONE", priority: 70, label: "Phone" },
   { category: "IPV4", tokenPrefix: "IP", priority: 60, label: "IPv4" },
   { category: "HIGH_ENTROPY", tokenPrefix: "SECRET", priority: 50, label: "High Entropy" },
+  { category: "SSN", tokenPrefix: "SSN", priority: 85, label: "US SSN", secondary: true },
 ]);
 
 export const CATEGORY_MAP = Object.freeze(
@@ -110,6 +117,100 @@ export function isValidIban(candidate) {
   } catch {
     return false;
   }
+}
+
+function weightedMod10(digits, weights) {
+  let sum = 0;
+  for (let i = 0; i < weights.length; i += 1) {
+    sum += Number(digits[i]) * weights[i];
+  }
+  return (sum % 11) % 10;
+}
+
+export function isValidRuInn(raw) {
+  const digits = String(raw || "").trim();
+  if (!/^\d{10}$|^\d{12}$/.test(digits)) return false;
+  if (digits.startsWith("00") || /^(\d)\1+$/.test(digits)) return false;
+  if (digits.length === 10) {
+    const w10 = [2, 4, 10, 3, 5, 9, 4, 6, 8];
+    return weightedMod10(digits, w10) === Number(digits[9]);
+  }
+  const w11 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
+  const w12 = [3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8];
+  return (
+    weightedMod10(digits, w11) === Number(digits[10]) &&
+    weightedMod10(digits, w12) === Number(digits[11])
+  );
+}
+
+export function isValidRuSnils(raw) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!/^\d{11}$/.test(digits)) return false;
+  const num = Number(digits.slice(0, 9));
+  if (num <= 1001998) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i += 1) {
+    sum += Number(digits[i]) * (9 - i);
+  }
+  let expected = 0;
+  if (sum < 100) {
+    expected = sum;
+  } else if (sum === 100 || sum === 101) {
+    expected = 0;
+  } else {
+    const mod = sum % 101;
+    expected = mod === 100 ? 0 : mod;
+  }
+  return expected === Number(digits.slice(9, 11));
+}
+
+export function isValidRuOgrn(raw) {
+  const digits = String(raw || "").trim();
+  if (/^[1256789]\d{12}$/.test(digits)) {
+    try {
+      return (BigInt(digits.slice(0, 12)) % 11n) % 10n === BigInt(digits[12]);
+    } catch {
+      return false;
+    }
+  }
+  if (/^[34]\d{14}$/.test(digits)) {
+    try {
+      return (BigInt(digits.slice(0, 14)) % 13n) % 10n === BigInt(digits[14]);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+export function isValidRuBik(raw) {
+  const digits = String(raw || "").trim();
+  if (!/^04\d{7}$/.test(digits) || digits === "040000000") return false;
+  const tail = Number(digits.slice(6, 9));
+  return tail <= 2 || tail >= 50;
+}
+
+const RU_BANK_WEIGHTS = Object.freeze([
+  7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1, 3, 7, 1,
+]);
+
+export function isValidRuAccountWithBik(accountRaw, bikRaw) {
+  const account = String(accountRaw || "").replace(/\s+/g, "");
+  const bik = String(bikRaw || "").trim();
+  if (!/^\d{20}$/.test(account) || !isValidRuBik(bik)) return false;
+  const prefix = account.startsWith("301") ? `0${bik.slice(4, 6)}` : bik.slice(6, 9);
+  const full = `${prefix}${account}`;
+  let sum = 0;
+  for (let i = 0; i < RU_BANK_WEIGHTS.length; i += 1) {
+    sum += (Number(full[i]) * RU_BANK_WEIGHTS[i]) % 10;
+  }
+  return sum % 10 === 0;
+}
+
+function isValidRuPassportSeries(series4) {
+  if (!/^\d{4}$/.test(series4) || series4.startsWith("00")) return false;
+  const yr = Number(series4.slice(2, 4));
+  return (yr >= 91 && yr <= 99) || (yr >= 0 && yr <= 30);
 }
 
 export function shannonEntropy(str) {
@@ -366,21 +467,26 @@ export function detectEntities(text, customRules = []) {
     });
   }
 
-  // 3. CREDIT_CARD (priority 90, Luhn validated)
+  // 3. CREDIT_CARD (priority 90, Luhn validated; reject labeled non-card RU IDs)
+  const nonCardRuLabelRe =
+    /(?<![\p{L}\p{N}_])(?:ОГРНИП|ОГРН|OGRN|ОМС|OMS|полис(?:\s+ОМС)?|мед(?:ицинск\w+)?\s+полис|ИНН|INN|СНИЛС|SNILS|БИК|BIK|BIC|р\/с|к\/с)[\s:№=-]*$/iu;
   const cardRegex =
     /(?<![A-Za-z\d+])(?<!\d[.-])(?:\d[ -]?){12,18}\d(?![A-Za-z\d])(?![.]\d)/g;
   let cardMatch;
   while ((cardMatch = cardRegex.exec(text)) !== null) {
     const resolved = resolveCardSpan(text, cardMatch.index, cardMatch[0]);
     if (resolved) {
-      candidates.push({
-        category: "CREDIT_CARD",
-        tokenPrefix: "CARD",
-        value: resolved.value,
-        start: cardMatch.index,
-        end: resolved.end,
-        priority: 90,
-      });
+      const lookback = text.slice(Math.max(0, cardMatch.index - 40), cardMatch.index);
+      if (!nonCardRuLabelRe.test(lookback)) {
+        candidates.push({
+          category: "CREDIT_CARD",
+          tokenPrefix: "CARD",
+          value: resolved.value,
+          start: cardMatch.index,
+          end: resolved.end,
+          priority: 90,
+        });
+      }
       cardRegex.lastIndex = resolved.end;
     } else {
       const sepIdx = cardMatch[0].search(/[ -]/);
@@ -414,7 +520,161 @@ export function detectEntities(text, customRules = []) {
     }
   }
 
-  // 5. SSN (priority 85)
+  // 4b. RU_BIK (priority 86, context-gated; collected first for RU_ACCOUNT checksum validation)
+  const validBiksInDoc = [];
+  const ruBikRegex = /(?<![\p{L}\p{N}_])(?:БИК|BIK|BIC)[\s:№=-]*(04\d{7})(?![\d-])/giu;
+  for (const m of text.matchAll(ruBikRegex)) {
+    const bikVal = m[1];
+    if (!isValidRuBik(bikVal)) continue;
+    if (!validBiksInDoc.includes(bikVal)) {
+      validBiksInDoc.push(bikVal);
+    }
+    const start = m.index + m[0].length - bikVal.length;
+    candidates.push({
+      category: "RU_BIK",
+      tokenPrefix: "BIK",
+      value: bikVal,
+      start,
+      end: start + bikVal.length,
+      priority: 86,
+    });
+  }
+
+  // 4c. RU_ACCOUNT (priority 91, 20-digit settlement/correspondent account validated against BIK or label)
+  const ruAccRegex = /(?<![\d-])((?:40[1-9]|42[1-6]|301|302)(?: ?\d){17})(?![\d-])/g;
+  const ruAccLabelRe =
+    /(?:р\/с|р\.с\.|расч[её]тн\w*\s+сч[её]т|к\/с|к\.с\.|корр\w*\s+сч[её]т|сч[её]т)(?:\s*№|\s*[:=-]|\s)+$/iu;
+  for (const m of text.matchAll(ruAccRegex)) {
+    const rawVal = m[1];
+    const compact = rawVal.replace(/\s+/g, "");
+    if (!/^\d{20}$/.test(compact)) continue;
+    const lookback = text.slice(Math.max(0, m.index - 45), m.index);
+    const hasBiks = validBiksInDoc.length > 0;
+    const ok = hasBiks
+      ? validBiksInDoc.some((bik) => isValidRuAccountWithBik(compact, bik))
+      : ruAccLabelRe.test(lookback);
+    if (!ok) continue;
+    candidates.push({
+      category: "RU_ACCOUNT",
+      tokenPrefix: "BANK_ACC",
+      value: rawVal,
+      start: m.index,
+      end: m.index + rawVal.length,
+      priority: 91,
+    });
+  }
+
+  // 4d. RU_OMS (priority 91, Luhn + OMS context label so it outranks CREDIT_CARD)
+  const ruOmsRegex = /(?<![\d-])(\d{4}[ -]?\d{4}[ -]?\d{4}[ -]?\d{4})(?![\d-])/g;
+  const ruOmsLabelRe =
+    /(?<![\p{L}\p{N}_])(?:ОМС|OMS|полис(?:\s+ОМС)?|мед(?:ицинск\w+)?\s+полис)[\s:№=-]*$/iu;
+  for (const m of text.matchAll(ruOmsRegex)) {
+    const rawVal = m[1];
+    const digits = rawVal.replace(/\D/g, "");
+    if (digits.length !== 16 || !luhnCheck(digits)) continue;
+    const lookback = text.slice(Math.max(0, m.index - 40), m.index);
+    if (!ruOmsLabelRe.test(lookback)) continue;
+    candidates.push({
+      category: "RU_OMS",
+      tokenPrefix: "OMS",
+      value: rawVal,
+      start: m.index,
+      end: m.index + rawVal.length,
+      priority: 91,
+    });
+  }
+
+  // 4e. RU_SNILS (priority 89, official PFR checksum)
+  const ruSnilsHyphenRegex = /(?<![\d-])(\d{3}-\d{3}-\d{3}[ -]\d{2})(?![\d-])/g;
+  for (const m of text.matchAll(ruSnilsHyphenRegex)) {
+    const rawVal = m[1];
+    if (!isValidRuSnils(rawVal)) continue;
+    candidates.push({
+      category: "RU_SNILS",
+      tokenPrefix: "SNILS",
+      value: rawVal,
+      start: m.index,
+      end: m.index + rawVal.length,
+      priority: 89,
+    });
+  }
+  const ruSnilsLabeledRegex =
+    /(?<![\p{L}\p{N}_])(?:СНИЛС|SNILS)[\s:№=-]*(\d{3}\s\d{3}\s\d{3}\s\d{2}|\d{11})(?![\d-])/giu;
+  for (const m of text.matchAll(ruSnilsLabeledRegex)) {
+    const rawVal = m[1];
+    if (!isValidRuSnils(rawVal)) continue;
+    const start = m.index + m[0].length - rawVal.length;
+    candidates.push({
+      category: "RU_SNILS",
+      tokenPrefix: "SNILS",
+      value: rawVal,
+      start,
+      end: start + rawVal.length,
+      priority: 89,
+    });
+  }
+
+  // 4f. RU_OGRN / OGRNIP (priority 88, boosted to 91 when labeled)
+  const ruOgrnRegex = /(?<![\d-])((?:[1256789]\d{12}|[34]\d{14}))(?![\d-])/g;
+  const ruOgrnLabelRe = /(?<![\p{L}\p{N}_])(?:ОГРНИП|ОГРН|OGRN)[\s:№=-]*$/iu;
+  for (const m of text.matchAll(ruOgrnRegex)) {
+    const rawVal = m[1];
+    if (!isValidRuOgrn(rawVal)) continue;
+    const lookback = text.slice(Math.max(0, m.index - 25), m.index);
+    const hasLabel = ruOgrnLabelRe.test(lookback);
+    if (!hasLabel && /(?:timestamp|epoch|ts|ms)[\s:=]*$/iu.test(lookback)) {
+      continue;
+    }
+    candidates.push({
+      category: "RU_OGRN",
+      tokenPrefix: "OGRN",
+      value: rawVal,
+      start: m.index,
+      end: m.index + rawVal.length,
+      priority: hasLabel ? 91 : 88,
+    });
+  }
+
+  // 4g. RU_INN (priority 88, 10/12 digits with FNS checksum)
+  const ruInnRegex = /(?<![\d-])(\d{10}|\d{12})(?![\d-])/g;
+  for (const m of text.matchAll(ruInnRegex)) {
+    const rawVal = m[1];
+    if (!isValidRuInn(rawVal)) continue;
+    const lookback = text.slice(Math.max(0, m.index - 25), m.index);
+    if (/(?:timestamp|epoch|ts|port|бик|bik|bic)[\s:=]*$/iu.test(lookback)) {
+      continue;
+    }
+    candidates.push({
+      category: "RU_INN",
+      tokenPrefix: "INN",
+      value: rawVal,
+      start: m.index,
+      end: m.index + rawVal.length,
+      priority: 88,
+    });
+  }
+
+  // 4h. RU_PASSPORT (priority 87, context-gated RF series + number)
+  const ruPassportRegex =
+    /(?<![\p{L}\p{N}_])(?:паспорт(?:ные\s+данные|а|у|ом|е)?|удостоверение\s+личности|passport)(?:\s+РФ)?(?:\s+(?:сери[яи]|сер\.?))?[\s:№=-]*((?:\d{2}[ -]?\d{2})(?:\s*(?:№|N|номер)\s*|\s+)\d{6})(?![\d-])/giu;
+  for (const m of text.matchAll(ruPassportRegex)) {
+    const rawVal = m[1];
+    const compact = rawVal.replace(/\D/g, "");
+    if (compact.length !== 10 || !isValidRuPassportSeries(compact.slice(0, 4))) {
+      continue;
+    }
+    const start = m.index + m[0].length - rawVal.length;
+    candidates.push({
+      category: "RU_PASSPORT",
+      tokenPrefix: "PASSPORT",
+      value: rawVal,
+      start,
+      end: start + rawVal.length,
+      priority: 87,
+    });
+  }
+
+  // 5. SSN (priority 85, secondary)
   const ssnRegex =
     /(?<![\d-])(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}(?![\d-])/g;
   for (const m of text.matchAll(ssnRegex)) {

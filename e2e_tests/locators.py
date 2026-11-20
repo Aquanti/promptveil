@@ -45,7 +45,14 @@ _CATEGORY_ALIASES: dict[str, list[str]] = {
     "JWT": ["JWT", "JWTS", "ТОКЕНЫ ВХОДА", "JWT-ТОКЕНЫ"],
     "CREDIT_CARD": ["CREDIT_CARD", "CREDIT CARD", "CARD", "CARDS", "БАНК. КАРТЫ", "КАРТЫ"],
     "IBAN": ["IBAN", "IBANS", "СЧЕТА (IBAN)", "СЧЕТА IBAN"],
-    "SSN": ["SSN", "SSNS", "SSN (США)"],
+    "RU_INN": ["RU_INN", "RU INN", "INN", "ИНН"],
+    "RU_SNILS": ["RU_SNILS", "RU SNILS", "SNILS", "СНИЛС"],
+    "RU_PASSPORT": ["RU_PASSPORT", "RU PASSPORT", "PASSPORT", "ПАСПОРТ РФ"],
+    "RU_OGRN": ["RU_OGRN", "RU OGRN", "OGRN", "ОГРН / ОГРНИП", "ОГРН"],
+    "RU_BIK": ["RU_BIK", "RU BIK", "BIK", "БИК"],
+    "RU_ACCOUNT": ["RU_ACCOUNT", "RU BANK ACCOUNT", "BANK_ACC", "СЧЁТ РФ"],
+    "RU_OMS": ["RU_OMS", "RU OMS POLICY", "OMS", "ПОЛИС ОМС"],
+    "SSN": ["SSN", "SSNS", "SSN (США)", "US SSN (SECONDARY)"],
     "ENV_SECRET": ["ENV_SECRET", "ENV SECRET", "ENV", ".ENV", "ПАРОЛИ (.ENV)", "СЕКРЕТЫ .ENV"],
     "CUSTOM": ["CUSTOM", "CUSTOM RULE", "CUSTOM RULES", "СВОИ СЛОВА"],
     "EMAIL": ["EMAIL", "EMAILS", "ПОЧТА", "E-MAIL"],
@@ -88,6 +95,12 @@ _PRESET_ALIASES: dict[str, list[str]] = {
         "cis hr",
         "резюме",
         "кандидат",
+    ],
+    "ru_requisites": [
+        "ru_requisites",
+        "реквизиты рф",
+        "договор и реквизиты",
+        "russian contract",
     ],
 }
 
@@ -1979,6 +1992,19 @@ class PromptVeilUI:
         return self._first_visible(
             [self.page.locator("[data-testid='modal-privacy-policy']")],
             "Privacy Policy modal ([data-testid='modal-privacy-policy'])",
+        )
+
+    def open_terms_modal(self) -> Locator:
+        """Open Terms of Use modal from Trust Footer."""
+        btn = self._first_visible(
+            [self.page.locator("[data-testid='open-terms-btn']")],
+            "Terms of Use button ([data-testid='open-terms-btn'])",
+        )
+        btn.click()
+        self.page.wait_for_timeout(120)
+        return self._first_visible(
+            [self.page.locator("[data-testid='modal-terms']")],
+            "Terms of Use modal ([data-testid='modal-terms'])",
         )
 
     def close_active_modal(self) -> None:

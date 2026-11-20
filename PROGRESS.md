@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T17:01+03:00  
-**Session Status:** Live Public HTTPS Launch on Netlify (`https://promtveil.netlify.app`) Complete & Verified  
-**Exact Stop Point:** Deployed `app/static` to public Netlify HTTPS (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`, `deployId: 6b0051571b776911337bae67`, `teamSlug: kil-ka-uchikha`), enabled public visitor access (`requiresSSOTeamLogin: false`, `requiresPassword: false`), added `.netlify/` to `.gitignore`, verified live `https://promtveil.netlify.app` via browser subagent (`HTTP 200`, `HTTPS / TLS`, `0` network requests, `0` stored bytes, `0` trackers, `0` app CSP violations, Step 1 preset -> Step 2 -> reset to `0`, `Месяц / Год −20%` pricing toggle, footer contacts & `SupV1rus`), and re-verified `pytest tests/test_server.py`.
+**Checkpoint Date:** 2026-11-20T17:49+03:00  
+**Session Status:** Stage 0 (`promptveil` Netlify rename) & Stage 1 (P0 RU detectors, Waitlist, Disclaimer/Terms, SEO) Complete — Proceeding to Stage 2 (P1)  
+**Exact Stop Point:** Renamed Netlify project `12775486-f2aa-4d79-90c2-a85446c2b7a8` to `promptveil` (`https://promptveil.netlify.app`, public access verified), added 7 validated Russian ID detectors (`RU_INN`, `RU_SNILS`, `RU_PASSPORT`, `RU_OGRN`, `RU_BIK`, `RU_ACCOUNT`, `RU_OMS`) + `CREDIT_CARD` non-card label guard + `ru_requisites` preset + secondary `SSN`, converted Pro/Team pricing to honest Waitlist without prices/trials, updated `"0 логов ваших текстов"` badge, added heuristic disclaimer & `#modal-terms`, added full SEO/OG/Twitter tags + `robots.txt` + `sitemap.xml` + `manifest.webmanifest` + `404.html` + Chrome-rendered PNGs (`og-image.png`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`), verified `NODE_DETECTOR_STAGE1_OK` and `pytest tests/test_server.py` (`21 passed`). Next: Stage 2 (`sw.js` PWA offline, "Open in AI" + clickable links, P1 detectors, dark theme) and full E2E run.
 
 ---
 
@@ -44,10 +44,6 @@
 ---
 
 ## 4. Public Launch & Hosting Record
-- **Live Public URL:** `https://promtveil.netlify.app`
-- **Netlify Project:** `promtveil` (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`, `teamSlug: kil-ka-uchikha`, `plan: nf_team_dev` / Free)
-- **Production Deploy:** `deployId: 6b0051571b776911337bae67` (`state: ready`, `publish = "app/static"`)
-- **Visitor Access Controls:** Public (`requiresSSOTeamLogin: false`, `requiresPassword: false`)
-- **Live HTTPS Verification (`1440x900`):** Verified `HTTP 200` over `HTTPS / TLS` via browser subagent (`0` network requests, `0` stored bytes, `0` trackers, `0` app CSP violations, Step 1 preset -> `[EMAIL_1]`..`[CARD_1]` -> Step 2 -> reset to `0`, `Месяц / Год −20%` pricing toggle, footer contacts `@supv1rus`, `kilkauciha@gmail.com`, `github.com/Aquanti`, `© 2026 PromptVeil • Автор проекта: SupV1rus`).
-- **Repo Hygiene:** `.netlify/` added to `.gitignore`.
-- **Optional Next Step:** Attach a standalone custom domain (e.g., `promptveil.ru` / `promtveil.ru`) in Netlify Domain settings whenever desired.
+- **Live Public URL:** `https://promptveil.netlify.app` (renamed from `promtveil` on 2026-11-20)
+- **Netlify Project:** `promptveil` (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`, `teamSlug: kil-ka-uchikha`, `plan: nf_team_dev` / Free)
+- **Pending Production Re-deploy:** Deploy updated `app/static/` (Stage 1–3) after Stage 3 completion and verify live HTTPS/offline behavior.

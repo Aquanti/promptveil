@@ -117,6 +117,32 @@ Session Signing Entropy: K7xM9pQ2vR8nL4wZ6tB1yF5hJ3cN0sD
 Diagnose why worker 192.168.10.250 failed auth on release v2.4.1.0.`,
     suggestedRules: Object.freeze([]),
   },
+  {
+    id: "ru_requisites",
+    title: "Договор и реквизиты РФ",
+    titleByLang: {
+      ru: "Договор и реквизиты РФ",
+      en: "Russian Contract & IDs",
+    },
+    descriptionByLang: {
+      ru: "Карточка с ИНН, СНИЛС, паспортом РФ, ОГРН, БИК, счетами р/с и к/с, а также полисом ОМС.",
+      en: "Synthetic Russian entity brief with INN, SNILS, RF passport, OGRN, BIK, bank accounts, and OMS policy.",
+    },
+    text: `РЕКВИЗИТЫ СТОРОНЫ И ДАННЫЕ СОТРУДНИКА (СИНТЕТИЧЕСКИЙ ПРИМЕР)
+
+Организация: АО «ТехноСфера»
+ИНН: 7707083893 | ОГРН: 1027700132195
+Банк: ПАО «ТестБанк», БИК: 044525225
+Расчётный счёт: р/с 40702810938000012345
+Корр. счёт: к/с 30101810400000000225
+
+Ответственный представитель:
+ИНН физлица: 500100732259
+СНИЛС: 112-233-445 95
+Паспорт РФ: 45 10 № 123456
+Полис ОМС: 7746 1234 5678 9019`,
+    suggestedRules: Object.freeze([]),
+  },
 ]);
 
 export function getPresetById(id) {

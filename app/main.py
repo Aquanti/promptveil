@@ -10,11 +10,15 @@ import uvicorn
 from app.config import Settings, load_settings
 from app.schemas import HealthResponse
 
-# Ensure Windows registries with non-standard .js/.css/.svg/.woff2 mappings serve assets properly.
+# Ensure Windows registries with non-standard static mappings serve assets properly.
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
 mimetypes.add_type("image/svg+xml", ".svg")
 mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("image/png", ".png")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+mimetypes.add_type("application/xml", ".xml")
+mimetypes.add_type("text/plain", ".txt")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

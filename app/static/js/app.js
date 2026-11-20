@@ -523,52 +523,21 @@ function renderPrivacyProofModal(lang = getLang()) {
   }
 }
 
-function getPlanPricing(plan, cycle, lang) {
-  const isYear = cycle === "year";
+function getPlanPricing(plan, _cycle, lang) {
   if (plan === "team") {
     return {
       planName: t("pricing.teamName", {}, lang),
-      price: t(isYear ? "pricing.teamPriceYear" : "pricing.teamPriceMonth", {}, lang),
-      period: t("pricing.periodMonth", {}, lang),
+      status: t("pricing.teamWaitlistTitle", {}, lang),
     };
   }
   return {
     planName: t("pricing.proName", {}, lang),
-    price: t(isYear ? "pricing.proPriceYear" : "pricing.proPriceMonth", {}, lang),
-    period: t("pricing.periodMonth", {}, lang),
+    status: t("pricing.proWaitlistTitle", {}, lang),
   };
 }
 
-function renderPricingSection(lang = getLang()) {
-  const isYear = state.billingCycle === "year";
-  const monthBtn = getEl("billing-month-btn");
-  const yearBtn = getEl("billing-year-btn");
-  if (monthBtn) {
-    monthBtn.classList.toggle("is-active", !isYear);
-    monthBtn.setAttribute("aria-pressed", !isYear ? "true" : "false");
-  }
-  if (yearBtn) {
-    yearBtn.classList.toggle("is-active", isYear);
-    yearBtn.setAttribute("aria-pressed", isYear ? "true" : "false");
-  }
-
-  const proPriceEl = getEl("price-pro-value");
-  const proNoteEl = getEl("price-pro-note");
-  const teamPriceEl = getEl("price-team-value");
-  const teamNoteEl = getEl("price-team-note");
-
-  if (proPriceEl) {
-    proPriceEl.textContent = t(isYear ? "pricing.proPriceYear" : "pricing.proPriceMonth", {}, lang);
-  }
-  if (proNoteEl) {
-    proNoteEl.textContent = t(isYear ? "pricing.noteYearDiscount" : "pricing.noteMonthly", {}, lang);
-  }
-  if (teamPriceEl) {
-    teamPriceEl.textContent = t(isYear ? "pricing.teamPriceYear" : "pricing.teamPriceMonth", {}, lang);
-  }
-  if (teamNoteEl) {
-    teamNoteEl.textContent = t(isYear ? "pricing.noteTeamYear" : "pricing.noteTeamSeats", {}, lang);
-  }
+function renderPricingSection(_lang = getLang()) {
+  // All Free features are active; Pro and Team display honest Waitlist status.
 }
 
 function renderContactsAndPolicy(lang = getLang()) {
@@ -577,6 +546,7 @@ function renderContactsAndPolicy(lang = getLang()) {
   const githubEl = getEl("contact-github-text");
   const copyrightEl = getEl("footer-copyright");
   const policyOwnerEl = getEl("policy-owner-contact-body");
+  const termsOwnerEl = getEl("terms-owner-contact-body");
 
   if (tgEl) tgEl.textContent = SITE_CONTACTS.telegramHandle;
   if (emailLinkEl) {
@@ -593,8 +563,19 @@ function renderContactsAndPolicy(lang = getLang()) {
   }
   if (policyOwnerEl) {
     policyOwnerEl.textContent = t(
-      "policy.item4Body",
+      "policy.item5Body",
       {
+        email: SITE_CONTACTS.email,
+        telegram: SITE_CONTACTS.telegramHandle,
+      },
+      lang
+    );
+  }
+  if (termsOwnerEl) {
+    termsOwnerEl.textContent = t(
+      "terms.item4Body",
+      {
+        author: SITE_CONTACTS.authorSignature,
         email: SITE_CONTACTS.email,
         telegram: SITE_CONTACTS.telegramHandle,
       },
@@ -621,12 +602,7 @@ function syncPlanRequestModalMeta(lang = getLang()) {
   }
   if (summaryPillEl) {
     const info = getPlanPricing(state.activeRequestPlan, state.billingCycle, lang);
-    const cycleLabel = t(
-      state.billingCycle === "year" ? "pricing.toggleYear" : "pricing.toggleMonth",
-      {},
-      lang
-    );
-    summaryPillEl.textContent = `${info.planName} • ${info.price} ${info.period} (${cycleLabel})`;
+    summaryPillEl.textContent = `${info.planName} • ${info.status}`;
   }
 }
 
@@ -1186,6 +1162,10 @@ function bindEvents() {
     renderContactsAndPolicy(getLang());
     openDrawer("modal-privacy-policy", event.currentTarget, state);
   });
+  getEl("open-terms-btn")?.addEventListener("click", (event) => {
+    renderContactsAndPolicy(getLang());
+    openDrawer("modal-terms", event.currentTarget, state);
+  });
   getEl("close-rulebook-btn")?.addEventListener("click", () => closeDrawers(true, state));
   getEl("close-audit-btn")?.addEventListener("click", () => closeDrawers(true, state));
   getEl("close-proof-btn")?.addEventListener("click", () => closeDrawers(true, state));
@@ -1193,19 +1173,11 @@ function bindEvents() {
   getEl("close-plan-modal-btn")?.addEventListener("click", () => closeDrawers(true, state));
   getEl("close-policy-modal-btn")?.addEventListener("click", () => closeDrawers(true, state));
   getEl("close-policy-footer-btn")?.addEventListener("click", () => closeDrawers(true, state));
+  getEl("close-terms-modal-btn")?.addEventListener("click", () => closeDrawers(true, state));
+  getEl("close-terms-footer-btn")?.addEventListener("click", () => closeDrawers(true, state));
   getEl("drawer-backdrop")?.addEventListener("click", () => closeDrawers(true, state));
 
-  // Pricing & Client-Only Request Modals
-  getEl("billing-month-btn")?.addEventListener("click", () => {
-    state.billingCycle = "month";
-    renderPricingSection(getLang());
-    syncPlanRequestModalMeta(getLang());
-  });
-  getEl("billing-year-btn")?.addEventListener("click", () => {
-    state.billingCycle = "year";
-    renderPricingSection(getLang());
-    syncPlanRequestModalMeta(getLang());
-  });
+  // Pricing & Client-Only Waitlist Modals
   getEl("pricing-free-start-btn")?.addEventListener("click", () => {
     switchMode("sanitize");
     const raw = getEl("raw-prompt-input");
@@ -1247,14 +1219,9 @@ function bindEvents() {
     }
 
     const pricing = getPlanPricing(state.activeRequestPlan, state.billingCycle, lang);
-    const cycleLabel = t(
-      state.billingCycle === "year" ? "pricing.toggleYear" : "pricing.toggleMonth",
-      {},
-      lang
-    );
     const lines = [
-      `${t("request.summaryPlan", {}, lang)}: ${pricing.planName} (${pricing.price} ${pricing.period})`,
-      `${t("request.summaryBilling", {}, lang)}: ${cycleLabel}`,
+      `${t("request.summaryPlan", {}, lang)}: ${pricing.planName}`,
+      `${t("request.summaryStatus", {}, lang)}: ${t("request.summaryStatusWaitlist", {}, lang)}`,
       `${t("request.summaryName", {}, lang)}: ${nameVal}`,
       `${t("request.summaryContact", {}, lang)}: ${contactVal}`,
     ];

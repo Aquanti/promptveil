@@ -166,7 +166,10 @@ export function renderCategoryChips(
       unusedCount += 1;
     }
 
-    const chipClass = isDisabled ? "cat-chip cat-chip--disabled" : "cat-chip";
+    const classes = ["cat-chip"];
+    if (meta.secondary) classes.push("cat-chip--secondary");
+    if (isDisabled) classes.push("cat-chip--disabled");
+    const chipClass = classes.join(" ");
     const chip = createEl("button", chipClass, null, {
       type: "button",
       "data-category": meta.category,
