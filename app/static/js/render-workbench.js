@@ -3,7 +3,7 @@
  */
 
 import { CATEGORIES } from "./detector.js";
-import { clearEl, createEl } from "./dom.js";
+import { clearCopyFeedback, clearEl, createEl } from "./dom.js";
 import {
   getCategoryLabel,
   getCustomRuleTagLabel,
@@ -140,19 +140,16 @@ export function renderCategoryChips(
   clearEl(container);
 
   const countsByCategory = result?.countsByCategory || {};
-  const totalCount = Object.values(countsByCategory).reduce(
-    (sum, n) => sum + (Number(n) || 0),
-    0
-  );
+  const maskedCount = Number(result?.maskedCount ?? 0);
 
   const allChip = createEl("button", "cat-chip", null, {
     type: "button",
     "data-category": "ALL",
-    "data-count": String(totalCount),
+    "data-count": String(maskedCount),
     "aria-pressed": vault.disabledCategories.size === 0 ? "true" : "false",
   });
   allChip.appendChild(createEl("span", "", t("step1.allCategories", {}, lang)));
-  allChip.appendChild(createEl("span", "cat-chip-count tabular-nums", String(totalCount)));
+  allChip.appendChild(createEl("span", "cat-chip-count tabular-nums", String(maskedCount)));
   allChip.addEventListener("click", () => onResetCategories?.());
   container.appendChild(allChip);
 
@@ -318,24 +315,26 @@ export function renderTelemetryAndActions(
     copyGoStep2Btn,
     toggleRevealBtn,
   },
-  { rawText, result, vaultSize, revealValues, lang }
+  { rawText, result, maskedCount = 0, revealValues, lang }
 ) {
   if (sanitizedMetricsEl) {
-    sanitizedMetricsEl.setAttribute("data-count", String(vaultSize));
-    sanitizedMetricsEl.textContent = t("step1.maskedCount", { count: vaultSize }, lang);
+    sanitizedMetricsEl.setAttribute("data-count", String(maskedCount));
+    sanitizedMetricsEl.textContent = t("step1.maskedCount", { count: maskedCount }, lang);
   }
   if (rehydrateBadgeEl) {
-    rehydrateBadgeEl.textContent = String(vaultSize);
-    rehydrateBadgeEl.hidden = vaultSize === 0;
+    rehydrateBadgeEl.textContent = String(maskedCount);
+    rehydrateBadgeEl.hidden = maskedCount === 0;
   }
   if (vaultReadyMetaEl) {
-    vaultReadyMetaEl.textContent = t("step2.vaultReady", { count: vaultSize }, lang);
+    vaultReadyMetaEl.textContent = t("step2.vaultReady", { count: maskedCount }, lang);
   }
 
   const hasOutput = Boolean(rawText && rawText.trim().length > 0 && result);
   if (copySanitizedBtn) {
     copySanitizedBtn.disabled = !hasOutput;
-    if (!copySanitizedBtn.hasAttribute("data-copied")) {
+    if (!hasOutput) {
+      clearCopyFeedback(copySanitizedBtn, () => t("step1.copyBtn", {}, lang));
+    } else if (!copySanitizedBtn.hasAttribute("data-copied")) {
       copySanitizedBtn.textContent = t("step1.copyBtn", {}, lang);
     }
   }
@@ -346,7 +345,7 @@ export function renderTelemetryAndActions(
     copyGoStep2Btn.disabled = !hasOutput;
   }
   if (toggleRevealBtn) {
-    toggleRevealBtn.setAttribute("aria-pressed", revealValues ? "true" : "false");
+    toggleRevealBtn.setAttribute("aria-pressed", revealValues ? "false" : "true");
     toggleRevealBtn.textContent = revealValues
       ? t("step1.hideValues", {}, lang)
       : t("step1.showValues", {}, lang);
@@ -362,10 +361,10 @@ export function renderRehydrateView(
     copyBtn,
     downloadBtn,
   },
-  { llmReply, result, vaultSize, lang }
+  { llmReply, result, maskedCount = 0, hasVaultEntries = false, lang }
 ) {
   if (sessionNoticeEl) {
-    sessionNoticeEl.hidden = vaultSize > 0;
+    sessionNoticeEl.hidden = Boolean(hasVaultEntries || maskedCount > 0);
     sessionNoticeEl.textContent = t("step2.emptySessionNotice", {}, lang);
   }
 
@@ -380,7 +379,10 @@ export function renderRehydrateView(
     if (metricsEl) {
       metricsEl.textContent = t("step2.restoredCount", { count: 0 }, lang);
     }
-    if (copyBtn) copyBtn.disabled = true;
+    if (copyBtn) {
+      copyBtn.disabled = true;
+      clearCopyFeedback(copyBtn, () => t("step2.copyBtn", {}, lang));
+    }
     if (downloadBtn) downloadBtn.disabled = true;
     return;
   }
@@ -431,7 +433,9 @@ export function renderRehydrateView(
   const hasRestoredText = Boolean(result.rehydratedText && result.rehydratedText.length > 0);
   if (copyBtn) {
     copyBtn.disabled = !hasRestoredText;
-    if (!copyBtn.hasAttribute("data-copied")) {
+    if (!hasRestoredText) {
+      clearCopyFeedback(copyBtn, () => t("step2.copyBtn", {}, lang));
+    } else if (!copyBtn.hasAttribute("data-copied")) {
       copyBtn.textContent = t("step2.copyBtn", {}, lang);
     }
   }

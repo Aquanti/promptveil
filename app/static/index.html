@@ -10,11 +10,15 @@
   <meta name="theme-color" content="#051C12" />
   <title>PromptVeil — скрытие личных данных перед отправкой в ИИ</title>
   <link rel="canonical" href="https://promptveil.netlify.app/" />
+  <link rel="alternate" hreflang="ru" href="https://promptveil.netlify.app/" />
+  <link rel="alternate" hreflang="en" href="https://promptveil.netlify.app/en/" />
+  <link rel="alternate" hreflang="x-default" href="https://promptveil.netlify.app/" />
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
   <link rel="manifest" href="./manifest.webmanifest" />
   <meta property="og:type" content="website" />
   <meta property="og:locale" content="ru_RU" />
+  <meta property="og:locale:alternate" content="en_US" />
   <meta property="og:site_name" content="PromptVeil" />
   <meta property="og:title" content="PromptVeil — скрытие личных данных перед отправкой в ИИ" />
   <meta
@@ -124,6 +128,8 @@
         aria-pressed="false"
         aria-label="Включить тёмную тему"
         title="Включить тёмную тему"
+        data-i18n-aria="theme.toDark"
+        data-i18n-title="theme.toDark"
         data-testid="theme-toggle-btn"
       >
         <svg class="theme-toggle-icon" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true">
@@ -450,7 +456,7 @@
               type="button"
               id="toggle-reveal-btn"
               class="btn-ghost-sm"
-              aria-pressed="true"
+              aria-pressed="false"
               data-testid="toggle-hide-values-btn"
               data-i18n="step1.hideValues"
             >Скрыть значения</button>
@@ -868,7 +874,7 @@
     </div>
 
     <div class="drawer-body">
-      <form id="add-rule-form" class="rule-form">
+      <form id="add-rule-form" class="rule-form" novalidate>
         <div class="form-field">
           <label for="rule-term-input" class="field-label" data-i18n="rulebook.termLabel">Слово или фраза</label>
           <input
@@ -879,6 +885,7 @@
             placeholder="Например: Алексей Смирнов или ООО «Вектор»"
             maxlength="500"
             required
+            aria-required="true"
             data-testid="rule-term-input"
           />
         </div>

@@ -556,8 +556,34 @@ function normalizeLanguage(lang) {
   return VALID_LANGUAGES.has(normalized) ? normalized : DEFAULT_LANGUAGE;
 }
 
-export function loadLanguage() {
-  return normalizeLanguage(readStorageItem(LANG_STORAGE_KEY));
+export function detectPathLanguage(pathname = null, docLang = null) {
+  let path = typeof pathname === "string" ? pathname : "";
+  if (!path && typeof window !== "undefined" && window.location) {
+    path = String(window.location.pathname || "");
+  }
+  if (/^\/en(?:\/|$)/i.test(path)) {
+    return "en";
+  }
+  let htmlLang = typeof docLang === "string" ? docLang : "";
+  if (!htmlLang && typeof document !== "undefined" && document.documentElement) {
+    htmlLang = String(document.documentElement.lang || "");
+  }
+  if (htmlLang.trim().toLowerCase().startsWith("en")) {
+    return "en";
+  }
+  return null;
+}
+
+export function loadLanguage({ pathname = null, docLang = null } = {}) {
+  const pathLang = detectPathLanguage(pathname, docLang);
+  if (pathLang) {
+    return pathLang;
+  }
+  const stored = readStorageItem(LANG_STORAGE_KEY);
+  if (stored !== null && stored !== "") {
+    return normalizeLanguage(stored);
+  }
+  return DEFAULT_LANGUAGE;
 }
 
 export function saveLanguage(lang) {

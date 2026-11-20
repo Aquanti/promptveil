@@ -9,6 +9,16 @@ export const DEFAULT_LANG = "ru";
 export const TRANSLATIONS = Object.freeze({
   ru: {
     "meta.title": "PromptVeil — скрытие личных данных перед отправкой в ИИ",
+    "meta.description":
+      "Бесплатная защита личных данных перед отправкой текста в нейросети: ИНН, СНИЛС, паспорт РФ, карты, телефоны, пароли и ключи скрываются на устройстве без отправки на сервер.",
+    "meta.ogLocale": "ru_RU",
+    "meta.ogLocaleAlternate": "en_US",
+    "meta.ogTitle": "PromptVeil — скрытие личных данных перед отправкой в ИИ",
+    "meta.ogDescription":
+      "ИНН, СНИЛС, паспорт РФ, ОГРН, БИК, банковские карты, телефоны и API-ключи заменяются безопасными метками в памяти вкладки без отправки текста на сервер.",
+    "meta.twitterTitle": "PromptVeil — скрытие личных данных перед отправкой в ИИ",
+    "meta.twitterDescription":
+      "Бесплатная защита текстов, реквизитов РФ и ключей перед отправкой в нейросети с нулевым хранением данных.",
     "a11y.skipLink": "Перейти к работе с текстом",
     "brand.name": "PromptVeil",
     "proof.triggerLabel": "Гарантия 0 хранения • Проверить",
@@ -203,17 +213,17 @@ export const TRANSLATIONS = Object.freeze({
     "proof.statusWarn": "Обнаружено отклонение — проверьте детали ниже",
     "proof.checkedAt": "Проверено: {time}",
     "proof.netTitle": "Передача текста на сервер и политика CSP",
-    "proof.netMetric": "{count} запросов",
+    "proof.netMetric": "{count} {unit}",
     "proof.netDetail":
       "Внешних сетевых запросов: {ext}, запросов текста к серверу: {count}, нарушений CSP в документе приложения: {cspViolations}. Активна политика {policy}.",
     "proof.storageTitle": "Сохранённые тексты и реквизиты на сайте",
-    "proof.storageMetric": "{bytes} байт",
+    "proof.storageMetric": "{bytes} {unit}",
     "proof.storageDetail":
-      "sessionStorage: {sessionKeys} ключей, cookies: {cookies}, неизвестные ключи: {unknownKeys}. В хранилище настроек хранятся только ваши правила/язык/SHA-256 ({prefKeys} служебных ключа без исходных текстов).",
+      "sessionStorage: {sessionKeys} {sessionUnit}, cookies: {cookies}, неизвестные ключи: {unknownKeys}. В хранилище настроек хранятся только ваши правила/язык/SHA-256 ({prefKeys} {prefUnit} без исходных текстов).",
     "proof.trackersTitle": "Рекламные трекеры, аналитика и транспорт",
-    "proof.trackersMetricHttps": "{trackers} трекеров • HTTPS / TLS",
-    "proof.trackersMetricLocal": "{trackers} трекеров • Локальный стенд",
-    "proof.trackersMetricHttp": "{trackers} трекеров • Проверить TLS",
+    "proof.trackersMetricHttps": "{trackers} {unit} • HTTPS / TLS",
+    "proof.trackersMetricLocal": "{trackers} {unit} • Локальный стенд",
+    "proof.trackersMetricHttp": "{trackers} {unit} • Проверить TLS",
     "proof.trackersDetail":
       "Сторонних скриптов и счётчиков аналитики: {trackers}. Режим соединения: {transport}.",
     "proof.transportHttps": "защищённый канал HTTPS / TLS",
@@ -334,6 +344,16 @@ export const TRANSLATIONS = Object.freeze({
   },
   en: {
     "meta.title": "PromptVeil — Hide Sensitive Data Before AI",
+    "meta.description":
+      "Free client-side privacy shield for AI prompts: mask cards, emails, phones, IBAN, SSN, passwords, and API keys in tab RAM before pasting into LLMs.",
+    "meta.ogLocale": "en_US",
+    "meta.ogLocaleAlternate": "ru_RU",
+    "meta.ogTitle": "PromptVeil — Hide Sensitive Data Before AI",
+    "meta.ogDescription":
+      "Mask bank cards, emails, phones, IBAN, SSN, and API keys in volatile tab RAM with zero server upload, and restore them in the AI reply.",
+    "meta.twitterTitle": "PromptVeil — Hide Sensitive Data Before AI",
+    "meta.twitterDescription":
+      "Free client-side masking and restoration workspace for AI prompts with zero data retention.",
     "a11y.skipLink": "Skip to workbench",
     "brand.name": "PromptVeil",
     "proof.triggerLabel": "Zero-Retention • Verify",
@@ -528,17 +548,17 @@ export const TRANSLATIONS = Object.freeze({
     "proof.statusWarn": "Attention needed — inspect details below",
     "proof.checkedAt": "Verified: {time}",
     "proof.netTitle": "Server text transmission & CSP policy",
-    "proof.netMetric": "{count} requests",
+    "proof.netMetric": "{count} {unit}",
     "proof.netDetail":
       "External requests: {ext}, server text calls: {count}, CSP violations in app document: {cspViolations}. Active policy: {policy}.",
     "proof.storageTitle": "Stored text & secrets on site",
-    "proof.storageMetric": "{bytes} bytes",
+    "proof.storageMetric": "{bytes} {unit}",
     "proof.storageDetail":
-      "sessionStorage: {sessionKeys} keys, cookies: {cookies}, unknown keys: {unknownKeys}. Preference storage holds only your rules/language/SHA-256 digests ({prefKeys} non-PII keys).",
+      "sessionStorage: {sessionKeys} {sessionUnit}, cookies: {cookies}, unknown keys: {unknownKeys}. Preference storage holds only your rules/language/SHA-256 digests ({prefKeys} {prefUnit}).",
     "proof.trackersTitle": "Ad trackers, analytics & transport",
-    "proof.trackersMetricHttps": "{trackers} trackers • HTTPS / TLS",
-    "proof.trackersMetricLocal": "{trackers} trackers • Local host",
-    "proof.trackersMetricHttp": "{trackers} trackers • Check TLS",
+    "proof.trackersMetricHttps": "{trackers} {unit} • HTTPS / TLS",
+    "proof.trackersMetricLocal": "{trackers} {unit} • Local host",
+    "proof.trackersMetricHttp": "{trackers} {unit} • Check TLS",
     "proof.trackersDetail":
       "Third-party scripts and analytics counters: {trackers}. Transport: {transport}.",
     "proof.transportHttps": "encrypted HTTPS / TLS",
@@ -549,13 +569,13 @@ export const TRANSLATIONS = Object.freeze({
     "proof.repoLink": "Open-source code (MIT) on GitHub",
     "pricing.title": "Pricing & Roadmap",
     "pricing.subtitle":
-      "All core masking, restoration, and Russian ID tools are 100% free today.",
+      "All core masking, restoration, and privacy tools are 100% free today.",
     "pricing.freePeriod": "/ forever",
     "pricing.noteFree": "Open immediately with no account or card",
     "pricing.freeName": "Start (Free)",
     "pricing.freeBadge": "Active now",
     "pricing.freePrice": "$0",
-    "pricing.freeFeat1": "Text & files up to 2 MB: RU INN, SNILS, Passport, OGRN, BIK, bank accounts, OMS, cards & keys",
+    "pricing.freeFeat1": "Text & files up to 2 MB: API keys, bank cards, IBAN, SSN, emails, phones, IPs & custom rules",
     "pricing.freeFeat2": "1-click AI reply restoration",
     "pricing.freeFeat3": "Custom exclusion rules & JSON export",
     "pricing.freeFeat4": "Live Zero-Retention Proof & instant reset to 0",
@@ -687,12 +707,24 @@ export function t(key, vars = {}, lang = currentLang) {
 }
 
 export function pluralizeRu(n, one, few, many) {
-  const abs = Math.abs(Number(n) || 0) % 100;
+  const intVal = Math.floor(Math.abs(Number(n) || 0));
+  const abs = intVal % 100;
   const mod10 = abs % 10;
   if (abs >= 11 && abs <= 19) return many;
   if (mod10 === 1) return one;
   if (mod10 >= 2 && mod10 <= 4) return few;
   return many;
+}
+
+export function pluralizeEn(n, one, many) {
+  return Math.abs(Number(n) || 0) === 1 ? one : many;
+}
+
+export function pluralizeCount(lang, n, forms) {
+  if (normalizeLang(lang) === "en") {
+    return pluralizeEn(n, forms.one, forms.many);
+  }
+  return pluralizeRu(n, forms.one, forms.few, forms.many);
 }
 
 export function getCategoryLabel(category, lang = currentLang) {
@@ -713,6 +745,22 @@ export function applyLanguage(lang, hooks = {}) {
   const next = setLang(lang);
   document.documentElement.lang = next;
   document.title = t("meta.title", {}, next);
+
+  const metaBindings = [
+    ['meta[name="description"]', "content", "meta.description"],
+    ['meta[property="og:locale"]', "content", "meta.ogLocale"],
+    ['meta[property="og:locale:alternate"]', "content", "meta.ogLocaleAlternate"],
+    ['meta[property="og:title"]', "content", "meta.ogTitle"],
+    ['meta[property="og:description"]', "content", "meta.ogDescription"],
+    ['meta[name="twitter:title"]', "content", "meta.twitterTitle"],
+    ['meta[name="twitter:description"]', "content", "meta.twitterDescription"],
+  ];
+  for (const [selector, attr, key] of metaBindings) {
+    const metaEl = document.querySelector(selector);
+    if (metaEl) {
+      metaEl.setAttribute(attr, t(key, {}, next));
+    }
+  }
 
   const ruBtn = document.querySelector('[data-testid="lang-ru"]');
   const enBtn = document.querySelector('[data-testid="lang-en"]');

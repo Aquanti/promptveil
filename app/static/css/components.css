@@ -143,24 +143,38 @@
 
 /* Status Banner */
 .status-banner {
-  position: relative;
-  z-index: 20;
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 80;
+  width: max-content;
+  max-width: min(440px, calc(100% - 2.5rem));
   padding: 0.72rem 1.05rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--accent-safe-border);
-  background-color: var(--accent-safe-bg);
+  background: linear-gradient(var(--accent-safe-bg), var(--accent-safe-bg)), var(--bg-surface);
   color: var(--accent-safe-fg);
   font-size: 0.875rem;
   font-weight: 600;
-  box-shadow: var(--shadow-sm);
-  max-width: 100%;
+  box-shadow: var(--shadow-lg);
   overflow-wrap: anywhere;
 }
 
 .status-banner--error {
   border-color: var(--danger-border);
-  background-color: var(--danger-bg);
+  background: linear-gradient(var(--danger-bg), var(--danger-bg)), var(--bg-surface);
   color: var(--danger-fg);
+}
+
+@media (max-width: 639px) {
+  .status-banner {
+    top: 0.65rem;
+    right: 0.75rem;
+    left: 0.75rem;
+    bottom: auto;
+    width: auto;
+    max-width: none;
+  }
 }
 
 /* Spark Two-Surface Hero (Deep Forest Card + Sage Callout Card) */

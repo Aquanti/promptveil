@@ -44,8 +44,8 @@ import {
   onStorageWarning,
 } from "./storage.js";
 import { PRESETS, getLocalizedPreset, getPresetById } from "./presets.js";
-import { applyLanguage, getLang, t } from "./i18n.js";
-import { createEl, getEl } from "./dom.js";
+import { applyLanguage, getLang, setLang, t } from "./i18n.js";
+import { clearCopyFeedback, createEl, getEl } from "./dom.js";
 import {
   renderCategoryChips,
   renderPresetRuleSuggestion,
@@ -292,7 +292,8 @@ function refreshPresetsUi() {
 function refreshWorkbenchUi() {
   const lang = getLang();
   const result = state.lastSanitizeResult;
-  const vaultSize = state.vault.tokenToEntry.size;
+  const maskedCount = result?.maskedCount ?? 0;
+  const hasVaultEntries = state.vault.tokenToEntry.size > 0;
 
   renderRawMetrics(getEl("raw-metrics"), state.rawText, lang);
   renderSanitizedOutput(getEl("sanitized-output"), state.rawText, result, lang, {
@@ -352,7 +353,7 @@ function refreshWorkbenchUi() {
     {
       rawText: state.rawText,
       result,
-      vaultSize,
+      maskedCount,
       revealValues: state.revealVaultValues,
       lang,
     }
@@ -369,7 +370,8 @@ function refreshWorkbenchUi() {
     {
       llmReply: state.llmReply,
       result: state.lastRehydrateResult,
-      vaultSize,
+      maskedCount,
+      hasVaultEntries,
       lang,
     }
   );
@@ -404,6 +406,7 @@ function refreshDrawersUi() {
         runSanitizePipeline(false);
       },
       onDeleteRule: (ruleId) => {
+        hideInlineAlert("rulebook-alert");
         state.rules = saveRules(state.rules.filter((r) => r.id !== ruleId));
         refreshDrawersUi();
         runSanitizePipeline(false);
@@ -433,6 +436,8 @@ function resetSessionToZero({ silent = false, wipeDomOnly = false } = {}) {
   cancelPendingLiveAudit();
   hideInlineAlert("input-error-banner");
   hideInlineAlert("rehydrate-error-banner");
+  clearCopyFeedback(getEl("copy-sanitized-btn"), () => t("step1.copyBtn"));
+  clearCopyFeedback(getEl("copy-restored-btn"), () => t("step2.copyBtn"));
 
   state.rawText = "";
   state.llmReply = "";
@@ -732,6 +737,7 @@ function bindEvents() {
     cancelPendingLiveSanitize();
     cancelPendingLiveAudit();
     hideInlineAlert("input-error-banner");
+    clearCopyFeedback(getEl("copy-sanitized-btn"), () => t("step1.copyBtn"));
     state.rawText = "";
     state.activePresetId = "";
     state.showAllCategories = false;
@@ -816,6 +822,7 @@ function bindEvents() {
 
   getEl("clear-rehydrate-btn")?.addEventListener("click", () => {
     hideInlineAlert("rehydrate-error-banner");
+    clearCopyFeedback(getEl("copy-restored-btn"), () => t("step2.copyBtn"));
     if (llmInput) llmInput.value = "";
     state.llmReply = "";
     state.lastRehydrateResult = null;
@@ -855,6 +862,16 @@ function bindEvents() {
   });
 
   // Rulebook Add & Export, File Uploads, Pricing & Modals
+  getEl("rule-term-input")?.addEventListener("input", () => {
+    hideInlineAlert("rulebook-alert");
+  });
+  getEl("rule-category-input")?.addEventListener("change", () => {
+    hideInlineAlert("rulebook-alert");
+  });
+  getEl("rule-case-input")?.addEventListener("change", () => {
+    hideInlineAlert("rulebook-alert");
+  });
+
   getEl("add-rule-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     hideInlineAlert("rulebook-alert");
@@ -865,6 +882,7 @@ function bindEvents() {
     const term = (termInput?.value || "").trim();
     if (!term) {
       showInlineAlert("rulebook-alert", "rulebook.errorEmpty");
+      termInput?.focus();
       return;
     }
 
@@ -879,6 +897,7 @@ function bindEvents() {
     const existingKeys = new Set(state.rules.map(makeRuleDedupKey));
     if (existingKeys.has(makeRuleDedupKey(newRule))) {
       showInlineAlert("rulebook-alert", "rulebook.errorDuplicate");
+      termInput?.focus();
       return;
     }
 
@@ -972,6 +991,7 @@ export function init() {
     showStatusBanner("banner.storageWarning", {}, true);
   });
   state.lang = loadLanguage();
+  setLang(state.lang);
   applyTheme(resolveInitialTheme(), state, { persist: false });
   state.rules = loadRules();
   purgeUnoptedAuditStorage();

@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="description"
+    content="Free client-side privacy shield for AI prompts: mask cards, emails, phones, IBAN, SSN, passwords, and API keys in tab RAM before pasting into LLMs."
+  />
+  <meta name="theme-color" content="#051C12" />
+  <title>PromptVeil — Hide Sensitive Data Before AI</title>
+  <link rel="canonical" href="https://promptveil.netlify.app/en/" />
+  <link rel="alternate" hreflang="ru" href="https://promptveil.netlify.app/" />
+  <link rel="alternate" hreflang="en" href="https://promptveil.netlify.app/en/" />
+  <link rel="alternate" hreflang="x-default" href="https://promptveil.netlify.app/" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="ru_RU" />
+  <meta property="og:site_name" content="PromptVeil" />
+  <meta property="og:title" content="PromptVeil — Hide Sensitive Data Before AI" />
+  <meta
+    property="og:description"
+    content="Mask bank cards, emails, phones, IBAN, SSN, and API keys in volatile tab RAM with zero server upload, and restore them in the AI reply."
+  />
+  <meta property="og:url" content="https://promptveil.netlify.app/en/" />
+  <meta property="og:image" content="https://promptveil.netlify.app/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="PromptVeil — Hide Sensitive Data Before AI" />
+  <meta
+    name="twitter:description"
+    content="Free client-side masking and restoration workspace for AI prompts with zero data retention."
+  />
+  <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
+  <link rel="stylesheet" href="/styles.css" />
+  <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+  <a href="#main-workbench" class="skip-link" data-i18n="a11y.skipLink">Skip to workbench</a>
+
+  <header class="top-rail">
+    <div class="rail-brand">
+      <svg class="brand-emblem" viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+        <rect width="32" height="32" rx="8" fill="#072F1F" stroke="#B4F105" stroke-opacity="0.38" stroke-width="1" />
+        <polygon points="7,8 13.5,8 18.5,19 16,25" fill="#FFFFFF" />
+        <polygon points="18.5,8 25,8 16,25 13.5,19" fill="#B4F105" />
+        <polygon points="16,13.5 18.5,19 16,25 13.5,19" fill="#051C12" />
+      </svg>
+      <div class="brand-lockup">
+        <span class="brand-name">PromptVeil</span>
+        <button
+          type="button"
+          id="open-proof-btn"
+          class="brand-badge"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="modal-privacy-proof"
+          data-testid="brand-badge"
+          data-i18n="proof.triggerLabel"
+          data-i18n-title="proof.triggerTitle"
+          title="Open live client-side Zero-Retention Proof"
+        >Zero-Retention • Verify</button>
+      </div>
+    </div>
+
+    <div class="rail-actions">
+      <a
+        href="#pricing-section"
+        id="nav-pricing-link"
+        class="rail-nav-link"
+        data-testid="nav-pricing-link"
+        data-i18n="nav.pricing"
+      >Pricing</a>
+      <button
+        type="button"
+        id="open-rulebook-btn"
+        class="rail-btn"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        aria-controls="drawer-rulebook"
+        data-testid="open-rulebook-btn"
+      >
+        <span class="rail-btn-label" data-i18n="nav.rulebook">Custom Words</span>
+        <span id="rulebook-count" class="rail-count tabular-nums">0</span>
+      </button>
+      <button
+        type="button"
+        id="open-audit-btn"
+        class="rail-btn"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        aria-controls="drawer-audit"
+        data-testid="open-audit-btn"
+      >
+        <span class="rail-btn-label" data-i18n="nav.audit">History</span>
+        <span id="audit-count" class="rail-count tabular-nums" hidden>0</span>
+      </button>
+      <div
+        class="lang-switch"
+        role="group"
+        aria-label="Language switcher"
+        data-i18n-aria="lang.switchAria"
+        data-testid="lang-switch"
+      >
+        <button
+          type="button"
+          id="lang-ru-btn"
+          class="lang-btn"
+          aria-pressed="false"
+          data-testid="lang-ru"
+        >RU</button>
+        <button
+          type="button"
+          id="lang-en-btn"
+          class="lang-btn is-active"
+          aria-pressed="true"
+          data-testid="lang-en"
+        >EN</button>
+      </div>
+      <button
+        type="button"
+        id="theme-toggle-btn"
+        class="theme-toggle-btn"
+        aria-pressed="false"
+        aria-label="Switch to dark theme"
+        title="Switch to dark theme"
+        data-i18n-aria="theme.toDark"
+        data-i18n-title="theme.toDark"
+        data-testid="theme-toggle-btn"
+      >
+        <svg class="theme-toggle-icon" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true">
+          <path d="M16.2 12.6A6.8 6.8 0 0 1 7.4 3.8a7 7 0 1 0 8.8 8.8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main-workbench" class="workbench-shell">
+    <div
+      id="global-status-banner"
+      class="status-banner"
+      role="status"
+      aria-live="polite"
+      hidden
+      data-testid="status-banner"
+    ></div>
+
+    <section class="hero-strip" aria-labelledby="hero-title" data-testid="hero-summary">
+      <div class="hero-main-card">
+        <div class="hero-copy">
+          <h1 id="hero-title" class="hero-title" data-i18n="hero.title">Protect private details before sending text to AI</h1>
+          <p class="hero-lead" data-i18n="hero.subtitle">
+            Paste a message, contract, or code snippet — contacts, cards, and secrets are masked in tab RAM and restored cleanly in the AI reply.
+          </p>
+          <ol class="steps-rail" aria-label="Workflow steps" data-i18n-aria="hero.stepsAria">
+            <li class="step-pill">
+              <span class="step-num tabular-nums">1</span>
+              <span data-i18n="hero.step1">Paste text &amp; hide data</span>
+            </li>
+            <li class="step-pill">
+              <span class="step-num tabular-nums">2</span>
+              <span data-i18n="hero.step2">Copy safe text to AI</span>
+            </li>
+            <li class="step-pill">
+              <span class="step-num tabular-nums">3</span>
+              <span data-i18n="hero.step3">Paste AI reply &amp; restore</span>
+            </li>
+          </ol>
+        </div>
+        <svg class="hero-spark-motif" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+          <g transform="translate(50,50)">
+            <rect x="-6" y="-45" width="12" height="90" rx="6" ry="6" fill="#B4F105" />
+            <rect x="-6" y="-45" width="12" height="90" rx="6" ry="6" fill="#B4F105" transform="rotate(60)" />
+            <rect x="-6" y="-45" width="12" height="90" rx="6" ry="6" fill="#B4F105" transform="rotate(120)" />
+          </g>
+        </svg>
+      </div>
+
+      <div class="hero-preset-card">
+        <div class="preset-row">
+          <span class="preset-row-label" data-i18n="presets.heading">Try a ready example:</span>
+          <div
+            id="preset-bar"
+            class="preset-bar"
+            role="group"
+            aria-label="Sample presets"
+            data-i18n-aria="presets.groupAria"
+            data-testid="preset-bar"
+          >
+            <button
+              type="button"
+              class="preset-pill"
+              data-preset-id="bilingual_cis_hr"
+              data-testid="preset-btn-bilingual_cis_hr"
+            >HR &amp; Payout Brief (RU/EN)</button>
+            <button
+              type="button"
+              class="preset-pill"
+              data-preset-id="client_contract"
+              data-testid="preset-btn-client_contract"
+            >Client NDA &amp; Agreement</button>
+            <button
+              type="button"
+              class="preset-pill"
+              data-preset-id="prod_env_trace"
+              data-testid="preset-btn-prod_env_trace"
+            >.env Keys &amp; Stacktrace</button>
+            <button
+              type="button"
+              class="preset-pill"
+              data-preset-id="ru_requisites"
+              data-testid="preset-btn-ru_requisites"
+            >Russian Contract &amp; IDs</button>
+            <button
+              type="button"
+              id="apply-preset-rules-btn"
+              class="btn-amber-sm"
+              hidden
+              data-testid="apply-preset-rules-btn"
+            >Hide names &amp; companies (+0)</button>
+          </div>
+          <p id="preset-rule-hint" class="preset-hint" hidden></p>
+        </div>
+        <svg class="preset-spark-motif" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+          <g transform="translate(50,50)">
+            <rect x="-6" y="-45" width="12" height="90" rx="6" ry="6" fill="#B4F105" />
+            <rect x="-6" y="-45" width="12" height="90" rx="6" ry="6" fill="#B4F105" transform="rotate(60)" />
+            <rect x="-6" y="-45" width="12" height="90" rx="6" ry="6" fill="#B4F105" transform="rotate(120)" />
+          </g>
+        </svg>
+      </div>
+    </section>
+
+    <nav class="mode-nav" aria-label="Workflow stages" data-i18n-aria="nav.stepsAria">
+      <div class="mode-switch" role="tablist" aria-label="Workbench mode" data-i18n-aria="nav.tablistAria">
+        <button
+          type="button"
+          id="mode-btn-sanitize"
+          class="mode-tab is-active"
+          role="tab"
+          aria-selected="true"
+          aria-controls="panel-sanitize"
+          data-mode="sanitize"
+          data-testid="mode-sanitize"
+        >
+          <span data-i18n="nav.step1">1. Hide Data</span>
+        </button>
+        <button
+          type="button"
+          id="mode-btn-rehydrate"
+          class="mode-tab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="panel-rehydrate"
+          data-mode="rehydrate"
+          data-testid="mode-rehydrate"
+        >
+          <span data-i18n="nav.step2">2. Restore in AI Reply</span>
+          <span id="rehydrate-ready-badge" class="tab-badge tabular-nums" hidden>0</span>
+        </button>
+      </div>
+      <button
+        type="button"
+        id="quick-reset-session-btn"
+        class="btn-ghost-sm"
+        data-testid="quick-reset-session-btn"
+        data-i18n="nav.resetSession"
+      >Reset session to 0</button>
+    </nav>
+
+    <section
+      id="panel-sanitize"
+      class="mode-panel"
+      role="tabpanel"
+      aria-labelledby="mode-btn-sanitize"
+      data-testid="panel-sanitize"
+    >
+      <div class="split-workbench">
+        <section class="ledger-pane" aria-labelledby="raw-pane-title">
+          <div class="pane-header">
+            <div class="pane-title-group">
+              <h2 id="raw-pane-title" class="pane-title" data-i18n="step1.inputHeading">Original text</h2>
+              <span id="raw-metrics" class="pane-meta tabular-nums">0 chars • 0 lines</span>
+            </div>
+            <div class="pane-actions">
+              <button
+                type="button"
+                id="paste-raw-btn"
+                class="btn-secondary"
+                data-testid="paste-raw-btn"
+                data-i18n="action.paste"
+              >Paste</button>
+              <button
+                type="button"
+                id="upload-file-btn"
+                class="btn-secondary"
+                data-testid="upload-file-btn"
+                data-i18n="step1.uploadBtn"
+              >Load file</button>
+              <button
+                type="button"
+                id="clear-raw-btn"
+                class="btn-ghost-sm"
+                data-testid="clear-input-btn"
+                data-i18n="step1.clearBtn"
+              >Clear</button>
+            </div>
+          </div>
+
+          <input
+            type="file"
+            id="file-upload-input"
+            accept=".txt,.md,.csv,.json,.log,.env"
+            hidden
+            data-testid="file-upload-input"
+          />
+
+          <div id="input-dropzone" class="dropzone" data-testid="input-dropzone">
+            <label for="raw-prompt-input" class="sr-only" data-i18n="step1.inputHeading">Original text</label>
+            <textarea
+              id="raw-prompt-input"
+              class="ledger-textarea"
+              rows="12"
+              spellcheck="false"
+              data-i18n-placeholder="step1.inputPlaceholder"
+              placeholder="Paste a message, contract, resume, or code snippet..."
+              data-testid="raw-prompt-input"
+            ></textarea>
+          </div>
+
+          <div
+            id="file-loading-indicator"
+            class="inline-state--loading"
+            hidden
+            data-i18n="step1.fileLoading"
+          >Reading file...</div>
+          <div id="input-error-banner" class="inline-alert inline-alert--error" role="alert" hidden></div>
+
+          <div class="pane-footer">
+            <div class="pane-footer-actions">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  id="live-sanitize-toggle"
+                  checked
+                  data-testid="auto-sanitize-toggle"
+                />
+                <span data-i18n="step1.autoToggle">Hide automatically</span>
+              </label>
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  id="detect-uuid-toggle"
+                  data-testid="detect-uuid-toggle"
+                />
+                <span data-i18n="step1.detectUuidToggle">Hide UUIDs</span>
+              </label>
+            </div>
+            <button
+              type="button"
+              id="sanitize-now-btn"
+              class="btn-primary"
+              data-testid="sanitize-now-btn"
+              data-i18n="step1.sanitizeNowBtn"
+            >Hide data</button>
+          </div>
+        </section>
+
+        <section class="ledger-pane" aria-labelledby="sanitized-pane-title">
+          <div class="pane-header">
+            <div class="pane-title-group">
+              <h2 id="sanitized-pane-title" class="pane-title" data-i18n="step1.outputHeading">Safe text for AI</h2>
+              <span
+                id="sanitized-metrics"
+                class="pane-meta tabular-nums"
+                data-testid="telemetry-masked-count"
+                data-count="0"
+              >Masked: 0</span>
+            </div>
+            <div class="pane-actions">
+              <button
+                type="button"
+                id="copy-sanitized-btn"
+                class="btn-secondary"
+                disabled
+                data-testid="copy-sanitized-btn"
+                data-i18n="step1.copyBtn"
+              >Copy for AI</button>
+              <button
+                type="button"
+                id="download-sanitized-btn"
+                class="btn-secondary"
+                disabled
+                data-testid="download-sanitized-btn"
+                data-i18n="step1.downloadBtn"
+              >Download .txt</button>
+            </div>
+          </div>
+
+          <div
+            id="sanitized-output"
+            class="ledger-output"
+            tabindex="0"
+            aria-live="polite"
+            data-i18n-placeholder="step1.outputEmpty"
+            data-placeholder="Your safe version with placeholder tags will appear here."
+            data-testid="sanitized-output"
+          ></div>
+
+          <div class="pane-footer">
+            <span class="pane-hint" data-i18n="step1.outputHint">Mappings stay only in volatile tab RAM.</span>
+            <div class="pane-footer-actions">
+              <button
+                type="button"
+                id="copy-goto-step2-btn"
+                class="btn-lime"
+                disabled
+                data-testid="copy-goto-step2-btn"
+                data-i18n="step1.copyGoStep2Btn"
+              >Copy &amp; Go to Step 2 →</button>
+              <button
+                type="button"
+                id="goto-rehydrate-btn"
+                class="btn-secondary"
+                data-testid="go-rehydrate-btn"
+                data-i18n="step1.goStep2Btn"
+              >Go to Step 2 →</button>
+            </div>
+          </div>
+
+          <div id="ai-launchers-bar" class="ai-launchers-bar" data-testid="ai-launchers-bar">
+            <span class="ai-launchers-label" data-i18n="step1.openInAiLabel">Open in AI:</span>
+            <div class="ai-launchers-links">
+              <a class="ai-launcher-pill" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-chatgpt">ChatGPT</a>
+              <a class="ai-launcher-pill" href="https://chat.deepseek.com/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-deepseek">DeepSeek</a>
+              <a class="ai-launcher-pill" href="https://giga.chat/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-gigachat">GigaChat</a>
+              <a class="ai-launcher-pill" href="https://alice.yandex.ru/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-alice" data-i18n="step1.aiAlice">Alice / YandexGPT</a>
+              <a class="ai-launcher-pill" href="https://claude.ai/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-claude">Claude</a>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="vault-section" aria-labelledby="vault-title">
+        <div class="vault-header">
+          <div class="pane-title-group">
+            <h2 id="vault-title" class="pane-title" data-i18n="step1.vaultHeading">What was hidden</h2>
+            <span id="vault-filter-label" class="pane-meta" data-i18n="step1.vaultSubheading">Click a tag in the text or use a switch below to manage masking</span>
+          </div>
+          <div class="pane-actions">
+            <button
+              type="button"
+              id="toggle-reveal-btn"
+              class="btn-ghost-sm"
+              aria-pressed="false"
+              data-testid="toggle-hide-values-btn"
+              data-i18n="step1.hideValues"
+            >Hide values</button>
+          </div>
+        </div>
+
+        <div class="category-bar">
+          <span class="category-bar-label" data-i18n="step1.filtersHeading">Data types</span>
+          <div
+            id="category-chips"
+            class="category-chips"
+            role="group"
+            aria-label="Detected data categories"
+            data-i18n-aria="step1.filtersAria"
+            data-testid="category-chips"
+          ></div>
+        </div>
+
+        <ul id="entity-vault-list" class="vault-list" data-testid="entity-vault-list"></ul>
+      </section>
+    </section>
+
+    <section
+      id="panel-rehydrate"
+      class="mode-panel"
+      role="tabpanel"
+      aria-labelledby="mode-btn-rehydrate"
+      hidden
+      data-testid="panel-rehydrate"
+    >
+      <div
+        id="rehydrate-empty-session-notice"
+        class="inline-alert inline-alert--info"
+        hidden
+        data-i18n="step2.emptySessionNotice"
+      >No active session mappings yet. Run Step 1 first (mappings are cleared on page reload for privacy).</div>
+
+      <div class="split-workbench">
+        <section class="ledger-pane" aria-labelledby="llm-pane-title">
+          <div class="pane-header">
+            <div class="pane-title-group">
+              <h2 id="llm-pane-title" class="pane-title" data-i18n="step2.inputHeading">AI reply</h2>
+              <span id="vault-ready-meta" class="pane-meta tabular-nums">Session mappings: 0</span>
+            </div>
+            <div class="pane-actions">
+              <button
+                type="button"
+                id="paste-rehydrate-btn"
+                class="btn-secondary"
+                data-testid="paste-rehydrate-btn"
+                data-i18n="action.paste"
+              >Paste</button>
+              <button
+                type="button"
+                id="clear-rehydrate-btn"
+                class="btn-ghost-sm"
+                data-testid="clear-rehydrate-btn"
+                data-i18n="step2.clearBtn"
+              >Clear</button>
+            </div>
+          </div>
+
+          <label for="llm-reply-input" class="sr-only" data-i18n="step2.inputHeading">AI reply</label>
+          <textarea
+            id="llm-reply-input"
+            class="ledger-textarea ledger-textarea--standalone"
+            rows="12"
+            spellcheck="false"
+            data-i18n-placeholder="step2.inputPlaceholder"
+            placeholder="Paste the AI reply containing placeholder tags here..."
+            data-testid="llm-reply-input"
+          ></textarea>
+
+          <div id="rehydrate-error-banner" class="inline-alert inline-alert--error" role="alert" hidden></div>
+
+          <div class="pane-footer">
+            <span class="pane-hint" data-i18n="step2.inputHint">Single-pass substitution runs in tab RAM.</span>
+            <button
+              type="button"
+              id="rehydrate-btn"
+              class="btn-teal"
+              data-testid="rehydrate-now-btn"
+              data-i18n="step2.restoreBtn"
+            >Restore original data</button>
+          </div>
+        </section>
+
+        <section class="ledger-pane" aria-labelledby="restored-pane-title">
+          <div class="pane-header">
+            <div class="pane-title-group">
+              <h2 id="restored-pane-title" class="pane-title" data-i18n="step2.outputHeading">Final text with your data</h2>
+              <span id="rehydrate-metrics" class="pane-meta tabular-nums">Restored: 0</span>
+            </div>
+            <div class="pane-actions">
+              <button
+                type="button"
+                id="copy-restored-btn"
+                class="btn-secondary"
+                disabled
+                data-testid="copy-restored-btn"
+                data-i18n="step2.copyBtn"
+              >Copy result</button>
+              <button
+                type="button"
+                id="download-restored-btn"
+                class="btn-secondary"
+                disabled
+                data-testid="download-restored-btn"
+                data-i18n="step2.downloadBtn"
+              >Download .txt</button>
+            </div>
+          </div>
+
+          <div
+            id="unresolved-tokens-banner"
+            class="inline-alert inline-alert--warn"
+            role="alert"
+            hidden
+            data-testid="unresolved-warning"
+          ></div>
+
+          <div
+            id="restored-output"
+            class="ledger-output"
+            tabindex="0"
+            aria-live="polite"
+            data-i18n-placeholder="step2.outputEmpty"
+            data-placeholder="The AI reply with your original names, contacts, and numbers restored will appear here."
+            data-testid="restored-output"
+          ></div>
+
+          <div class="pane-footer">
+            <span class="pane-hint" data-i18n="step2.outputHint">Restoration runs in volatile tab RAM.</span>
+            <button
+              type="button"
+              id="back-to-sanitize-btn"
+              class="btn-link"
+              data-testid="back-sanitize-btn"
+              data-i18n="step2.backBtn"
+            >← Back to Step 1</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section
+      id="pricing-section"
+      class="pricing-section"
+      aria-labelledby="pricing-title"
+      data-testid="pricing-section"
+    >
+      <div class="pricing-header">
+        <div class="pricing-title-group">
+          <h2 id="pricing-title" class="pricing-title" data-i18n="pricing.title">Pricing &amp; Roadmap</h2>
+          <p class="pricing-subtitle" data-i18n="pricing.subtitle">All core masking, restoration, and privacy tools are 100% free today.</p>
+        </div>
+      </div>
+
+      <div class="pricing-grid">
+        <article class="pricing-card" data-testid="pricing-card-free">
+          <div class="pricing-card-top">
+            <h3 class="pricing-plan-name" data-i18n="pricing.freeName">Start (Free)</h3>
+            <span class="pricing-plan-badge" data-i18n="pricing.freeBadge">Active now</span>
+          </div>
+          <div class="pricing-price-block">
+            <div class="pricing-price-row">
+              <span id="price-free-value" class="pricing-price-value tabular-nums" data-i18n="pricing.freePrice">$0</span>
+              <span class="pricing-price-period" data-i18n="pricing.freePeriod">/ forever</span>
+            </div>
+            <p class="pricing-price-note" data-i18n="pricing.noteFree">Open immediately with no account or card</p>
+          </div>
+          <ul class="pricing-features">
+            <li data-i18n="pricing.freeFeat1">Text &amp; files up to 2 MB: API keys, bank cards, IBAN, SSN, emails, phones, IPs &amp; custom rules</li>
+            <li data-i18n="pricing.freeFeat2">1-click AI reply restoration</li>
+            <li data-i18n="pricing.freeFeat3">Custom exclusion rules &amp; JSON export</li>
+            <li data-i18n="pricing.freeFeat4">Live Zero-Retention Proof &amp; instant reset to 0</li>
+          </ul>
+          <div class="pricing-card-footer">
+            <button
+              type="button"
+              id="pricing-free-start-btn"
+              class="btn-secondary"
+              data-testid="pricing-free-start-btn"
+              data-i18n="pricing.freeCta"
+            >Use for free</button>
+          </div>
+        </article>
+
+        <article class="pricing-card pricing-card--featured" data-testid="pricing-card-pro">
+          <div class="pricing-card-top">
+            <h3 class="pricing-plan-name" data-i18n="pricing.proName">Pro</h3>
+            <span class="pricing-plan-badge pricing-plan-badge--dev" data-i18n="pricing.proBadge">In Development</span>
+          </div>
+          <div class="pricing-price-block">
+            <div class="pricing-price-row">
+              <span id="price-pro-value" class="pricing-waitlist-status" data-testid="price-pro-value" data-i18n="pricing.proWaitlistTitle">Waitlist</span>
+            </div>
+            <p id="price-pro-note" class="pricing-price-note" data-i18n="pricing.proWaitlistNote">No charges or billing — waitlist notification on launch</p>
+          </div>
+          <ul class="pricing-features">
+            <li data-i18n="pricing.proFeat1">Planned: batch .docx, .pdf, .xlsx processing up to 50 MB on device</li>
+            <li data-i18n="pricing.proFeat2">Planned: browser extension overlay for ChatGPT / Claude / DeepSeek</li>
+            <li data-i18n="pricing.proFeat3">Planned: dedicated rule profiles per client project</li>
+            <li data-i18n="pricing.proFeat4">Planned: extended legal &amp; domain entity dictionaries</li>
+          </ul>
+          <div class="pricing-card-footer">
+            <button
+              type="button"
+              id="open-pro-modal-btn"
+              class="btn-lime"
+              aria-haspopup="dialog"
+              aria-controls="modal-plan-request"
+              data-testid="open-pro-modal-btn"
+              data-i18n="pricing.proCta"
+            >Join Waitlist</button>
+          </div>
+        </article>
+
+        <article class="pricing-card" data-testid="pricing-card-team">
+          <div class="pricing-card-top">
+            <h3 class="pricing-plan-name" data-i18n="pricing.teamName">Business / Team</h3>
+            <span class="pricing-plan-badge pricing-plan-badge--dev" data-i18n="pricing.teamBadge">In Development</span>
+          </div>
+          <div class="pricing-price-block">
+            <div class="pricing-price-row">
+              <span id="price-team-value" class="pricing-waitlist-status" data-testid="price-team-value" data-i18n="pricing.teamWaitlistTitle">Waitlist</span>
+            </div>
+            <p id="price-team-note" class="pricing-price-note" data-i18n="pricing.teamWaitlistNote">For teams &amp; pilot onboarding after launch</p>
+          </div>
+          <ul class="pricing-features">
+            <li data-i18n="pricing.teamFeat1">Planned: shared corporate NDA term dictionary</li>
+            <li data-i18n="pricing.teamFeat2">Planned: local compliance audit reports (152-FZ / GDPR)</li>
+            <li data-i18n="pricing.teamFeat3">Planned: Single Sign-On (SSO) &amp; role management</li>
+            <li data-i18n="pricing.teamFeat4">Planned: priority onboarding &amp; security support</li>
+          </ul>
+          <div class="pricing-card-footer">
+            <button
+              type="button"
+              id="open-team-modal-btn"
+              class="btn-primary"
+              aria-haspopup="dialog"
+              aria-controls="modal-plan-request"
+              data-testid="open-team-modal-btn"
+              data-i18n="pricing.teamCta"
+            >Request Pilot</button>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer" data-testid="site-footer">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <div class="footer-brand">
+          <svg class="footer-brand-emblem" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="#051C12" />
+            <polygon points="7,8 13.5,8 18.5,19 16,25" fill="#FFFFFF" />
+            <polygon points="18.5,8 25,8 16,25 13.5,19" fill="#B4F105" />
+            <polygon points="16,13.5 18.5,19 16,25 13.5,19" fill="#072F1F" />
+          </svg>
+          <span>PromptVeil</span>
+        </div>
+        <p class="footer-desc" data-i18n="footer.brandDesc">
+          Privacy-first masking and restoration workspace for everyday AI workflows.
+        </p>
+        <div class="footer-links-row">
+          <a href="#main-workbench" class="footer-nav-link" data-i18n="footer.navWorkbench">Workbench</a>
+          <a href="#pricing-section" class="footer-nav-link" data-i18n="footer.navPricing">Pricing</a>
+          <button
+            type="button"
+            id="open-privacy-policy-btn"
+            class="footer-link-btn"
+            aria-haspopup="dialog"
+            aria-controls="modal-privacy-policy"
+            data-testid="open-privacy-policy-btn"
+            data-i18n="footer.privacyPolicyBtn"
+          >Privacy Policy</button>
+          <button
+            type="button"
+            id="open-terms-btn"
+            class="footer-link-btn"
+            aria-haspopup="dialog"
+            aria-controls="modal-terms"
+            data-testid="open-terms-btn"
+            data-i18n="footer.termsBtn"
+          >Terms of Use</button>
+          <a
+            id="footer-repo-link"
+            class="footer-nav-link"
+            href="https://github.com/Aquanti/promptveil"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="footer-repo-link"
+            data-i18n="footer.sourceLink"
+          >Source Code (MIT)</a>
+        </div>
+      </div>
+
+      <div class="footer-col">
+        <h2 class="footer-heading" data-i18n="footer.trustHeading">Trust Architecture</h2>
+        <div class="trust-badges-grid">
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeTls">HTTPS / TLS</span></span>
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeZero">0 Text Logs</span></span>
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeCsp">Strict CSP</span></span>
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeNoTrack">Zero cookies &amp; trackers</span></span>
+        </div>
+        <button
+          type="button"
+          id="footer-open-proof-btn"
+          class="footer-proof-btn"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="modal-privacy-proof"
+          data-testid="footer-open-proof-btn"
+          data-i18n="proof.triggerLabel"
+        >Zero-Retention • Verify</button>
+      </div>
+
+      <div class="footer-col" data-testid="footer-contacts">
+        <h2 class="footer-heading" data-i18n="footer.contactsHeading">Contacts &amp; Support</h2>
+        <ul class="footer-contacts-list">
+          <li class="footer-contact-row">
+            <div class="footer-contact-meta">
+              <span class="footer-contact-label" data-i18n="footer.telegramLabel">Telegram</span>
+              <a
+                id="contact-telegram-text"
+                class="footer-contact-value"
+                href="https://t.me/supv1rus"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="contact-telegram-text"
+              >@supv1rus</a>
+            </div>
+            <button
+              type="button"
+              id="copy-contact-telegram-btn"
+              class="btn-copy-xs"
+              data-testid="copy-contact-telegram-btn"
+              data-i18n="action.copy"
+            >Copy</button>
+          </li>
+          <li class="footer-contact-row">
+            <div class="footer-contact-meta">
+              <span class="footer-contact-label" data-i18n="footer.emailLabel">Email / Support</span>
+              <a
+                id="contact-email-link"
+                class="footer-contact-value"
+                href="mailto:kilkauciha@gmail.com"
+                data-testid="contact-email-link"
+              >kilkauciha@gmail.com</a>
+            </div>
+            <button
+              type="button"
+              id="copy-contact-email-btn"
+              class="btn-copy-xs"
+              data-testid="copy-contact-email-btn"
+              data-i18n="action.copy"
+            >Copy</button>
+          </li>
+          <li class="footer-contact-row">
+            <div class="footer-contact-meta">
+              <span class="footer-contact-label" data-i18n="footer.githubLabel">GitHub</span>
+              <a
+                id="contact-github-text"
+                class="footer-contact-value"
+                href="https://github.com/Aquanti"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="contact-github-text"
+              >github.com/Aquanti</a>
+            </div>
+            <button
+              type="button"
+              id="copy-contact-github-btn"
+              class="btn-copy-xs"
+              data-testid="copy-contact-github-btn"
+              data-i18n="action.copy"
+            >Copy</button>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom-bar">
+      <span id="footer-copyright" data-testid="footer-copyright">© 2026 PromptVeil • Created by SupV1rus</span>
+      <span data-i18n="footer.zeroNote">Zero cookies, zero ad trackers, and zero logs of your text.</span>
+    </div>
+  </footer>
+
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+  <aside
+    id="drawer-rulebook"
+    class="drawer"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="rulebook-drawer-title"
+    hidden
+    data-testid="drawer-rulebook"
+  >
+    <div class="drawer-header">
+      <div>
+        <h2 id="rulebook-drawer-title" class="drawer-title" data-i18n="rulebook.title">Custom words &amp; phrases</h2>
+        <p class="drawer-subtitle" data-i18n="rulebook.subtitle">Add names, company titles, or project words to always hide.</p>
+      </div>
+      <button
+        type="button"
+        id="close-rulebook-btn"
+        class="drawer-close"
+        aria-label="Close"
+        data-i18n-aria="common.close"
+        data-testid="close-rulebook-btn"
+      >×</button>
+    </div>
+
+    <div class="drawer-body">
+      <form id="add-rule-form" class="rule-form" novalidate>
+        <div class="form-field">
+          <label for="rule-term-input" class="field-label" data-i18n="rulebook.termLabel">Word or phrase</label>
+          <input
+            type="text"
+            id="rule-term-input"
+            class="field-input"
+            data-i18n-placeholder="rulebook.termPlaceholder"
+            placeholder="e.g. Acme Corp or Project Orion"
+            maxlength="500"
+            required
+            aria-required="true"
+            data-testid="rule-term-input"
+          />
+        </div>
+
+        <div class="form-row">
+          <div class="form-field">
+            <label for="rule-category-input" class="field-label" data-i18n="rulebook.categoryLabel">Tag type</label>
+            <select id="rule-category-input" class="field-input" data-testid="rule-category-input">
+              <option value="CUSTOM" selected data-i18n="rulebook.tag.CUSTOM">Custom</option>
+              <option value="PERSON" data-i18n="rulebook.tag.PERSON">Person</option>
+              <option value="ORG" data-i18n="rulebook.tag.ORG">Organization</option>
+              <option value="PROJECT" data-i18n="rulebook.tag.PROJECT">Project</option>
+              <option value="SECRET" data-i18n="rulebook.tag.SECRET">Secret</option>
+            </select>
+          </div>
+          <label class="checkbox-label">
+            <input type="checkbox" id="rule-case-input" data-testid="rule-case-input" />
+            <span data-i18n="rulebook.caseLabel">Match exact letter case</span>
+          </label>
+        </div>
+
+        <button
+          type="submit"
+          id="add-rule-btn"
+          class="btn-primary btn-full"
+          data-testid="add-rule-btn"
+          data-i18n="rulebook.addBtn"
+        >Add</button>
+      </form>
+
+      <div id="rulebook-alert" class="inline-alert" role="status" hidden></div>
+
+      <div id="rulebook-empty" class="drawer-empty" data-i18n="rulebook.empty">
+        No custom words yet. Add a name or company above.
+      </div>
+      <ul id="rulebook-list" class="drawer-list" data-testid="rules-list"></ul>
+    </div>
+
+    <div class="drawer-footer">
+      <button
+        type="button"
+        id="export-rules-btn"
+        class="btn-secondary"
+        data-testid="export-rules-btn"
+        data-i18n="rulebook.exportBtn"
+      >Export (.json)</button>
+      <button
+        type="button"
+        id="import-rules-btn"
+        class="btn-secondary"
+        data-testid="import-rules-btn"
+        data-i18n="rulebook.importBtn"
+      >Import (.json)</button>
+      <input
+        type="file"
+        id="import-rules-input"
+        accept=".json,application/json"
+        hidden
+        data-testid="import-rules-input"
+      />
+    </div>
+  </aside>
+
+  <aside
+    id="drawer-audit"
+    class="drawer"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="audit-drawer-title"
+    hidden
+    data-testid="drawer-audit"
+  >
+    <div class="drawer-header">
+      <div>
+        <h2 id="audit-drawer-title" class="drawer-title" data-i18n="audit.title">Verification History</h2>
+        <p class="drawer-subtitle" data-i18n="audit.subtitle">Stores only cryptographic SHA-256 digests and counts — zero raw text or secrets.</p>
+      </div>
+      <button
+        type="button"
+        id="close-audit-btn"
+        class="drawer-close"
+        aria-label="Close"
+        data-i18n-aria="common.close"
+        data-testid="close-audit-btn"
+      >×</button>
+    </div>
+
+    <div class="drawer-body">
+      <div class="zero-pii-notice" data-i18n="audit.notice">
+        By default, entries stay in volatile tab RAM only (SHA-256 digests, zero raw text). Enable the option below to persist digests on this device.
+      </div>
+
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          id="audit-persist-toggle"
+          data-testid="audit-persist-toggle"
+        />
+        <span data-i18n="audit.persistToggle">Save history on this device</span>
+      </label>
+
+      <div id="audit-empty" class="drawer-empty" data-i18n="audit.empty">
+        No history entries yet.
+      </div>
+      <ul id="audit-list" class="drawer-list" data-testid="audit-list"></ul>
+    </div>
+
+    <div class="drawer-footer">
+      <button
+        type="button"
+        id="export-audit-btn"
+        class="btn-secondary"
+        data-testid="export-audit-btn"
+        data-i18n="audit.exportBtn"
+      >Export (.json)</button>
+      <button
+        type="button"
+        id="clear-audit-btn"
+        class="btn-danger-ghost"
+        disabled
+        data-testid="clear-audit-btn"
+        data-i18n="audit.clearBtn"
+      >Clear history</button>
+    </div>
+  </aside>
+
+  <section
+    id="modal-privacy-proof"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="proof-modal-title"
+    hidden
+    data-testid="modal-privacy-proof"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="proof-modal-title" class="modal-title" data-i18n="proof.title">Client-Side Privacy Check (Zero-Retention Proof)</h2>
+        <p class="modal-subtitle" data-i18n="proof.subtitle">Live real-time isolation audit with zero outbound network requests.</p>
+      </div>
+      <button
+        type="button"
+        id="close-proof-btn"
+        class="drawer-close"
+        aria-label="Close"
+        data-i18n-aria="common.close"
+        data-testid="close-proof-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <div id="proof-summary-card" class="proof-summary-card" data-testid="proof-summary-card">
+        <span id="proof-summary-status" class="proof-summary-title">Verified: 0 retention and 0 text egress</span>
+        <span id="proof-checked-at" class="proof-summary-time tabular-nums"></span>
+      </div>
+
+      <ul id="proof-checks-list" class="proof-checks-list" data-testid="proof-checks-list"></ul>
+
+      <div id="proof-offline-card" class="proof-offline-card" data-testid="proof-offline-card">
+        <div class="proof-check-top">
+          <span class="proof-check-label" data-i18n="proof.offlineTitle">Offline PWA Mode (Zero-Network Proof)</span>
+          <span id="proof-offline-metric" class="proof-check-metric" data-testid="proof-offline-metric">Caching static bundle</span>
+        </div>
+        <p class="proof-check-detail" data-i18n="proof.offlineDetail">
+          Turn off your internet connection (Airplane mode or DevTools Offline) — PromptVeil continues masking and restoring data offline.
+        </p>
+      </div>
+
+      <div id="proof-ram-note" class="proof-ram-note tabular-nums" data-testid="proof-ram-note"></div>
+
+      <div class="proof-repo-row">
+        <a
+          id="proof-repo-link"
+          class="footer-nav-link"
+          href="https://github.com/Aquanti/promptveil"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="proof-repo-link"
+          data-i18n="proof.repoLink"
+        >Open-source code (MIT) on GitHub</a>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button
+        type="button"
+        id="run-proof-check-btn"
+        class="btn-primary"
+        data-testid="run-proof-check-btn"
+        data-i18n="proof.runBtn"
+      >Run live self-test</button>
+      <div class="modal-footer-actions">
+        <button
+          type="button"
+          id="reset-session-btn"
+          class="btn-danger-ghost"
+          data-testid="reset-session-btn"
+          data-i18n="proof.resetBtn"
+        >Reset session to 0</button>
+        <button
+          type="button"
+          id="close-proof-footer-btn"
+          class="btn-secondary"
+          data-i18n="common.close"
+        >Close</button>
+      </div>
+    </div>
+  </section>
+
+  <section
+    id="modal-plan-request"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="plan-modal-title"
+    hidden
+    data-testid="modal-plan-request"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="plan-modal-title" class="modal-title">Waitlist — PromptVeil Pro</h2>
+        <p id="plan-modal-subtitle" class="modal-subtitle">Pro features are currently in development. Leave a contact with zero payment or binding offer.</p>
+      </div>
+      <button
+        type="button"
+        id="close-plan-modal-btn"
+        class="drawer-close"
+        aria-label="Close"
+        data-i18n-aria="common.close"
+        data-testid="close-plan-modal-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <div id="plan-summary-pill" class="plan-summary-pill tabular-nums">Pro • Waitlist</div>
+      <div class="plan-privacy-note" data-i18n="request.privacyNote">
+        100% client-side form: zero network requests and zero prompt collection. This inquiry is non-binding and requires no payment.
+      </div>
+
+      <form id="plan-request-form" class="plan-request-form" novalidate>
+        <div class="form-field">
+          <label for="plan-req-name" class="field-label" data-i18n="request.nameLabel">Name or company</label>
+          <input
+            type="text"
+            id="plan-req-name"
+            class="field-input"
+            maxlength="120"
+            data-i18n-placeholder="request.namePlaceholder"
+            placeholder="e.g. Alex or Acme Corp"
+            data-testid="plan-req-name"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="plan-req-contact" class="field-label" data-i18n="request.contactLabel">Email or Telegram handle</label>
+          <input
+            type="text"
+            id="plan-req-contact"
+            class="field-input"
+            maxlength="120"
+            data-i18n-placeholder="request.contactPlaceholder"
+            placeholder="name@company.com or @username"
+            data-testid="plan-req-contact"
+          />
+        </div>
+
+        <div id="plan-req-seats-field" class="form-field" hidden>
+          <label for="plan-req-seats" class="field-label" data-i18n="request.seatsLabel">Team size (seats)</label>
+          <input
+            type="number"
+            id="plan-req-seats"
+            class="field-input tabular-nums"
+            min="1"
+            max="5000"
+            value="10"
+            data-testid="plan-req-seats"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="plan-req-note" class="field-label" data-i18n="request.noteLabel">Note (optional)</label>
+          <input
+            type="text"
+            id="plan-req-note"
+            class="field-input"
+            maxlength="300"
+            data-i18n-placeholder="request.notePlaceholder"
+            placeholder="Which file formats or compliance workflows do you need?"
+            data-testid="plan-req-note"
+          />
+        </div>
+
+        <div id="plan-request-alert" class="inline-alert" role="alert" hidden data-testid="plan-request-alert"></div>
+
+        <button
+          type="submit"
+          id="plan-req-submit-btn"
+          class="btn-primary btn-full"
+          data-testid="plan-req-submit-btn"
+          data-i18n="request.submitBtn"
+        >Generate inquiry</button>
+      </form>
+
+      <div id="plan-request-result" class="plan-result-box" hidden data-testid="plan-request-result">
+        <p class="plan-result-title" data-i18n="request.resultTitle">Ready-to-send inquiry (0 bytes transmitted):</p>
+        <pre id="plan-request-preview" class="plan-preview-pre" data-testid="plan-request-preview"></pre>
+        <div class="plan-result-actions">
+          <button
+            type="button"
+            id="plan-req-copy-btn"
+            class="btn-lime"
+            data-testid="plan-req-copy-btn"
+            data-i18n="request.copyBtn"
+          >Copy inquiry</button>
+          <a
+            id="plan-req-mailto-link"
+            class="btn-primary"
+            href="mailto:kilkauciha@gmail.com"
+            data-testid="plan-req-mailto-link"
+            data-i18n="request.mailtoBtn"
+          >Open in mail client</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section
+    id="modal-privacy-policy"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="policy-modal-title"
+    hidden
+    data-testid="modal-privacy-policy"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="policy-modal-title" class="modal-title" data-i18n="policy.title">Privacy Policy Summary</h2>
+        <p class="modal-subtitle" data-i18n="policy.subtitle">Clear rules on text handling, static hosting, and optional device settings.</p>
+      </div>
+      <button
+        type="button"
+        id="close-policy-modal-btn"
+        class="drawer-close"
+        aria-label="Close"
+        data-i18n-aria="common.close"
+        data-testid="close-policy-modal-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <ul class="policy-list">
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="policy.item1Title">1. Zero retention of your text &amp; secrets</h3>
+          <p class="policy-item-body" data-i18n="policy.item1Body">Original text, AI replies, and active replacement mappings live exclusively in volatile tab RAM and clear on reset or page close. Static Netlify hosting writes standard HTTP access logs (IP, URL), which never contain your text.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="policy.item2Title">2. Zero network transmission of prompts</h3>
+          <p class="policy-item-body" data-i18n="policy.item2Body">Strict CSP (connect-src 'self') technically prevents third-party requests. Text and files are never uploaded or sent to analytics.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="policy.item3Title">3. Heuristic detection disclaimer</h3>
+          <p class="policy-item-body" data-i18n="policy.item3Body">Automatic detection relies on deterministic rules and heuristics and cannot guarantee 100% recall on arbitrary inputs. Always verify the sanitized output before sending it to third-party AI tools.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="policy.item4Title">4. Optional device preferences</h3>
+          <p class="policy-item-body" data-i18n="policy.item4Body">Language choice, theme preference, custom exclusion rules, and SHA-256 hash-only receipts may stay on your device and can be cleared anytime.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="policy.item5Title">5. Project owner contacts</h3>
+          <p id="policy-owner-contact-body" class="policy-item-body">For security, support, or partnerships: kilkauciha@gmail.com or Telegram @supv1rus.</p>
+        </li>
+      </ul>
+    </div>
+
+    <div class="modal-footer">
+      <span></span>
+      <button
+        type="button"
+        id="close-policy-footer-btn"
+        class="btn-secondary"
+        data-i18n="common.close"
+      >Close</button>
+    </div>
+  </section>
+
+  <section
+    id="modal-terms"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="terms-modal-title"
+    hidden
+    data-testid="modal-terms"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="terms-modal-title" class="modal-title" data-i18n="terms.title">Terms of Use</h2>
+        <p class="modal-subtitle" data-i18n="terms.subtitle">Conditions for using the free PromptVeil client-side web tool.</p>
+      </div>
+      <button
+        type="button"
+        id="close-terms-modal-btn"
+        class="drawer-close"
+        aria-label="Close"
+        data-i18n-aria="common.close"
+        data-testid="close-terms-modal-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <ul class="policy-list">
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="terms.item1Title">1. As-is free service</h3>
+          <p class="policy-item-body" data-i18n="terms.item1Body">PromptVeil is provided free of charge on an "as-is" basis without warranties for local prompt preparation.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="terms.item2Title">2. User review responsibility</h3>
+          <p class="policy-item-body" data-i18n="terms.item2Body">Pattern and heuristic detectors reduce accidental leakage risk but do not guarantee 100% coverage. You are responsible for reviewing masked text before pasting into external AI providers.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="terms.item3Title">3. Pro &amp; Team Waitlist</h3>
+          <p class="policy-item-body" data-i18n="terms.item3Body">Waitlist forms operate locally without network upload and serve solely for launch updates. Submitting an inquiry is not a binding offer and creates no payment obligation.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="terms.item4Title">4. Owner contacts</h3>
+          <p id="terms-owner-contact-body" class="policy-item-body">Project author: SupV1rus. Contact kilkauciha@gmail.com or Telegram @supv1rus with any questions.</p>
+        </li>
+      </ul>
+    </div>
+
+    <div class="modal-footer">
+      <span></span>
+      <button
+        type="button"
+        id="close-terms-footer-btn"
+        class="btn-secondary"
+        data-i18n="common.close"
+      >Close</button>
+    </div>
+  </section>
+</body>
+</html>

@@ -4,7 +4,7 @@
 
 import { copyWithFeedback } from "./clipboard.js";
 import { SITE_CONTACTS, buildMailtoHref } from "./contacts.js";
-import { getEl } from "./dom.js";
+import { clearCopyFeedback, getEl } from "./dom.js";
 import { getLang, t } from "./i18n.js";
 import { openDrawer } from "./render-drawers.js";
 
@@ -55,14 +55,31 @@ export function syncPlanRequestModalMeta(state, lang = getLang()) {
   }
 }
 
-export function openPlanRequestModal(plan, triggerEl, state, hideInlineAlert) {
-  state.activeRequestPlan = plan === "team" ? "team" : "pro";
+export function clearPlanRequestResult(state) {
   state.lastRequestSummary = "";
-  hideInlineAlert("plan-request-alert");
   const resultBox = getEl("plan-request-result");
   const previewEl = getEl("plan-request-preview");
+  const mailtoLink = getEl("plan-req-mailto-link");
   if (resultBox) resultBox.hidden = true;
   if (previewEl) previewEl.textContent = "";
+  if (mailtoLink) {
+    mailtoLink.setAttribute("href", buildMailtoHref(SITE_CONTACTS.email));
+  }
+}
+
+export function openPlanRequestModal(plan, triggerEl, state, hideInlineAlert) {
+  state.activeRequestPlan = plan === "team" ? "team" : "pro";
+  hideInlineAlert("plan-request-alert");
+  clearPlanRequestResult(state);
+  const nameInput = getEl("plan-req-name");
+  const contactInput = getEl("plan-req-contact");
+  const seatsInput = getEl("plan-req-seats");
+  const noteInput = getEl("plan-req-note");
+  if (nameInput) nameInput.value = "";
+  if (contactInput) contactInput.value = "";
+  if (seatsInput) seatsInput.value = "10";
+  if (noteInput) noteInput.value = "";
+  clearCopyFeedback(getEl("plan-req-copy-btn"), () => t("request.copyBtn"));
   syncPlanRequestModalMeta(state, getLang());
   openDrawer("modal-plan-request", triggerEl, state);
 }
@@ -85,6 +102,7 @@ export function bindPricingEvents({
   getEl("plan-request-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     hideInlineAlert("plan-request-alert");
+    clearPlanRequestResult(state);
     const lang = getLang();
     const isTeam = state.activeRequestPlan === "team";
     const nameVal = (getEl("plan-req-name")?.value || "").trim();

@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T16:25Z (`19:25+03:00`)  
-**Session Status:** E2E Testing Track Checkpoint COMPLETE; Stage A / M1 (`master @ 5636cd9`) COMPLETE; Stage B / M2 In-Progress (5-agent verification wave)  
-**Exact Stop Point:** E2E suite in `e2e_tests/` (`172` unique tests: `127` Tier 1–4 + `32` Tier 5 + `13` Acceptance) aligned to Stages A–E contracts with Linux CI `conftest.py` portability and `--mode self-test` PASS (`ALL CHECKS PASSED`). Stage A / M1 (`master @ 5636cd9`, Items 1–5) is committed; Stage B / M2 (Items 6–13) is implemented in working tree and currently undergoing its 5-agent verification wave (`app/` and `tests/` intentionally left unstaged in this checkpoint).
+**Checkpoint Date:** 2026-11-20T16:27Z (`19:27+03:00`)  
+**Session Status:** v2 Audit Remediation — Stage B / Milestone M2 (State, Validation & i18n Parity, Items 6–13) COMPLETE  
+**Exact Stop Point:** Stage B / M2 (Items 6–13) implemented, gate-verified (Gate Iteration 1 PASS: Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `CONFIRM`), and committed locally (`checkpoint: stage B state validation and i18n parity`). E2E suite in `e2e_tests/` (`172` unique tests) remains aligned in working tree (`self-test` PASS) and Stage A / M1 (`master @ 5636cd9`) is preserved below. Next planned stage: `M3 — Stage C: Mobile UX 390x844`.
 
 ---
 
@@ -81,19 +81,44 @@
 
 ## 5a. E2E Testing Track & Stage B (`M2`) Status (`2026-11-20T16:25Z` / `19:25+03:00`)
 
-### Completed (`Stage A / M1` + `E2E_TRACK`)
+### Completed (`Stage A / M1` + `E2E_TRACK` + `Stage B / M2`)
 - **Stage A / M1 (`master @ 5636cd9`):** Items 1–5 complete (`22/22` `pytest`, `11/11` JS unit tests).
 - **E2E Testing Track (`e2e_tests/`):**
   - `172` unique Playwright E2E tests (`127` Tier 1–4 + `32` Tier 5 + `13` Acceptance) aligned to Stages A–E audit remediation contracts (`e2e_tests/{conftest,locators,monitors,run_e2e,test_acceptance,test_tier1_features,test_tier2_boundaries,test_tier3_combinations,test_tier4_scenarios,test_tier5_adversarial}.py` and `test_cases.json`).
   - Added Linux CI portability in `e2e_tests/conftest.py`.
   - **`.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (exit `0`; `py_compile OK` 10 files, `pytest --collect-only OK` 172 unique tests, smoke/isolation/negative monitor checks OK).
-
-### In-Progress (`Stage B / M2`)
-- **Stage B / M2 (Items 6–13):** Implemented in working tree (`app/` and `tests/`, not staged in this E2E checkpoint); `23/23` `node:test` and `23/23` `pytest` passing; currently in 5-agent verification wave.
+  - *(Note: `e2e_tests/` modifications remain unstaged in the working tree outside M2 commit ownership.)*
 
 ---
 
-## 6. GitHub Remote & Push Instructions (Item 4)
+## 6. v2 Audit Remediation — Stage B (Milestone M2: State, Validation & i18n Parity, Items 6–13)
+
+### Completed Items (Items 6–13)
+1. **Item 6 — Counter Sync (`app/static/js/app.js`, `render-workbench.js`):**
+   - Synchronized `#sanitized-metrics` (`[data-testid="telemetry-masked-count"]`, `data-count`), `[data-category="ALL"]`, `#rehydrate-ready-badge`, and `#vault-ready-meta` to active `result?.maskedCount ?? 0` across category, item, custom-word, and UUID toggles while preserving `countsByCategory` per category chip and `hasVaultEntries` for Step 2 rehydration.
+2. **Items 7 & 8 — Plan Modal Reset & Toast Layering (`app/static/js/pricing.js`, `app/static/css/components.css`):**
+   - Added `clearPlanRequestResult(state)` and reset `#plan-req-name`, `#plan-req-contact`, `#plan-req-note`, `#plan-req-seats` (`"10"`), `#plan-req-copy-btn` copy feedback, `#plan-request-alert`, and `#plan-request-result` on every modal open/plan switch and prior to validation on submit.
+   - Updated `.status-banner` (`#global-status-banner`) to `position: fixed; z-index: 80` with opaque `--bg-surface` layering (above `.modal-dialog` `z-index: 60` and `.drawer-backdrop` `z-index: 40`) so plan-request and `"Сессия очищена в 0"` toasts render cleanly above modal backdrops on desktop and mobile (`390×844`).
+3. **Items 9, 10 & 11 — `aria-pressed`, Custom Words Validation & Copy-State Reset (`app/static/js/render-workbench.js`, `app.js`, `dom.js`, `modals.js`, `index.html`):**
+   - Fixed inverted `aria-pressed` on `#toggle-reveal-btn` (`"false"` when visible, `"true"` when hidden).
+   - Added `novalidate` on `#add-rule-form` and `aria-required="true"` on `#rule-term-input`; focused `#rule-term-input` on `errorEmpty`/`errorDuplicate` and cleared stale `rulebook-alert` on input, category/case toggle, rule deletion, and drawer close.
+   - Added `clearCopyFeedback()` in `dom.js` (with disabled-button guard in `showCopyFeedback`) and cleared `"Скопировано ✓"` immediately on `"Очистить"`, `resetSessionToZero()`, and empty output.
+4. **Item 12 — `pluralizeRu` & EN Pluralization in Proof Modal (`app/static/js/i18n.js`, `modals.js`):**
+   - Split unit nouns into `{unit}` / `{sessionUnit}` / `{prefUnit}` placeholders and added `pluralizeEn` + `pluralizeCount` alongside `pluralizeRu` for trackers, service keys, storage keys, requests, and bytes.
+5. **Item 13 — EN Parity, `/en/index.html`, `hreflang` & Tracker Selector Fix (`app/static/en/index.html`, `app/static/index.html`, `app/static/sitemap.xml`, `app/static/js/{i18n,modals,storage,privacy-proof}.js`, `tests/test_server.py`):**
+   - Added static English route `app/static/en/index.html` (`<html lang="en">`, root-relative `/...` assets, canonical `/en/`), `hreflang="ru"` / `hreflang="en"` / `hreflang="x-default"` alternates, and `sitemap.xml` `xhtml:link` alternates.
+   - Synced meta description, Open Graph, Twitter tags, and `#theme-toggle-btn` `aria-label`/`title` on language switch; prioritized `/^\/en(?:\/|$)/i` in `loadLanguage()`; registered `"/sw.js"`; removed RU-only INN/SNILS/OGRN/BIK/OMS items from EN Free tier copy.
+   - Applied the 1-line `:not([rel="alternate"])` fix in `app/static/js/privacy-proof.js:108` (`'script[src], link[href]:not([rel="canonical"]):not([rel="alternate"]), img[src], iframe[src]'`) so `hreflang` alternate links are not miscounted as external DOM trackers.
+
+### Stage B Verification Results
+- **Gate Iteration 1 Result:** **PASS** (Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `CONFIRM`).
+- **`pytest tests\test_server.py -v`:** **`23/23` passed** (`0` failures).
+- **`node --test tests\js\*.test.mjs`:** **`23/23` passed** (`6` suites across `detector.test.mjs` and `state-i18n.test.mjs`, `0` failures).
+- **`node --check` (8 modified JS modules):** **`8/8` OK** (`0` syntax errors).
+
+---
+
+## 7. GitHub Remote & Push Instructions (Item 4)
 No GitHub credentials or `origin` remote are configured in this local environment. Once ready to publish the repository to `https://github.com/Aquanti/promptveil`, run:
 
 ```powershell
@@ -106,10 +131,9 @@ git push -u origin master
 
 ---
 
-## 7. Next Steps
-1. **Complete `M2` (Stage B) gate & commit:** Finalize 5-agent verification wave for Items 6–13 and commit `app/` + `tests/`.
-2. **`M3` — Mobile UX (`390×844`, Items 14–18):** Compact header, shortened Step 2 tab label, `>= 44px` tap targets, collapsible vault + sticky CTA bar, drawer `min(100%, ...)` width fix.
-3. **`M4` — Bundling / SW / COOP-CORP / CI (Items 19–27):** `esbuild` CSS/JS bundling, immutable cache headers, lazy i18n & `<template>` modals, SW update banner, COOP/CORP headers, dead code removal, modularization, GitHub Actions CI workflow.
-4. **`M5` — Stage E Growth Features:** Safe static client-side growth items (Items 28, 31–34, 36 + out-of-scope roadmap notes).
-5. **`M6` — Full Live E2E (`172` tests):** Run `pytest`, `node --test`, `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all` (`172/172` with `0` failures).
-6. **`M7` — Production Netlify Deploy & Delivery:** Deploy to production Netlify + confirm via `netlify-open-deployments`, verify live `https://promptveil.netlify.app` in browser, run Desktop & Mobile Lighthouse outside repo, update `PROGRESS.md` + commit, and send completion email to `kilkauciha@gmail.com`.
+## 8. Next Steps
+1. **Next Planned Stage — `M3 — Stage C: Mobile UX 390x844` (Items 14–18):** Compact header (`<= 64px`, `44×44` lock+dot badge, single RU/EN toggle, `"⋯"` overflow menu), shortened Step 2 tab label, `>= 44px` tap targets, collapsible vault + sticky CTA bar, drawer `min(100%, ...)` width fix.
+2. **`M4` — Bundling / SW / COOP-CORP / CI (Items 19–27):** `esbuild` CSS/JS bundling, immutable cache headers, lazy i18n & `<template>` modals, SW update banner, COOP/CORP headers, dead code removal, modularization, GitHub Actions CI workflow.
+3. **`M5` — Stage E Growth Features:** Safe static client-side growth items (Items 28, 31–34, 36 + out-of-scope roadmap notes).
+4. **`M6` — Full Live E2E (`172` tests):** Run `pytest`, `node --test`, `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all` (`172/172` with `0` failures).
+5. **`M7` — Production Netlify Deploy & Delivery:** Deploy to production Netlify + confirm via `netlify-open-deployments`, verify live `https://promptveil.netlify.app` in browser, run Desktop & Mobile Lighthouse outside repo, update `PROGRESS.md` + commit, and send completion email to `kilkauciha@gmail.com`.

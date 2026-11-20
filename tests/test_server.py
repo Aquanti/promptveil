@@ -220,6 +220,29 @@ def test_root_serves_index_html_with_relative_assets_and_csp() -> None:
     assert './js/app.js"' in body
 
 
+def test_en_route_serves_english_index_with_root_assets_and_headers() -> None:
+    """Verify GET/HEAD /en/ serves en/index.html with root-relative assets, hreflang, and security headers."""
+    client = TestClient(app)
+    for method in ("GET", "HEAD"):
+        response = client.request(method, "/en/")
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        _assert_security_headers(response.headers)
+        if method == "HEAD":
+            assert response.content == b""
+        else:
+            body = response.text
+            assert '<html lang="en">' in body
+            assert 'href="/favicon.svg"' in body
+            assert 'href="/styles.css"' in body
+            assert 'src="/js/app.js"' in body
+            assert 'href="/manifest.webmanifest"' in body
+            assert 'rel="canonical" href="https://promptveil.netlify.app/en/"' in body
+            assert 'hreflang="ru" href="https://promptveil.netlify.app/"' in body
+            assert 'hreflang="en" href="https://promptveil.netlify.app/en/"' in body
+            assert 'hreflang="x-default" href="https://promptveil.netlify.app/"' in body
+
+
 def test_static_assets_served_from_root() -> None:
     """Verify CSS, SVG favicon, ES6 modules, and any static assets resolve with expected MIME & headers."""
     client = TestClient(app)
@@ -312,9 +335,6 @@ def test_zero_egress_no_sanitize_or_rehydrate_endpoints() -> None:
 
 def test_csp_strict_no_external_urls_or_inline_code() -> None:
     """Verify static HTML/CSS/JS comply with strict CSP and zero-network guarantees."""
-    index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-
-    # No external http(s)/ws(s) URLs anywhere in HTML (allow SVG xmlns, own-origin SEO meta, and strictly allowlisted external <a href>).
     allowlisted_external_links = {
         "https://t.me/supv1rus",
         "https://github.com/Aquanti",
@@ -325,40 +345,56 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
         "https://alice.yandex.ru/",
         "https://claude.ai/",
     }
-    for link_match in re.finditer(r"<a\b([^>]*)>", index_html, re.IGNORECASE | re.DOTALL):
-        attrs = link_match.group(1)
-        href_match = re.search(r"""href\s*=\s*['"]([^'"]+)['"]""", attrs, re.IGNORECASE)
-        if not href_match:
-            continue
-        href = href_match.group(1)
-        if re.match(r"^(?:https?|wss?)://", href, re.IGNORECASE):
-            assert href in allowlisted_external_links, f"Disallowed external <a href>: {href!r}"
-            assert re.search(r"""target\s*=\s*['"]_blank['"]""", attrs, re.IGNORECASE), (
-                f"External link {href!r} must open in new tab target='_blank'"
-            )
-            rel_match = re.search(r"""rel\s*=\s*['"]([^'"]+)['"]""", attrs, re.IGNORECASE)
-            rel_tokens = set((rel_match.group(1) if rel_match else "").lower().split())
-            assert {"noopener", "noreferrer"}.issubset(rel_tokens), (
-                f"External link {href!r} must include rel='noopener noreferrer'"
-            )
+    for html_path in (STATIC_DIR / "index.html", STATIC_DIR / "en" / "index.html"):
+        html_src = html_path.read_text(encoding="utf-8")
+        rel_html = html_path.relative_to(STATIC_DIR).as_posix()
 
-    html_cleaned = re.sub(
-        r"""xmlns\s*=\s*['"]http://www\.w3\.org/2000/svg['"]""",
-        "",
-        index_html,
-        flags=re.IGNORECASE,
-    )
-    html_cleaned = re.sub(
-        r"""<(?:link|meta)\b[^>]*(?:rel\s*=\s*['"]canonical['"]|property\s*=\s*['"]og:(?:url|image)['"]|name\s*=\s*['"]twitter:image['"])[^>]*https://promptveil\.netlify\.app/(?:og-image\.png)?['"][^>]*>""",
-        "",
-        html_cleaned,
-        flags=re.IGNORECASE | re.DOTALL,
-    )
-    for allowed_href in allowlisted_external_links:
-        html_cleaned = html_cleaned.replace(f'href="{allowed_href}"', 'href=""')
-    assert not re.search(r"(?:https?|wss?)://", html_cleaned, re.IGNORECASE), (
-        "External http(s)/ws(s) URL found in app/static/index.html"
-    )
+        for link_match in re.finditer(r"<a\b([^>]*)>", html_src, re.IGNORECASE | re.DOTALL):
+            attrs = link_match.group(1)
+            href_match = re.search(r"""href\s*=\s*['"]([^'"]+)['"]""", attrs, re.IGNORECASE)
+            if not href_match:
+                continue
+            href = href_match.group(1)
+            if re.match(r"^(?:https?|wss?)://", href, re.IGNORECASE):
+                assert href in allowlisted_external_links, f"Disallowed external <a href> in {rel_html}: {href!r}"
+                assert re.search(r"""target\s*=\s*['"]_blank['"]""", attrs, re.IGNORECASE), (
+                    f"External link {href!r} in {rel_html} must open in new tab target='_blank'"
+                )
+                rel_match = re.search(r"""rel\s*=\s*['"]([^'"]+)['"]""", attrs, re.IGNORECASE)
+                rel_tokens = set((rel_match.group(1) if rel_match else "").lower().split())
+                assert {"noopener", "noreferrer"}.issubset(rel_tokens), (
+                    f"External link {href!r} in {rel_html} must include rel='noopener noreferrer'"
+                )
+
+        html_cleaned = re.sub(
+            r"""xmlns\s*=\s*['"]http://www\.w3\.org/2000/svg['"]""",
+            "",
+            html_src,
+            flags=re.IGNORECASE,
+        )
+        html_cleaned = re.sub(
+            r"""<(?:link|meta)\b[^>]*(?:rel\s*=\s*['"](?:canonical|alternate)['"]|property\s*=\s*['"]og:(?:url|image)['"]|name\s*=\s*['"]twitter:image['"])[^>]*https://promptveil\.netlify\.app/(?:en/|og-image\.png)?['"][^>]*>""",
+            "",
+            html_cleaned,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        for allowed_href in allowlisted_external_links:
+            html_cleaned = html_cleaned.replace(f'href="{allowed_href}"', 'href=""')
+        assert not re.search(r"(?:https?|wss?)://", html_cleaned, re.IGNORECASE), (
+            f"External http(s)/ws(s) URL found in app/static/{rel_html}"
+        )
+        # Every <script> tag must have src= and empty inline body.
+        for script_match in re.finditer(r"<script\b([^>]*)>(.*?)</script>", html_src, re.IGNORECASE | re.DOTALL):
+            attrs, body = script_match.groups()
+            assert re.search(r"\bsrc\s*=", attrs, re.IGNORECASE), (
+                f"Inline <script> without src is forbidden by CSP in {rel_html}"
+            )
+            assert body.strip() == "", f"Non-empty <script> body is forbidden by CSP in {rel_html}"
+        # No <style> tags, inline style attributes, or inline event handlers.
+        assert not re.search(r"<style\b", html_src, re.IGNORECASE), f"<style> found in {rel_html}"
+        assert not re.search(r"\bstyle\s*=", html_src, re.IGNORECASE), f"style= found in {rel_html}"
+        assert not re.search(r"\bon[a-z]+\s*=", html_src, re.IGNORECASE), f"on*= found in {rel_html}"
+
     favicon_without_svg_ns = re.sub(
         r"""xmlns\s*=\s*['"]http://www\.w3\.org/2000/svg['"]""",
         "",
@@ -368,15 +404,6 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
     assert not re.search(r"(?:https?|wss?)://", favicon_without_svg_ns, re.IGNORECASE), (
         "External http(s)/ws(s) URL found in app/static/favicon.svg"
     )
-    # Every <script> tag must have src= and empty inline body.
-    for script_match in re.finditer(r"<script\b([^>]*)>(.*?)</script>", index_html, re.IGNORECASE | re.DOTALL):
-        attrs, body = script_match.groups()
-        assert re.search(r"\bsrc\s*=", attrs, re.IGNORECASE), "Inline <script> without src is forbidden by CSP"
-        assert body.strip() == "", "Non-empty <script> body is forbidden by CSP"
-    # No <style> tags, inline style attributes, or inline event handlers.
-    assert not re.search(r"<style\b", index_html, re.IGNORECASE)
-    assert not re.search(r"\bstyle\s*=", index_html, re.IGNORECASE)
-    assert not re.search(r"\bon[a-z]+\s*=", index_html, re.IGNORECASE)
 
     # No external http(s)/ws(s) or protocol-relative URLs in any CSS file.
     all_css = sorted(STATIC_DIR.rglob("*.css"))
@@ -695,6 +722,7 @@ def test_r2_obsolete_local_browser_nagging_removed() -> None:
 def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
     """Verify Zero-Retention Proof, UX paste/combo controls, honest waitlist pricing, trust footer, and contacts."""
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    en_html = (STATIC_DIR / "en" / "index.html").read_text(encoding="utf-8")
     i18n_js = (STATIC_DIR / "js" / "i18n.js").read_text(encoding="utf-8")
     contacts_js = (STATIC_DIR / "js" / "contacts.js").read_text(encoding="utf-8")
     proof_js = (STATIC_DIR / "js" / "privacy-proof.js").read_text(encoding="utf-8")
@@ -722,23 +750,42 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
         'id="proof-repo-link"',
         'id="detect-uuid-toggle"',
         'id="audit-persist-toggle"',
+        'id="toggle-reveal-btn"',
+        'id="add-rule-form"',
+        'id="theme-toggle-btn"',
     ):
         assert hook in index_html, f"Missing required R2-R5 hook {hook} in index.html"
+        assert hook in en_html, f"Missing required R2-R5 hook {hook} in en/index.html"
 
     # Unimplemented billing claims must not remain.
     for forbidden_claim in ("30 дней бесплатно", "30 days free", "490 ₽", "390 ₽", "1 990 ₽", "1 590 ₽", "billing-month-btn"):
         assert forbidden_claim not in index_html, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in index.html"
+        assert forbidden_claim not in en_html, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in en/index.html"
         assert forbidden_claim not in i18n_js, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in i18n.js"
 
     assert "0 логов ваших текстов" in index_html
+    assert "0 Text Logs" in en_html
     assert "0 логов ваших текстов" in i18n_js
     assert "0 Text Logs" in i18n_js
+
+    free_card_match = re.search(
+        r'data-testid="pricing-card-free".*?</article>',
+        en_html,
+        re.DOTALL,
+    )
+    assert free_card_match is not None
+    en_free_card = free_card_match.group(0)
+    assert "$0" in en_free_card
+    for ru_only_term in ("INN", "SNILS", "ИНН", "СНИЛС"):
+        assert ru_only_term not in en_free_card, f"EN Free card must not mention {ru_only_term!r}"
 
     for contact_literal in ("@supv1rus", "kilkauciha@gmail.com", "github.com/Aquanti", "SupV1rus"):
         assert contact_literal in contacts_js, f"Missing owner contact {contact_literal!r} in contacts.js"
         assert contact_literal in index_html, f"Missing fallback owner contact {contact_literal!r} in index.html"
+        assert contact_literal in en_html, f"Missing fallback owner contact {contact_literal!r} in en/index.html"
 
     assert 'href="mailto:kilkauciha@gmail.com"' in index_html
+    assert 'href="mailto:kilkauciha@gmail.com"' in en_html
     assert "runZeroRetentionSelfTest" in proof_js
     assert "securitypolicyviolation" in proof_js
 
@@ -752,6 +799,9 @@ def test_seo_pwa_static_assets_and_meta_tags() -> None:
         'name="description"',
         'name="theme-color" content="#051C12"',
         'rel="canonical" href="https://promptveil.netlify.app/"',
+        'rel="alternate" hreflang="ru" href="https://promptveil.netlify.app/"',
+        'rel="alternate" hreflang="en" href="https://promptveil.netlify.app/en/"',
+        'rel="alternate" hreflang="x-default" href="https://promptveil.netlify.app/"',
         'rel="manifest" href="./manifest.webmanifest"',
         'rel="apple-touch-icon"',
         'property="og:type" content="website"',
@@ -765,6 +815,8 @@ def test_seo_pwa_static_assets_and_meta_tags() -> None:
     routes = (
         ("/robots.txt", "text/plain", b"Sitemap: https://promptveil.netlify.app/sitemap.xml"),
         ("/sitemap.xml", "application/xml", b"<loc>https://promptveil.netlify.app/</loc>"),
+        ("/sitemap.xml", "application/xml", b"<loc>https://promptveil.netlify.app/en/</loc>"),
+        ("/sitemap.xml", "application/xml", b'hreflang="en"'),
         ("/404.html", "text/html", b"404"),
         ("/manifest.webmanifest", "application/manifest+json", b'"short_name": "PromptVeil"'),
     )
@@ -827,6 +879,10 @@ def test_service_worker_and_stage2_p1_contracts() -> None:
         'id="proof-offline-metric"',
     ):
         assert hook in index_html, f"Missing Stage 2 hook {hook} in index.html"
+
+    modals_js = (STATIC_DIR / "js" / "modals.js").read_text(encoding="utf-8")
+    assert 'register("/sw.js")' in modals_js
+    assert 'register("./sw.js")' not in modals_js
 
     assert '[data-theme="dark"]' in tokens_css
     assert "prefers-color-scheme: dark" in tokens_css

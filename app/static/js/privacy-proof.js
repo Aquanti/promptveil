@@ -105,7 +105,7 @@ export function runZeroRetentionSelfTest({
 
   let externalDomElements = 0;
   const domResourceNodes = document.querySelectorAll(
-    'script[src], link[href]:not([rel="canonical"]), img[src], iframe[src]'
+    'script[src], link[href]:not([rel="canonical"]):not([rel="alternate"]), img[src], iframe[src]'
   );
   for (const node of domResourceNodes) {
     const attrVal = node.getAttribute("src") || node.getAttribute("href") || "";

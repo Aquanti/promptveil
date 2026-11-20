@@ -5,7 +5,7 @@
 import { copyWithFeedback } from "./clipboard.js";
 import { SITE_CONTACTS, buildMailtoHref } from "./contacts.js";
 import { clearEl, createEl, getEl, handleDrawerKeydown } from "./dom.js";
-import { getLang, t } from "./i18n.js";
+import { getLang, normalizeLang, pluralizeCount, t } from "./i18n.js";
 import { runZeroRetentionSelfTest } from "./privacy-proof.js";
 import { closeDrawers, getOpenDialogEl, openDrawer } from "./render-drawers.js";
 import { loadThemePreference, saveThemePreference } from "./storage.js";
@@ -31,8 +31,11 @@ export function updateThemeToggleButton(theme, lang = getLang()) {
   const btn = getEl("theme-toggle-btn");
   if (!btn) return;
   const isDark = theme === "dark";
-  const label = t(isDark ? "theme.toLight" : "theme.toDark", {}, lang);
+  const key = isDark ? "theme.toLight" : "theme.toDark";
+  const label = t(key, {}, lang);
   btn.setAttribute("aria-pressed", isDark ? "true" : "false");
+  btn.setAttribute("data-i18n-aria", key);
+  btn.setAttribute("data-i18n-title", key);
   btn.setAttribute("aria-label", label);
   btn.setAttribute("title", label);
   const pathEl = btn.querySelector("path");
@@ -47,7 +50,7 @@ export function applyTheme(nextTheme, state, { persist = false } = {}) {
   if (typeof document !== "undefined") {
     document.documentElement.dataset.theme = state.theme;
   }
-  updateThemeToggleButton(state.theme, getLang());
+  updateThemeToggleButton(state.theme, state.lang || getLang());
   return state.theme;
 }
 
@@ -100,22 +103,59 @@ export function renderPrivacyProofModal(state, lang = getLang()) {
   if (listEl) {
     clearEl(listEl);
 
+    const isEn = normalizeLang(lang) === "en";
+    const trackerUnit = pluralizeCount(
+      lang,
+      report.trackers.trackerCount,
+      isEn
+        ? { one: "tracker", many: "trackers" }
+        : { one: "трекер", few: "трекера", many: "трекеров" }
+    );
+    const netUnit = pluralizeCount(
+      lang,
+      report.network.textRequests,
+      isEn
+        ? { one: "request", many: "requests" }
+        : { one: "запрос", few: "запроса", many: "запросов" }
+    );
+    const bytesUnit = pluralizeCount(
+      lang,
+      report.storage.storedTextBytes,
+      isEn
+        ? { one: "byte", many: "bytes" }
+        : { one: "байт", few: "байта", many: "байт" }
+    );
+    const sessionUnit = pluralizeCount(
+      lang,
+      report.storage.sessionStorageKeys,
+      isEn
+        ? { one: "key", many: "keys" }
+        : { one: "ключ", few: "ключа", many: "ключей" }
+    );
+    const prefUnit = pluralizeCount(
+      lang,
+      report.storage.allowedPrefKeysPresent,
+      isEn
+        ? { one: "non-PII key", many: "non-PII keys" }
+        : { one: "служебный ключ", few: "служебных ключа", many: "служебных ключей" }
+    );
+
     const transportText = report.trackers.isHttps
       ? t("proof.transportHttps", {}, lang)
       : report.trackers.isLocalStand
         ? t("proof.transportLocal", {}, lang)
         : t("proof.transportHttp", {}, lang);
     const trackersBadge = report.trackers.isHttps
-      ? t("proof.trackersMetricHttps", { trackers: report.trackers.trackerCount }, lang)
+      ? t("proof.trackersMetricHttps", { trackers: report.trackers.trackerCount, unit: trackerUnit }, lang)
       : report.trackers.isLocalStand
-        ? t("proof.trackersMetricLocal", { trackers: report.trackers.trackerCount }, lang)
-        : t("proof.trackersMetricHttp", { trackers: report.trackers.trackerCount }, lang);
+        ? t("proof.trackersMetricLocal", { trackers: report.trackers.trackerCount, unit: trackerUnit }, lang)
+        : t("proof.trackersMetricHttp", { trackers: report.trackers.trackerCount, unit: trackerUnit }, lang);
 
     const rows = [
       {
         ok: report.network.ok,
         title: t("proof.netTitle", {}, lang),
-        metric: t("proof.netMetric", { count: report.network.textRequests }, lang),
+        metric: t("proof.netMetric", { count: report.network.textRequests, unit: netUnit }, lang),
         detail: t(
           "proof.netDetail",
           {
@@ -130,14 +170,16 @@ export function renderPrivacyProofModal(state, lang = getLang()) {
       {
         ok: report.storage.ok,
         title: t("proof.storageTitle", {}, lang),
-        metric: t("proof.storageMetric", { bytes: report.storage.storedTextBytes }, lang),
+        metric: t("proof.storageMetric", { bytes: report.storage.storedTextBytes, unit: bytesUnit }, lang),
         detail: t(
           "proof.storageDetail",
           {
             sessionKeys: report.storage.sessionStorageKeys,
+            sessionUnit,
             cookies: report.storage.cookieCount,
             unknownKeys: report.storage.unknownStorageKeys,
             prefKeys: report.storage.allowedPrefKeysPresent,
+            prefUnit,
           },
           lang
         ),
@@ -262,7 +304,7 @@ export function renderContactsAndPolicy(lang = getLang()) {
 
 export function registerOfflineServiceWorker() {
   if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
 }
 
@@ -317,7 +359,10 @@ export function bindModalAndThemeEvents({
     "drawer-backdrop",
   ];
   for (const id of closeIds) {
-    getEl(id)?.addEventListener("click", () => closeDrawers(true, state));
+    getEl(id)?.addEventListener("click", () => {
+      hideInlineAlert("rulebook-alert");
+      closeDrawers(true, state);
+    });
   }
 
   const contactCopyTargets = [
@@ -338,6 +383,9 @@ export function bindModalAndThemeEvents({
 
   document.addEventListener("keydown", (event) => {
     const openDialogEl = getOpenDialogEl();
-    handleDrawerKeydown(event, openDialogEl, () => closeDrawers(true, state));
+    handleDrawerKeydown(event, openDialogEl, () => {
+      hideInlineAlert("rulebook-alert");
+      closeDrawers(true, state);
+    });
   });
 }

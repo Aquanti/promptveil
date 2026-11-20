@@ -2,6 +2,7 @@ import test, { afterEach, beforeEach, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import { CATEGORIES, CATEGORY_MAP, detectEntities } from "../../app/static/js/detector.js";
+import { PRESETS } from "../../app/static/js/presets.js";
 import { SessionVault } from "../../app/static/js/vault.js";
 import {
   AUDIT_PERSIST_STORAGE_KEY,
@@ -463,5 +464,121 @@ describe("PromptVeil M1 Audit Journal RAM-Only Default (Item 5)", () => {
     mockStorage.setItem(AUDIT_STORAGE_KEY, JSON.stringify([{ action: "SANITIZE" }]));
     purgeUnoptedAuditStorage();
     assert.equal(mockStorage.getItem(AUDIT_STORAGE_KEY), null);
+  });
+});
+
+describe("PromptVeil M2 Counter Sync & Toggle Stability (Item 6)", () => {
+  test("prod_env_trace aggregates repeated IPv4 in vaultEntries while counting occurrences in maskedCount", () => {
+    const preset = PRESETS.find((item) => item.id === "prod_env_trace");
+    assert.ok(preset);
+    const vault = new SessionVault();
+    const res = vault.sanitize(preset.text);
+
+    assert.equal(res.totalCount, 9);
+    assert.equal(res.maskedCount, 9);
+    assert.equal(res.skippedCount, 0);
+    assert.equal(res.vaultEntries.length, 8);
+    assert.equal(res.countsByCategory.IPV4, 2);
+
+    const ipEntry = res.vaultEntries.find((entry) => entry.value === "192.168.10.250");
+    assert.ok(ipEntry);
+    assert.equal(ipEntry.token, "[IP_1]");
+    assert.equal(ipEntry.count, 2);
+
+    const categorySum = Object.values(res.countsByCategory).reduce((acc, n) => acc + n, 0);
+    assert.equal(categorySum, res.maskedCount);
+  });
+
+  test("Category toggle OFF/ON updates maskedCount while preserving totalCount and token IDs", () => {
+    const sample = "a@example.com a@example.com 192.0.2.5 Секрет";
+    const rules = [
+      { id: "r1", term: "Секрет", category: "CUSTOM", caseSensitive: false, enabled: true },
+    ];
+    const vault = new SessionVault();
+
+    const initial = vault.sanitize(sample, rules);
+    assert.equal(initial.totalCount, 4);
+    assert.equal(initial.maskedCount, 4);
+    assert.equal(initial.vaultEntries.find((e) => e.value === "192.0.2.5")?.token, "[IP_1]");
+
+    vault.toggleCategory("IPV4", false);
+    const ipv4Off = vault.sanitize(sample, rules);
+    assert.equal(ipv4Off.totalCount, 4);
+    assert.equal(ipv4Off.maskedCount, 3);
+    assert.equal(ipv4Off.skippedCount, 1);
+    assert.ok(ipv4Off.sanitizedText.includes("192.0.2.5"));
+
+    vault.toggleCategory("IPV4", true);
+    const ipv4On = vault.sanitize(sample, rules);
+    assert.equal(ipv4On.maskedCount, 4);
+    assert.equal(ipv4On.vaultEntries.find((e) => e.value === "192.0.2.5")?.token, "[IP_1]");
+  });
+
+  test("Vault item toggle OFF/ON on repeated value decrements and restores maskedCount", () => {
+    const sample = "a@example.com a@example.com 192.0.2.5 Секрет";
+    const rules = [
+      { id: "r1", term: "Секрет", category: "CUSTOM", caseSensitive: false, enabled: true },
+    ];
+    const vault = new SessionVault();
+    const first = vault.sanitize(sample, rules);
+    assert.equal(first.maskedCount, 4);
+
+    vault.toggleValue("EMAIL", "a@example.com", false);
+    const emailOff = vault.sanitize(sample, rules);
+    assert.equal(emailOff.maskedCount, 2);
+    assert.equal(emailOff.skippedCount, 2);
+    assert.equal(emailOff.vaultEntries.find((e) => e.value === "a@example.com")?.token, "[EMAIL_1]");
+
+    vault.toggleValue("EMAIL", "a@example.com", true);
+    const emailOn = vault.sanitize(sample, rules);
+    assert.equal(emailOn.maskedCount, 4);
+    assert.equal(emailOn.vaultEntries.find((e) => e.value === "a@example.com")?.token, "[EMAIL_1]");
+  });
+
+  test("Custom rule toggle OFF / delete and UUID option toggle update maskedCount cleanly", () => {
+    const sample = "a@example.com Секрет";
+    const rule = {
+      id: "r1",
+      term: "Секрет",
+      category: "CUSTOM",
+      caseSensitive: false,
+      enabled: true,
+    };
+    const vault = new SessionVault();
+
+    const active = vault.sanitize(sample, [rule]);
+    assert.equal(active.maskedCount, 2);
+    assert.equal(active.countsByCategory.CUSTOM, 1);
+
+    const disabled = vault.sanitize(sample, [{ ...rule, enabled: false }]);
+    assert.equal(disabled.maskedCount, 1);
+    assert.equal(disabled.totalCount, 1);
+    assert.equal(disabled.countsByCategory.CUSTOM, 0);
+
+    const deleted = vault.sanitize(sample, []);
+    assert.equal(deleted.maskedCount, 1);
+
+    const reEnabled = vault.sanitize(sample, [rule]);
+    assert.equal(reEnabled.maskedCount, 2);
+    assert.equal(reEnabled.vaultEntries.find((e) => e.value === "Секрет")?.token, "[CUSTOM_1]");
+
+    const envPreset = PRESETS.find((item) => item.id === "prod_env_trace");
+    const envVault = new SessionVault();
+    assert.equal(envVault.sanitize(envPreset.text, [], { detectUuid: false }).maskedCount, 9);
+    assert.equal(envVault.sanitize(envPreset.text, [], { detectUuid: true }).maskedCount, 10);
+    assert.equal(envVault.sanitize(envPreset.text, [], { detectUuid: false }).maskedCount, 9);
+  });
+
+  test("Step 2 rehydrate preserves active tokens and previously copied tokens after partial toggle", () => {
+    const vault = new SessionVault();
+    vault.sanitize("a@example.com b@example.com");
+    vault.toggleValue("EMAIL", "a@example.com", false);
+    vault.sanitize("a@example.com b@example.com");
+
+    const restoredPartial = vault.rehydrate("Sent to a@example.com and [EMAIL_2].");
+    assert.equal(restoredPartial.rehydratedText, "Sent to a@example.com and b@example.com.");
+
+    const restoredEarlyCopy = vault.rehydrate("Copied earlier: [EMAIL_1]");
+    assert.equal(restoredEarlyCopy.rehydratedText, "Copied earlier: a@example.com");
   });
 });

@@ -78,7 +78,7 @@ export function showCopyFeedback(
   defaultTextOrGetter,
   durationMs = 2000
 ) {
-  if (!buttonEl) return;
+  if (!buttonEl || buttonEl.disabled) return;
   const existingTimer = copyFeedbackTimers.get(buttonEl);
   if (existingTimer) {
     window.clearTimeout(existingTimer);
@@ -97,6 +97,23 @@ export function showCopyFeedback(
     }
   }, durationMs);
   copyFeedbackTimers.set(buttonEl, timer);
+}
+
+export function clearCopyFeedback(buttonEl, defaultTextOrGetter = null) {
+  if (!buttonEl) return;
+  const existingTimer = copyFeedbackTimers.get(buttonEl);
+  if (existingTimer) {
+    window.clearTimeout(existingTimer);
+    copyFeedbackTimers.delete(buttonEl);
+  }
+  buttonEl.removeAttribute("data-copied");
+  const resolvedDefault =
+    typeof defaultTextOrGetter === "function"
+      ? defaultTextOrGetter()
+      : defaultTextOrGetter;
+  if (resolvedDefault) {
+    buttonEl.textContent = resolvedDefault;
+  }
 }
 
 export function downloadTextFile(filename, content, mimeType = "text/plain;charset=utf-8") {
