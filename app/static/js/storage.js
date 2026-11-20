@@ -7,10 +7,12 @@
 export const RULES_STORAGE_KEY = "promptveil_rules_v1";
 export const AUDIT_STORAGE_KEY = "promptveil_audit_v1";
 export const LANG_STORAGE_KEY = "promptveil_lang_v1";
+export const THEME_STORAGE_KEY = "promptveil_theme_v1";
 export const MAX_AUDIT_ENTRIES = 200;
 
 const DEFAULT_LANGUAGE = "ru";
 const VALID_LANGUAGES = new Set(["ru", "en"]);
+const VALID_THEMES = new Set(["light", "dark"]);
 
 const memoryFallbackStore = new Map();
 const storageWarningListeners = new Set();
@@ -514,5 +516,23 @@ export function loadLanguage() {
 export function saveLanguage(lang) {
   const normalized = normalizeLanguage(lang);
   writeStorageItem(LANG_STORAGE_KEY, normalized);
+  return normalized;
+}
+
+export function loadThemePreference() {
+  const raw = readStorageItem(THEME_STORAGE_KEY);
+  if (typeof raw === "string") {
+    const clean = raw.trim().toLowerCase();
+    if (VALID_THEMES.has(clean)) {
+      return clean;
+    }
+  }
+  return null;
+}
+
+export function saveThemePreference(theme) {
+  const clean = typeof theme === "string" ? theme.trim().toLowerCase() : "";
+  const normalized = VALID_THEMES.has(clean) ? clean : "light";
+  writeStorageItem(THEME_STORAGE_KEY, normalized);
   return normalized;
 }

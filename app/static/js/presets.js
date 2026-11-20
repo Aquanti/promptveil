@@ -125,8 +125,8 @@ Diagnose why worker 192.168.10.250 failed auth on release v2.4.1.0.`,
       en: "Russian Contract & IDs",
     },
     descriptionByLang: {
-      ru: "Карточка с ИНН, СНИЛС, паспортом РФ, ОГРН, БИК, счетами р/с и к/с, а также полисом ОМС.",
-      en: "Synthetic Russian entity brief with INN, SNILS, RF passport, OGRN, BIK, bank accounts, and OMS policy.",
+      ru: "Карточка с ИНН, СНИЛС, паспортом РФ, ОГРН, БИК, счетами, ОМС, ФИО, адресом, госномером авто и токенизированной ссылкой.",
+      en: "Synthetic Russian entity brief with INN, SNILS, RF passport, OGRN, BIK, accounts, OMS, full FIO, address, plate, and tokenized URL.",
     },
     text: `РЕКВИЗИТЫ СТОРОНЫ И ДАННЫЕ СОТРУДНИКА (СИНТЕТИЧЕСКИЙ ПРИМЕР)
 
@@ -135,12 +135,15 @@ Diagnose why worker 192.168.10.250 failed auth on release v2.4.1.0.`,
 Банк: ПАО «ТестБанк», БИК: 044525225
 Расчётный счёт: р/с 40702810938000012345
 Корр. счёт: к/с 30101810400000000225
+Юр. адрес: 125009, г. Москва, ул. Тверская, д. 12, стр. 1, оф. 45
 
-Ответственный представитель:
+Ответственный представитель: Соколов Алексей Петрович (Петрова И.С.)
 ИНН физлица: 500100732259
 СНИЛС: 112-233-445 95
 Паспорт РФ: 45 10 № 123456
-Полис ОМС: 7746 1234 5678 9019`,
+Полис ОМС: 7746 1234 5678 9019
+Пропуск на авто: А123ВС 777
+Ссылка на акт сверки: https://portal.techno-test.ru/doc?token=DemoUrlToken998877&lang=ru`,
     suggestedRules: Object.freeze([]),
   },
 ]);

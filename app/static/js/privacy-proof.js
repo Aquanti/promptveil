@@ -8,12 +8,14 @@ import {
   AUDIT_STORAGE_KEY,
   LANG_STORAGE_KEY,
   RULES_STORAGE_KEY,
+  THEME_STORAGE_KEY,
 } from "./storage.js";
 
 const ALLOWED_LOCAL_STORAGE_KEYS = new Set([
   LANG_STORAGE_KEY,
   RULES_STORAGE_KEY,
   AUDIT_STORAGE_KEY,
+  THEME_STORAGE_KEY,
 ]);
 
 let cspViolationCount = 0;
@@ -101,7 +103,7 @@ export function runZeroRetentionSelfTest({
 
   let externalDomElements = 0;
   const domResourceNodes = document.querySelectorAll(
-    "script[src], link[href], img[src], iframe[src]"
+    'script[src], link[href]:not([rel="canonical"]), img[src], iframe[src]'
   );
   for (const node of domResourceNodes) {
     const attrVal = node.getAttribute("src") || node.getAttribute("href") || "";

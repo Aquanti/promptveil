@@ -19,6 +19,8 @@ import {
   clearAuditLog,
   loadLanguage,
   saveLanguage,
+  loadThemePreference,
+  saveThemePreference,
   onStorageWarning,
 } from "./storage.js";
 import { PRESETS, getLocalizedPreset, getPresetById } from "./presets.js";
@@ -78,7 +80,49 @@ const state = {
   billingCycle: "month",
   activeRequestPlan: "pro",
   lastRequestSummary: "",
+  theme: "light",
 };
+
+const THEME_MOON_PATH = "M16.2 12.6A6.8 6.8 0 0 1 7.4 3.8a7 7 0 1 0 8.8 8.8Z";
+const THEME_SUN_PATH =
+  "M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M13 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z";
+
+function resolveInitialTheme() {
+  const saved = loadThemePreference();
+  if (saved) return saved;
+  try {
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      return "dark";
+    }
+  } catch {
+    // Ignore matchMedia unavailability.
+  }
+  return "light";
+}
+
+function updateThemeToggleButton(theme, lang = getLang()) {
+  const btn = getEl("theme-toggle-btn");
+  if (!btn) return;
+  const isDark = theme === "dark";
+  const label = t(isDark ? "theme.toLight" : "theme.toDark", {}, lang);
+  btn.setAttribute("aria-pressed", isDark ? "true" : "false");
+  btn.setAttribute("aria-label", label);
+  btn.setAttribute("title", label);
+  const pathEl = btn.querySelector("path");
+  if (pathEl) {
+    pathEl.setAttribute("d", isDark ? THEME_SUN_PATH : THEME_MOON_PATH);
+  }
+}
+
+function applyTheme(nextTheme, { persist = false } = {}) {
+  const normalized = nextTheme === "dark" ? "dark" : "light";
+  state.theme = persist ? saveThemePreference(normalized) : normalized;
+  if (typeof document !== "undefined") {
+    document.documentElement.dataset.theme = state.theme;
+  }
+  updateThemeToggleButton(state.theme, getLang());
+  return state.theme;
+}
 
 let liveAuditTimer = null;
 let liveSanitizeTimer = null;
@@ -346,6 +390,13 @@ function refreshWorkbenchUi() {
     }
   );
   refreshPresetsUi();
+  const launchersBar = getEl("ai-launchers-bar");
+  if (launchersBar) {
+    launchersBar.classList.toggle(
+      "is-ready",
+      Boolean(state.rawText.trim() && result?.sanitizedText)
+    );
+  }
 }
 
 function refreshDrawersUi() {
@@ -521,6 +572,34 @@ function renderPrivacyProofModal(lang = getLang()) {
       lang
     );
   }
+
+  const offlineMetricEl = getEl("proof-offline-metric");
+  if (offlineMetricEl) {
+    const sw = typeof navigator !== "undefined" ? navigator.serviceWorker : null;
+    if (!sw) {
+      offlineMetricEl.textContent = t("proof.offlineMetricUnsupported", {}, lang);
+    } else {
+      const hasCtrl = Boolean(sw.controller);
+      offlineMetricEl.textContent = t(
+        hasCtrl ? "proof.offlineMetricReady" : "proof.offlineMetricPending",
+        {},
+        lang
+      );
+      if (typeof sw.getRegistration === "function") {
+        sw.getRegistration()
+          .then((reg) => {
+            const active = Boolean(sw.controller || reg?.active);
+            const activeLang = getLang();
+            offlineMetricEl.textContent = t(
+              active ? "proof.offlineMetricReady" : "proof.offlineMetricPending",
+              {},
+              activeLang
+            );
+          })
+          .catch(() => {});
+      }
+    }
+  }
 }
 
 function getPlanPricing(plan, _cycle, lang) {
@@ -674,6 +753,7 @@ function rerenderAll() {
   renderPricingSection(lang);
   renderContactsAndPolicy(lang);
   syncPlanRequestModalMeta(lang);
+  updateThemeToggleButton(state.theme, lang);
   const proofModal = getEl("modal-privacy-proof");
   if (proofModal && !proofModal.hidden) {
     renderPrivacyProofModal(lang);
@@ -843,7 +923,7 @@ function translateImportError() {
 }
 
 function bindEvents() {
-  // Language switcher (live without reload)
+  // Language & Theme switchers (live without reload)
   getEl("lang-ru-btn")?.addEventListener("click", () => {
     state.lang = saveLanguage("ru");
     applyLanguage(state.lang, { onAfterApply: rerenderAll });
@@ -851,6 +931,9 @@ function bindEvents() {
   getEl("lang-en-btn")?.addEventListener("click", () => {
     state.lang = saveLanguage("en");
     applyLanguage(state.lang, { onAfterApply: rerenderAll });
+  });
+  getEl("theme-toggle-btn")?.addEventListener("click", () => {
+    applyTheme(state.theme === "dark" ? "light" : "dark", { persist: true });
   });
 
   // Mode tabs & arrow navigation
@@ -1426,6 +1509,7 @@ export function init() {
     showStatusBanner("banner.storageWarning", {}, true);
   });
   state.lang = loadLanguage();
+  applyTheme(resolveInitialTheme(), { persist: false });
   state.rules = loadRules();
   state.auditLog = loadAuditLog();
   bindEvents();
@@ -1435,8 +1519,12 @@ export function init() {
       refreshDrawersUi();
       renderPricingSection(getLang());
       renderContactsAndPolicy(getLang());
+      updateThemeToggleButton(state.theme, getLang());
     },
   });
+  if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
 }
 
 if (document.readyState === "loading") {

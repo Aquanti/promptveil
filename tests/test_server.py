@@ -314,7 +314,33 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
     """Verify static HTML/CSS/JS comply with strict CSP and zero-network guarantees."""
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
-    # No external http(s)/ws(s) URLs anywhere in HTML (allowing standard SVG xmlns and canonical/OG/Twitter meta on own origin).
+    # No external http(s)/ws(s) URLs anywhere in HTML (allow SVG xmlns, own-origin SEO meta, and strictly allowlisted external <a href>).
+    allowlisted_external_links = {
+        "https://t.me/supv1rus",
+        "https://github.com/Aquanti",
+        "https://chatgpt.com/",
+        "https://chat.deepseek.com/",
+        "https://giga.chat/",
+        "https://alice.yandex.ru/",
+        "https://claude.ai/",
+    }
+    for link_match in re.finditer(r"<a\b([^>]*)>", index_html, re.IGNORECASE | re.DOTALL):
+        attrs = link_match.group(1)
+        href_match = re.search(r"""href\s*=\s*['"]([^'"]+)['"]""", attrs, re.IGNORECASE)
+        if not href_match:
+            continue
+        href = href_match.group(1)
+        if re.match(r"^(?:https?|wss?)://", href, re.IGNORECASE):
+            assert href in allowlisted_external_links, f"Disallowed external <a href>: {href!r}"
+            assert re.search(r"""target\s*=\s*['"]_blank['"]""", attrs, re.IGNORECASE), (
+                f"External link {href!r} must open in new tab target='_blank'"
+            )
+            rel_match = re.search(r"""rel\s*=\s*['"]([^'"]+)['"]""", attrs, re.IGNORECASE)
+            rel_tokens = set((rel_match.group(1) if rel_match else "").lower().split())
+            assert {"noopener", "noreferrer"}.issubset(rel_tokens), (
+                f"External link {href!r} must include rel='noopener noreferrer'"
+            )
+
     html_cleaned = re.sub(
         r"""xmlns\s*=\s*['"]http://www\.w3\.org/2000/svg['"]""",
         "",
@@ -327,6 +353,8 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
         html_cleaned,
         flags=re.IGNORECASE | re.DOTALL,
     )
+    for allowed_href in allowlisted_external_links:
+        html_cleaned = html_cleaned.replace(f'href="{allowed_href}"', 'href=""')
     assert not re.search(r"(?:https?|wss?)://", html_cleaned, re.IGNORECASE), (
         "External http(s)/ws(s) URL found in app/static/index.html"
     )
@@ -590,7 +618,17 @@ def test_cache_control_and_netlify_parity() -> None:
     netlify_path = BASE_DIR / "netlify.toml"
     data = tomllib.loads(netlify_path.read_text(encoding="utf-8"))
     header_blocks = data["headers"]
-    assert {block["for"] for block in header_blocks} == {"/*", "/js/*", "/styles.css", "/css/*", "/fonts/*"}
+    assert {block["for"] for block in header_blocks} == {
+        "/*",
+        "/js/*",
+        "/styles.css",
+        "/css/*",
+        "/fonts/*",
+        "/sw.js",
+    }
+
+    sw_block = next(block for block in header_blocks if block["for"] == "/sw.js")
+    assert sw_block["values"]["Cache-Control"] == "no-cache"
 
     root_block = next(block for block in header_blocks if block["for"] == "/*")
     assert "Cache-Control" not in root_block["values"]
@@ -744,5 +782,45 @@ def test_seo_pwa_static_assets_and_meta_tags() -> None:
         width = int.from_bytes(data[16:20], "big")
         height = int.from_bytes(data[20:24], "big")
         assert (width, height) == (exp_w, exp_h), f"{png_route} size {width}x{height} != {exp_w}x{exp_h}"
+
+
+def test_service_worker_and_stage2_p1_contracts() -> None:
+    """Verify /sw.js strict static-only caching, AI launchers, clickable links, and dark theme hooks."""
+    client = TestClient(app)
+    sw_resp = client.get("/sw.js")
+    assert sw_resp.status_code == 200
+    assert "javascript" in sw_resp.headers["content-type"]
+    _assert_security_headers(sw_resp.headers)
+
+    sw_src = (STATIC_DIR / "sw.js").read_text(encoding="utf-8")
+    assert not re.search(r"(?:https?|wss?)://", sw_src, re.IGNORECASE)
+    assert "event.request.method !== \"GET\"" in sw_src or "req.method !== \"GET\"" in sw_src
+    assert "origin !== self.location.origin" in sw_src
+    assert "innerHTML" not in sw_src
+    assert "eval(" not in sw_src
+
+    index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    tokens_css = (STATIC_DIR / "css" / "tokens.css").read_text(encoding="utf-8")
+    proof_js = (STATIC_DIR / "js" / "privacy-proof.js").read_text(encoding="utf-8")
+
+    for hook in (
+        'id="theme-toggle-btn"',
+        'id="ai-launchers-bar"',
+        'data-testid="ai-launcher-chatgpt"',
+        'data-testid="ai-launcher-deepseek"',
+        'data-testid="ai-launcher-gigachat"',
+        'data-testid="ai-launcher-alice"',
+        'data-testid="ai-launcher-claude"',
+        'href="https://t.me/supv1rus"',
+        'href="https://github.com/Aquanti"',
+        'id="proof-offline-card"',
+        'id="proof-offline-metric"',
+    ):
+        assert hook in index_html, f"Missing Stage 2 hook {hook} in index.html"
+
+    assert '[data-theme="dark"]' in tokens_css
+    assert "prefers-color-scheme: dark" in tokens_css
+    assert "prefers-reduced-motion: reduce" in tokens_css
+    assert "THEME_STORAGE_KEY" in proof_js
 
 

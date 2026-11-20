@@ -42,6 +42,7 @@ class VaultRowInfo:
 
 _CATEGORY_ALIASES: dict[str, list[str]] = {
     "API_KEY": ["API_KEY", "API KEY", "API KEYS", "КЛЮЧИ API", "API-КЛЮЧИ"],
+    "URL_TOKEN": ["URL_TOKEN", "URL TOKEN", "ТОКЕНЫ В URL", "ССЫЛКИ С ТОКЕНОМ"],
     "JWT": ["JWT", "JWTS", "ТОКЕНЫ ВХОДА", "JWT-ТОКЕНЫ"],
     "CREDIT_CARD": ["CREDIT_CARD", "CREDIT CARD", "CARD", "CARDS", "БАНК. КАРТЫ", "КАРТЫ"],
     "IBAN": ["IBAN", "IBANS", "СЧЕТА (IBAN)", "СЧЕТА IBAN"],
@@ -52,6 +53,9 @@ _CATEGORY_ALIASES: dict[str, list[str]] = {
     "RU_BIK": ["RU_BIK", "RU BIK", "BIK", "БИК"],
     "RU_ACCOUNT": ["RU_ACCOUNT", "RU BANK ACCOUNT", "BANK_ACC", "СЧЁТ РФ"],
     "RU_OMS": ["RU_OMS", "RU OMS POLICY", "OMS", "ПОЛИС ОМС"],
+    "RU_AUTO_PLATE": ["RU_AUTO_PLATE", "RU AUTO PLATE", "PLATE", "ГОСНОМЕРА АВТО"],
+    "RU_FIO": ["RU_FIO", "RU FULL NAME", "FIO", "ФИО"],
+    "RU_ADDRESS": ["RU_ADDRESS", "RU ADDRESS", "ADDRESS", "АДРЕСА РФ"],
     "SSN": ["SSN", "SSNS", "SSN (США)", "US SSN (SECONDARY)"],
     "ENV_SECRET": ["ENV_SECRET", "ENV SECRET", "ENV", ".ENV", "ПАРОЛИ (.ENV)", "СЕКРЕТЫ .ENV"],
     "CUSTOM": ["CUSTOM", "CUSTOM RULE", "CUSTOM RULES", "СВОИ СЛОВА"],

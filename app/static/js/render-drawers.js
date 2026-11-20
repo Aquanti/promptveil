@@ -166,6 +166,7 @@ export const DIALOG_IDS = Object.freeze([
   "modal-privacy-proof",
   "modal-plan-request",
   "modal-privacy-policy",
+  "modal-terms",
 ]);
 
 export function getOpenDialogEl() {

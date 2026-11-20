@@ -287,13 +287,13 @@
 .footer-nav-link {
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--bg-forest);
+  color: var(--text-accent);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
 .footer-nav-link:hover {
-  color: var(--bg-rail);
+  color: var(--text-primary);
 }
 
 .footer-link-btn {
@@ -302,7 +302,7 @@
   background: transparent;
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--bg-forest);
+  color: var(--text-accent);
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
@@ -310,7 +310,7 @@
 }
 
 .footer-link-btn:hover {
-  color: var(--bg-rail);
+  color: var(--text-primary);
 }
 
 .trust-badges-grid {
@@ -402,7 +402,7 @@
   font-family: var(--font-mono);
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--bg-forest);
+  color: var(--text-accent);
   overflow-wrap: anywhere;
   text-decoration: none;
 }
@@ -468,8 +468,8 @@ a.footer-contact-value:hover {
 
 .pricing-plan-badge--dev {
   background-color: var(--bg-sage-card);
-  color: var(--bg-rail);
-  border-color: rgba(5, 28, 18, 0.16);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
 }
 
 .pricing-card--featured .pricing-plan-badge--dev {

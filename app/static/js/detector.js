@@ -5,6 +5,7 @@
 
 export const CATEGORIES = Object.freeze([
   { category: "API_KEY", tokenPrefix: "API_KEY", priority: 100, label: "API Key" },
+  { category: "URL_TOKEN", tokenPrefix: "URL_TOKEN", priority: 96, label: "URL Token" },
   { category: "JWT", tokenPrefix: "JWT", priority: 95, label: "JWT Token" },
   { category: "IBAN", tokenPrefix: "IBAN", priority: 92, label: "IBAN" },
   { category: "RU_ACCOUNT", tokenPrefix: "BANK_ACC", priority: 91, label: "RU Bank Account" },
@@ -19,6 +20,9 @@ export const CATEGORIES = Object.freeze([
   { category: "CUSTOM", tokenPrefix: "CUSTOM", priority: 80, label: "Custom Rule" },
   { category: "EMAIL", tokenPrefix: "EMAIL", priority: 75, label: "Email" },
   { category: "PHONE", tokenPrefix: "PHONE", priority: 70, label: "Phone" },
+  { category: "RU_AUTO_PLATE", tokenPrefix: "PLATE", priority: 65, label: "RU Auto Plate" },
+  { category: "RU_FIO", tokenPrefix: "FIO", priority: 64, label: "RU Full Name" },
+  { category: "RU_ADDRESS", tokenPrefix: "ADDRESS", priority: 63, label: "RU Address" },
   { category: "IPV4", tokenPrefix: "IP", priority: 60, label: "IPv4" },
   { category: "HIGH_ENTROPY", tokenPrefix: "SECRET", priority: 50, label: "High Entropy" },
   { category: "SSN", tokenPrefix: "SSN", priority: 85, label: "US SSN", secondary: true },
@@ -211,6 +215,163 @@ function isValidRuPassportSeries(series4) {
   if (!/^\d{4}$/.test(series4) || series4.startsWith("00")) return false;
   const yr = Number(series4.slice(2, 4));
   return (yr >= 91 && yr <= 99) || (yr >= 0 && yr <= 30);
+}
+
+const URL_SECRET_PARAM_NAMES = new Set([
+  "token",
+  "access_token",
+  "refresh_token",
+  "auth",
+  "api_key",
+  "apikey",
+  "key",
+  "secret",
+  "signature",
+  "sig",
+  "jwt",
+  "session",
+  "session_id",
+  "sid",
+  "password",
+  "passwd",
+  "pwd",
+  "code",
+  "x-amz-signature",
+  "x-amz-credential",
+]);
+
+const VALID_RU_GIBDD_3DIGIT = new Set([
+  "102", "113", "116", "121", "122", "123", "124", "125", "126",
+  "134", "136", "138", "142", "147", "150", "152", "154", "159",
+  "161", "163", "164", "173", "174", "177", "178", "186", "190",
+  "193", "196", "197", "198", "199", "250", "252", "261", "277",
+  "299", "550", "702", "716", "725", "750", "761", "763", "774",
+  "777", "790", "797", "799", "977",
+]);
+
+function normalizeRuWord(word) {
+  return String(word || "").trim().toLowerCase().replace(/ё/g, "е");
+}
+
+function buildRuFirstNameForms() {
+  const forms = new Set();
+  const addHardMale = (names) => {
+    for (const raw of names) {
+      const n = normalizeRuWord(raw);
+      forms.add(n);
+      for (const end of ["а", "у", "ом", "е"]) forms.add(n + end);
+    }
+  };
+  const addSoftJMale = (stems) => {
+    for (const stem of stems) {
+      const s = normalizeRuWord(stem);
+      forms.add(`${s}й`);
+      for (const end of ["я", "ю", "ем", "е"]) forms.add(s + end);
+    }
+  };
+  const addIyMale = (stems) => {
+    for (const stem of stems) {
+      const s = normalizeRuWord(stem);
+      forms.add(`${s}ий`);
+      for (const end of ["ия", "ию", "ием", "ии"]) forms.add(s + end);
+    }
+  };
+  const addAFemaleOrMale = (stems) => {
+    for (const raw of stems) {
+      const n = normalizeRuWord(raw);
+      const base = n.slice(0, -1);
+      forms.add(n);
+      for (const end of ["ы", "и", "е", "у", "ой", "ою"]) forms.add(base + end);
+    }
+  };
+  const addYaFemale = (stems) => {
+    for (const raw of stems) {
+      const n = normalizeRuWord(raw);
+      const base = n.slice(0, -1);
+      forms.add(n);
+      for (const end of ["и", "е", "ю", "ей", "ею"]) forms.add(base + end);
+    }
+  };
+  const addIaFemale = (stems) => {
+    for (const raw of stems) {
+      const n = normalizeRuWord(raw);
+      const base = n.slice(0, -2);
+      forms.add(n);
+      for (const end of ["ии", "ию", "ией", "иею"]) forms.add(base + end);
+    }
+  };
+
+  addHardMale([
+    "Иван", "Александр", "Владимир", "Виктор", "Роман", "Антон", "Артем",
+    "Максим", "Денис", "Кирилл", "Вадим", "Константин", "Борис", "Глеб",
+    "Егор", "Тимур", "Руслан", "Станислав", "Владислав", "Вячеслав", "Ярослав",
+    "Степан", "Федор", "Петр", "Леонид", "Семен", "Олег", "Олега", "Данил",
+    "Даниил", "Михаил", "Михаила", "Михаилу", "Михаилом", "Михаиле",
+    "Павел", "Павла", "Павлу", "Павлом", "Павле", "Игорь", "Игоря", "Игорю",
+    "Игорем", "Игоре", "Лев", "Льва", "Льву", "Львом", "Льве", "Филипп",
+    "Герман", "Эдуард", "Альберт", "Артур", "Марат", "Ильдар", "Айрат",
+  ]);
+  addSoftJMale(["Алексе", "Серге", "Никола", "Андре", "Матве", "Тимофе"]);
+  addIyMale([
+    "Дмитр", "Евген", "Васил", "Юр", "Анатол", "Витал", "Валер",
+    "Георг", "Григор", "Аркад", "Арсен", "Геннад", "Савел",
+  ]);
+  addAFemaleOrMale([
+    "Никита", "Данила", "Анна", "Елена", "Ольга", "Татьяна", "Ирина",
+    "Светлана", "Екатерина", "Марина", "Надежда", "Галина", "Людмила",
+    "Валентина", "Тамара", "Оксана", "Алина", "Вероника", "Александра",
+    "Кристина", "Маргарита", "Елизавета", "Алиса", "Диана", "Яна", "Ульяна",
+    "Кира", "Вера", "Лариса", "Инна", "Зоя", "Нина", "Алла", "Раиса",
+    "Дарья", "Наталья", "Софья", "Илья",
+  ]);
+  addYaFemale(["Дарья", "Наталья", "Софья", "Илья", "Любовь", "Любови"]);
+  addIaFemale(["Мария", "Юлия", "Анастасия", "Ксения", "Виктория", "Валерия", "Евгения", "София", "Наталия"]);
+  return forms;
+}
+
+const RU_FIRST_NAME_FORMS = buildRuFirstNameForms();
+const RU_FIO_STOPWORDS = new Set([
+  "договор", "контакт", "клиент", "директор", "кандидат", "менеджер",
+  "руководитель", "специалист", "заказчик", "исполнитель", "подрядчик",
+  "сотрудник", "представитель", "ответственный", "генеральный", "ооо",
+  "пао", "зао", "оао", "ао", "ип", "республика", "область", "край",
+  "район", "город", "улица", "проспект", "переулок", "бульвар", "шоссе",
+  "площадь", "квартира", "корпус", "строение", "дом", "статья", "пункт",
+  "раздел", "пример", "организация", "банк", "адрес", "реквизиты",
+  "сторона", "полис", "паспорт", "снилс", "инн", "огрн", "бик",
+  "подписант", "получатель", "отправитель", "куратор", "автор", "уважаемый",
+  "уважаемая", "господин", "госпожа", "гр", "гр-н",
+]);
+
+function isRuPatronymic(word) {
+  const norm = normalizeRuWord(word);
+  return norm.length >= 6 && /(?:ович|евич|ич|овна|евна|ична|инична)(?:а|у|ом|е|ой|ы)?$/.test(norm);
+}
+
+function isCapitalizedRuSurnameCandidate(word) {
+  const norm = normalizeRuWord(word);
+  if (!norm || RU_FIO_STOPWORDS.has(norm) || norm.length < 2) {
+    return false;
+  }
+  return /^[А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?$/.test(word);
+}
+
+export function isValidRuAutoPlate(raw) {
+  const compact = String(raw || "")
+    .trim()
+    .replace(/\s+(?:RUS|РУС)$/i, "")
+    .replace(/\s+/g, "");
+  const m = compact.match(/^([АВЕКМНОРСТУХавекмнорстухABEKMHOPCTYX])(\d{3})([АВЕКМНОРСТУХавекмнорстухABEKMHOPCTYX]{2})(\d{2,3})$/u);
+  if (!m) return false;
+  const letters = `${m[1]}${m[3]}`;
+  const isCyr = /^[АВЕКМНОРСТУХавекмнорстух]{3}$/u.test(letters);
+  const isLatUpper = /^[ABEKMHOPCTYX]{3}$/.test(letters);
+  if (!isCyr && !isLatUpper) return false;
+  const reg = m[4];
+  if (reg.length === 2) {
+    return reg >= "01" && reg <= "99";
+  }
+  return VALID_RU_GIBDD_3DIGIT.has(reg);
 }
 
 export function shannonEntropy(str) {
@@ -451,6 +612,32 @@ export function detectEntities(text, customRules = []) {
       end: m.index + m[0].length,
       priority: 100,
     });
+  }
+
+  // 1b. URL_TOKEN (priority 96, mask secret query/fragment parameter values inside HTTP(S) URLs)
+  const urlTokenRegex = /https?:\/\/[^\s"'<>()]+/gi;
+  for (const m of text.matchAll(urlTokenRegex)) {
+    const cleanUrl = m[0].replace(/[.,;:!?}\]]+$/, "");
+    const paramStart = cleanUrl.search(/[?#]/);
+    if (paramStart < 0) continue;
+    const paramSlice = cleanUrl.slice(paramStart);
+    const paramRe = /[?&#]([A-Za-z0-9_.-]+)=([^&#\s"'<>]{6,})/g;
+    for (const pm of paramSlice.matchAll(paramRe)) {
+      const keyLower = pm[1].toLowerCase();
+      const val = pm[2];
+      if (!URL_SECRET_PARAM_NAMES.has(keyLower) || isPlaceholderEnvValue(val)) {
+        continue;
+      }
+      const valStart = m.index + paramStart + pm.index + pm[0].length - val.length;
+      candidates.push({
+        category: "URL_TOKEN",
+        tokenPrefix: "URL_TOKEN",
+        value: val,
+        start: valStart,
+        end: valStart + val.length,
+        priority: 96,
+      });
+    }
   }
 
   // 2. JWT (priority 95)
@@ -793,6 +980,131 @@ export function detectEntities(text, customRules = []) {
       start: m.index,
       end: m.index + val.length,
       priority: 70,
+    });
+  }
+
+  // 9b. RU_AUTO_PLATE (priority 65, GOST letters + official GIBDD region codes)
+  const ruPlateRegex =
+    /(?<![\p{L}\p{N}_-])([АВЕКМНОРСТУХABEKMHOPCTYX]\s?\d{3}\s?[АВЕКМНОРСТУХABEKMHOPCTYX]{2}\s?(?:0[1-9]|[1-9]\d|[1279]\d{2})(?:\s?(?:RUS|РУС))?)(?![\p{L}\p{N}_-])/giu;
+  for (const m of text.matchAll(ruPlateRegex)) {
+    const val = m[1];
+    if (!isValidRuAutoPlate(val)) continue;
+    candidates.push({
+      category: "RU_AUTO_PLATE",
+      tokenPrefix: "PLATE",
+      value: val,
+      start: m.index,
+      end: m.index + val.length,
+      priority: 65,
+    });
+  }
+
+  // 9c. RU_FIO (priority 64 < CUSTOM: 80; 3-word FIO, Name+Patronymic, or Surname + Initials)
+  const ruInitialAfterRe =
+    /(?<![\p{L}\p{N}_])([А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?\s+[А-ЯЁ]\.\s?[А-ЯЁ]\.)(?![\p{L}\p{N}_])/gu;
+  for (const m of text.matchAll(ruInitialAfterRe)) {
+    const surname = m[1].split(/\s+/)[0];
+    if (!isCapitalizedRuSurnameCandidate(surname)) continue;
+    candidates.push({
+      category: "RU_FIO",
+      tokenPrefix: "FIO",
+      value: m[1],
+      start: m.index,
+      end: m.index + m[1].length,
+      priority: 64,
+    });
+  }
+  const ruInitialBeforeRe =
+    /(?<![\p{L}\p{N}_])([А-ЯЁ]\.\s?[А-ЯЁ]\.\s+[А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?)(?![\p{L}\p{N}_])/gu;
+  for (const m of text.matchAll(ruInitialBeforeRe)) {
+    const parts = m[1].trim().split(/\s+/);
+    const surname = parts[parts.length - 1];
+    if (!isCapitalizedRuSurnameCandidate(surname)) continue;
+    candidates.push({
+      category: "RU_FIO",
+      tokenPrefix: "FIO",
+      value: m[1],
+      start: m.index,
+      end: m.index + m[1].length,
+      priority: 64,
+    });
+  }
+  const ruCapRunRe =
+    /(?<![\p{L}\p{N}_-])([А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?(?:[ \t]+[А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?)+)(?![\p{L}\p{N}_-])/gu;
+  const wordTokenRe = /[А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?/gu;
+  for (const runMatch of text.matchAll(ruCapRunRe)) {
+    const runText = runMatch[1];
+    const runBase = runMatch.index;
+    const tokens = [];
+    for (const wm of runText.matchAll(wordTokenRe)) {
+      tokens.push({
+        word: wm[0],
+        norm: normalizeRuWord(wm[0]),
+        start: runBase + wm.index,
+        end: runBase + wm.index + wm[0].length,
+      });
+    }
+    for (let i = 0; i < tokens.length; i += 1) {
+      if (i + 2 < tokens.length) {
+        const [t1, t2, t3] = [tokens[i], tokens[i + 1], tokens[i + 2]];
+        if (
+          !RU_FIO_STOPWORDS.has(t1.norm) &&
+          !RU_FIO_STOPWORDS.has(t2.norm) &&
+          !RU_FIO_STOPWORDS.has(t3.norm)
+        ) {
+          const isNamePatSur =
+            RU_FIRST_NAME_FORMS.has(t1.norm) &&
+            isRuPatronymic(t2.word) &&
+            isCapitalizedRuSurnameCandidate(t3.word);
+          const isSurNamePat =
+            isCapitalizedRuSurnameCandidate(t1.word) &&
+            RU_FIRST_NAME_FORMS.has(t2.norm) &&
+            isRuPatronymic(t3.word);
+          if (isNamePatSur || isSurNamePat) {
+            candidates.push({
+              category: "RU_FIO",
+              tokenPrefix: "FIO",
+              value: text.slice(t1.start, t3.end),
+              start: t1.start,
+              end: t3.end,
+              priority: 64,
+            });
+          }
+        }
+      }
+      if (i + 1 < tokens.length) {
+        const [t1, t2] = [tokens[i], tokens[i + 1]];
+        if (
+          !RU_FIO_STOPWORDS.has(t1.norm) &&
+          !RU_FIO_STOPWORDS.has(t2.norm) &&
+          RU_FIRST_NAME_FORMS.has(t1.norm) &&
+          isRuPatronymic(t2.word)
+        ) {
+          candidates.push({
+            category: "RU_FIO",
+            tokenPrefix: "FIO",
+            value: text.slice(t1.start, t2.end),
+            start: t1.start,
+            end: t2.end,
+            priority: 64,
+          });
+        }
+      }
+    }
+  }
+
+  // 9d. RU_ADDRESS (priority 63, street + house required, single-line)
+  const ruAddressRegex =
+    /(?<![\p{L}\p{N}_])((?:[1-6]\d{5},\s*)?(?:(?:[Гг]\.|[Гг]ород|[Пп]ос\.|[Пп]гт\.|[Сс]\.)\s*[А-ЯЁ][а-яёА-ЯЁ-]+,\s*)?(?:[Уу]л\.|[Уу]лица|[Пп]р-т|[Пп]р\.|[Пп]роспект|[Пп]ер\.|[Пп]ереулок|[Бб]-р|[Бб]ульвар|[Шш]\.|[Шш]оссе|[Нн]аб\.|[Нн]абережная|[Пп]л\.|[Пп]лощадь)\s+[А-ЯЁ0-9][А-ЯЁа-яё0-9.\-"«» ]{1,40},?\s*(?:[Дд]\.|[Дд]ом)\s*\d+[А-ЯЁа-яё0-9/-]*(?:,?\s*(?:корп\.|корпус|к\.|стр\.|строение|лит\.|кв\.|оф\.|офис|пом\.)\s*[А-ЯЁа-яё0-9-]+){0,3})(?![\p{L}\p{N}_-])/gu;
+  for (const m of text.matchAll(ruAddressRegex)) {
+    const val = m[1];
+    candidates.push({
+      category: "RU_ADDRESS",
+      tokenPrefix: "ADDRESS",
+      value: val,
+      start: m.index,
+      end: m.index + val.length,
+      priority: 63,
     });
   }
 

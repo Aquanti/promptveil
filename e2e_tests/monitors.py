@@ -62,6 +62,7 @@ FORBIDDEN_RU_PHRASES: tuple[str, ...] = (
 # app/static/js/presets.js) are explicitly exempted in verify_russian_purity().
 FORBIDDEN_RU_DEV_CODES: tuple[str, ...] = (
     "API_KEY",
+    "URL_TOKEN",
     "JWT",
     "CREDIT_CARD",
     "IBAN",
@@ -72,6 +73,9 @@ FORBIDDEN_RU_DEV_CODES: tuple[str, ...] = (
     "RU_BIK",
     "RU_ACCOUNT",
     "RU_OMS",
+    "RU_AUTO_PLATE",
+    "RU_FIO",
+    "RU_ADDRESS",
     "SSN",
     "ENV_SECRET",
     "CUSTOM",

@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T17:49+03:00  
-**Session Status:** Stage 0 (`promptveil` Netlify rename) & Stage 1 (P0 RU detectors, Waitlist, Disclaimer/Terms, SEO) Complete — Proceeding to Stage 2 (P1)  
-**Exact Stop Point:** Renamed Netlify project `12775486-f2aa-4d79-90c2-a85446c2b7a8` to `promptveil` (`https://promptveil.netlify.app`, public access verified), added 7 validated Russian ID detectors (`RU_INN`, `RU_SNILS`, `RU_PASSPORT`, `RU_OGRN`, `RU_BIK`, `RU_ACCOUNT`, `RU_OMS`) + `CREDIT_CARD` non-card label guard + `ru_requisites` preset + secondary `SSN`, converted Pro/Team pricing to honest Waitlist without prices/trials, updated `"0 логов ваших текстов"` badge, added heuristic disclaimer & `#modal-terms`, added full SEO/OG/Twitter tags + `robots.txt` + `sitemap.xml` + `manifest.webmanifest` + `404.html` + Chrome-rendered PNGs (`og-image.png`, `apple-touch-icon.png`, `icon-192.png`, `icon-512.png`), verified `NODE_DETECTOR_STAGE1_OK` and `pytest tests/test_server.py` (`21 passed`). Next: Stage 2 (`sw.js` PWA offline, "Open in AI" + clickable links, P1 detectors, dark theme) and full E2E run.
+**Checkpoint Date:** 2026-11-20T18:08+03:00  
+**Session Status:** Stage 2 (P1 PWA Offline, AI Launchers, P1 Detectors, Dark Theme) Complete — Proceeding to Stage 3 (`app.js` Modularization & Lighthouse >= 95)  
+**Exact Stop Point:** Completed and verified all Stage 2 (P1) upgrades: `app/static/sw.js` self-hosted static-only Service Worker + `#proof-offline-card` + `/sw.js` `no-cache` header in `netlify.toml`, `#ai-launchers-bar` 5-LLM launcher strip + clickable `@supv1rus` & `github.com/Aquanti` footer links + allowlisted CSP checks, P1 detectors (`URL_TOKEN`, `RU_AUTO_PLATE`, `RU_FIO` sliding window, `RU_ADDRESS`), Dark Theme (`#theme-toggle-btn`, `promptveil_theme_v1`, `prefers-color-scheme: dark`, `prefers-reduced-motion: reduce`), plus acceptance fixes (`<link rel="canonical">` excluded from external DOM scan, `#modal-terms` registered in `DIALOG_IDS`). Verified `py_compile` (`0` errors), `pytest tests/test_server.py` (`22 passed`), `run_e2e.py --mode self-test` (`150` unique tests), and full live suite `run_e2e.py --mode live --tier all` (`150 passed`, `0 failed`). Next: Stage 3 (`app.js` -> `clipboard.js`, `pricing.js`, `modals.js` + Lighthouse >= 95 + final Netlify production deploy & live HTTPS verification).
 
 ---
 
@@ -33,13 +33,12 @@
 ---
 
 ## 3. Verification Status
-- **Active background processes / local servers / subagents:** `0` (port `8000` free; `.agents/` absent from `C:\Users\User\Desktop\коды\AGY`; no public Netlify deployment executed).
-- **`py_compile` across `app/`, `tests/`, `e2e_tests/`:** Exit `0` (`16` files, `0` syntax errors).
-- **`pytest tests/test_server.py -v`:** **`20 passed`** (`1.27s`, exit `0`).
-- **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`109` Tier 1–4 + `29` Tier 5 + `8` Acceptance = `146` unique tests, exit `0`).
-- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`146 passed`** (`320.80s`, exit `0`, `0` skipped, `0` console/page errors).
-- **Iteration 2 Hardening Regressions (`test_ACC_06`..`test_ACC_08`):** Verified `pagehide` + `pageshow(persisted=true)` reset counters/disabled buttons while keeping `localStorage` prefs, `<140ms` fast-click & unchecked live-toggle flush on `#copy-goto-step2-btn`, Team empty seats & `<`/`>` email validation rejection, and dynamic `{trackers}` anomaly badge (`1 трекеров` / `1 trackers`).
-- **Visual Inspection (`e2e_tests/artifacts/acceptance/*.png`):** Inspected `1440×900` and `390×844` screenshots (`empty`, `step1_masked`, `step2_restored`, `pricing_footer`, `proof_modal`, `request_modal`) — zero overlaps, zero clipping, zero horizontal overflow, mobile `.top-rail` `<= 64px` with clean 2-line proof trigger, WCAG AA contrast, and Spark Admin styling confirmed.
+- **Active background processes / local servers / subagents:** `0` (port `8000` free).
+- **`py_compile` across `app/`, `tests/`, `e2e_tests/`:** Exit `0` (all Python files, `0` syntax errors).
+- **`pytest tests/test_server.py -v`:** **`22 passed`** (`1.19s`, exit `0`, including Stage 1 SEO/PWA and Stage 2 SW/AI-launcher/Dark-theme contract checks).
+- **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`109` Tier 1–4 + `29` Tier 5 + `12` Acceptance = `150` unique tests, exit `0`).
+- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`150 passed`** (`322.36s`, exit `0`, `0` failed, `0` skipped, `0` console/page/CSP errors).
+- **Visual Inspection (`e2e_tests/artifacts/acceptance/*.png`):** Inspected `1440×900` & `390×844` light and dark screenshots (`acc_desktop_dark_1440x900.png`, `acc_mobile_dark_390x844.png`, `acc_desktop_pricing_footer_1440x900.png`) — zero overlaps, zero clipping, zero horizontal overflow, WCAG AA contrast, mobile `.top-rail <= 64px`.
 
 ---
 

@@ -581,21 +581,23 @@ def test_ACC_07_ux_paste_and_copy_goto_step2(e2e_session: E2ESession) -> None:
 
 
 def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2ESession) -> None:
-    """R4 & R5: Pricing toggle, Pro/Team client-only forms, Trust Footer, real contacts, and RU/EN i18n."""
+    """R4 & R5: Honest Waitlist pricing, Pro/Team client-only forms, Trust Footer, Terms/Policy, and RU/EN i18n."""
     page = e2e_session.page
     ui = e2e_session.ui
 
-    # 1. Pricing section in RU (Month vs Year -20%)
+    # 1. Honest Free + Waitlist Pricing section in RU (no fake prices or 30-day free trial)
+    pricing_el = page.locator("[data-testid='pricing-section']")
+    pricing_txt = pricing_el.inner_text()
     assert page.locator("[data-testid='pricing-card-free']").is_visible()
     assert "Активен сейчас" in page.locator("[data-testid='pricing-card-free']").inner_text()
-    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "490 ₽"
-    assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "1 990 ₽"
+    assert "0 ₽" in page.locator("[data-testid='pricing-card-free']").inner_text()
+    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "Лист ожидания"
+    assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "Лист ожидания"
+    assert page.locator("[data-testid='billing-toggle']").count() == 0
+    for forbidden in ("490 ₽", "390 ₽", "1 990 ₽", "1 590 ₽", "30 дней бесплатно"):
+        assert forbidden not in pricing_txt, f"Unexpected pricing claim {forbidden!r}"
 
-    ui.select_billing_cycle("year")
-    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "390 ₽"
-    assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "1 590 ₽"
-
-    # 2. Pro & Team client-only validation + formatted request + copy + mailto
+    # 2. Pro & Team client-only waitlist validation + formatted summary + copy + mailto
     ui.open_plan_request_modal("pro")
     page.locator("[data-testid='plan-req-submit-btn']").click()
     assert page.locator("[data-testid='plan-request-alert']").is_visible()
@@ -614,7 +616,7 @@ def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2E
     page.locator("[data-testid='plan-req-note']").fill("Нужна обработка docx")
     page.locator("[data-testid='plan-req-submit-btn']").click()
     preview_txt = page.locator("[data-testid='plan-request-preview']").inner_text()
-    assert "Pro" in preview_txt and "Иван Петров" in preview_txt and "ivan@company.ru" in preview_txt
+    assert "Pro" in preview_txt and "Иван Петров" in preview_txt and "Лист ожидания" in preview_txt
     mailto_href = page.locator("[data-testid='plan-req-mailto-link']").get_attribute("href") or ""
     assert mailto_href.startswith("mailto:kilkauciha@gmail.com?")
     page.locator("[data-testid='plan-req-copy-btn']").click()
@@ -636,11 +638,11 @@ def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2E
     assert "15" in team_preview
     ui.close_active_modal()
 
-    # 3. Trust Footer, Real Contacts, and Privacy Policy modal
+    # 3. Trust Footer, Clickable Real Contacts, Privacy Policy Disclaimer, and Terms Modal
     footer_text = page.locator("[data-testid='site-footer']").inner_text()
     for token in (
         "HTTPS / TLS",
-        "Zero-Retention (0 логов)",
+        "0 логов ваших текстов",
         "Strict CSP",
         "Без cookies и трекеров",
         "@supv1rus",
@@ -650,25 +652,263 @@ def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2E
     ):
         assert token in footer_text, f"Missing footer trust/contact token {token!r}"
 
+    tg_link = page.locator("[data-testid='contact-telegram-text']")
+    assert tg_link.get_attribute("href") == "https://t.me/supv1rus"
+    assert tg_link.get_attribute("target") == "_blank"
+    assert "noopener" in (tg_link.get_attribute("rel") or "")
+
+    gh_link = page.locator("[data-testid='contact-github-text']")
+    assert gh_link.get_attribute("href") == "https://github.com/Aquanti"
+    assert gh_link.get_attribute("target") == "_blank"
+    assert "noopener" in (gh_link.get_attribute("rel") or "")
+
     page.locator("[data-testid='copy-contact-telegram-btn']").click()
     assert ui.read_clipboard_text() == "@supv1rus"
     page.locator("[data-testid='copy-contact-github-btn']").click()
     assert ui.read_clipboard_text() == "github.com/Aquanti"
 
     policy_modal = ui.open_privacy_policy_modal()
-    assert "kilkauciha@gmail.com" in policy_modal.inner_text()
-    assert "@supv1rus" in policy_modal.inner_text()
+    policy_txt = policy_modal.inner_text()
+    assert "kilkauciha@gmail.com" in policy_txt
+    assert "@supv1rus" in policy_txt
+    assert "эвристик" in policy_txt
+    assert "access-логи" in policy_txt
     ui.close_active_modal()
 
-    # 4. EN translation across pricing, footer, and Proof modal
+    terms_modal = ui.open_terms_modal()
+    terms_txt = terms_modal.inner_text()
+    assert "как есть" in terms_txt
+    assert "SupV1rus" in terms_txt
+    ui.close_active_modal()
+
+    # 4. EN translation across waitlist pricing, footer, and Proof modal
     ui.switch_language("en")
-    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "$5"
-    assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "$19"
-    ui.select_billing_cycle("month")
-    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "$6"
-    assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "$24"
+    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "Waitlist"
+    assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "Waitlist"
+    assert "0 Text Logs" in page.locator("[data-testid='site-footer']").inner_text()
     assert "Created by SupV1rus" in page.locator("[data-testid='footer-copyright']").inner_text()
     assert "Zero-Retention • Verify" in ui.get_zero_egress_pill().inner_text()
 
     e2e_session.net.assert_zero_egress(["ivan@company.ru", "Иван Петров"])
+    e2e_session.console.assert_no_errors()
+
+
+def test_ACC_09_russian_id_detectors_valid_and_invalid_checksums(e2e_session: E2ESession) -> None:
+    """P0: Validate all 7 free Russian ID categories with checksums + secondary US SSN."""
+    ui = e2e_session.ui
+
+    valid_payload = (
+        "Организация ИНН 7707083893 ОГРН 1027700132195\n"
+        "ИП ИНН 500100732259 ОГРНИП 304500116000157\n"
+        "СНИЛС 112-233-445 95 Паспорт РФ: 45 10 № 123456\n"
+        "БИК 044525225 р/с 40702810938000012345 к/с 30101810400000000225\n"
+        "Полис ОМС: 7746 1234 5678 9019\n"
+        "US Tax ID SSN: 123-45-6789"
+    )
+    masked = ui.sanitize_text(valid_payload)
+    for token in (
+        "[INN_1]",
+        "[INN_2]",
+        "[OGRN_1]",
+        "[OGRN_2]",
+        "[SNILS_1]",
+        "[PASSPORT_1]",
+        "[BIK_1]",
+        "[BANK_ACC_1]",
+        "[BANK_ACC_2]",
+        "[OMS_1]",
+        "[SSN_1]",
+    ):
+        assert token in masked, f"Missing expected token {token} in:\n{masked}"
+
+    for secret in (
+        "7707083893",
+        "500100732259",
+        "1027700132195",
+        "304500116000157",
+        "112-233-445 95",
+        "45 10 № 123456",
+        "044525225",
+        "40702810938000012345",
+        "30101810400000000225",
+        "7746 1234 5678 9019",
+        "123-45-6789",
+    ):
+        assert secret not in masked, f"Secret {secret!r} leaked into masked output"
+
+    restored = ui.rehydrate_text(masked)
+    assert restored.strip() == valid_payload.strip()
+
+    # Invalid checksums must remain unmasked (except the valid anchor BIK used to verify accounts)
+    invalid_payload = (
+        "ИНН 7707083894 ИНН2 500100732250 ОГРН 1027700132196 ОГРНИП 304500116000158 "
+        "СНИЛС 112-233-445 96 Паспорт 00 10 123456 "
+        "БИК 044525225 р/с 40702810838000012345 к/с 30101810500000000225 "
+        "Полис ОМС: 7746 1234 5678 9018"
+    )
+    bad_masked = ui.sanitize_text(invalid_payload)
+    assert "[BIK_1]" in bad_masked
+    for bad_val in (
+        "7707083894",
+        "500100732250",
+        "1027700132196",
+        "304500116000158",
+        "112-233-445 96",
+        "00 10 123456",
+        "40702810838000012345",
+        "30101810500000000225",
+        "7746 1234 5678 9018",
+    ):
+        assert bad_val in bad_masked, f"Invalid checksum value {bad_val!r} should NOT be masked"
+
+    e2e_session.net.assert_zero_egress(["7707083893", "112-233-445 95", "40702810938000012345"])
+    e2e_session.console.assert_no_errors()
+
+
+def test_ACC_10_p1_detectors_and_ru_requisites_preset(e2e_session: E2ESession) -> None:
+    """P1: Validate RU_FIO, RU_ADDRESS, RU_AUTO_PLATE, URL_TOKEN and ru_requisites preset."""
+    ui = e2e_session.ui
+
+    p1_payload = (
+        "Подписант Соколов Алексей Петрович (Петрова И.С.)\n"
+        "Адрес: 125009, г. Москва, ул. Тверская, д. 12, стр. 1, оф. 45\n"
+        "Авто: А123ВС 777 и фейк А123ВС 345\n"
+        "Ссылка: https://portal.example.ru/doc?token=UrlSecToken778899&tab=main\n"
+        "Обычный URL без секрета: https://example.com:8443/v1/users/profile_overview_page\n"
+        "Двухсловные без отчества: Алексей Смирнов и Иван Петров"
+    )
+    masked = ui.sanitize_text(p1_payload)
+    assert "[FIO_1]" in masked and "[FIO_2]" in masked
+    assert "[ADDRESS_1]" in masked
+    assert "[PLATE_1]" in masked
+    assert "[URL_TOKEN_1]" in masked
+    assert "А123ВС 345" in masked
+    assert "https://example.com:8443/v1/users/profile_overview_page" in masked
+    assert "Алексей Смирнов" in masked and "Иван Петров" in masked
+
+    ui.select_preset("ru_requisites")
+    preset_out = ui.get_sanitize_output_text()
+    for token in (
+        "[INN_1]",
+        "[OGRN_1]",
+        "[BIK_1]",
+        "[BANK_ACC_1]",
+        "[ADDRESS_1]",
+        "[FIO_1]",
+        "[SNILS_1]",
+        "[PASSPORT_1]",
+        "[OMS_1]",
+        "[PLATE_1]",
+        "[URL_TOKEN_1]",
+    ):
+        assert token in preset_out, f"Preset ru_requisites missing {token}"
+
+    restored = ui.rehydrate_text(preset_out)
+    for expected in ("7707083893", "112-233-445 95", "Соколов Алексей Петрович", "DemoUrlToken998877"):
+        assert expected in restored
+
+    e2e_session.net.assert_zero_egress(["UrlSecToken778899", "DemoUrlToken998877", "Соколов Алексей Петрович"])
+    e2e_session.console.assert_no_errors()
+
+
+def test_ACC_11_pwa_offline_service_worker_and_seo_routes(raw_session: E2ESession) -> None:
+    """P1 & SEO: Verify SEO endpoints, active SW offline Proof card, and full offline masking/reload."""
+    page = raw_session.page
+    ui = raw_session.ui
+    base_url = raw_session.base_url
+
+    for path in ("/robots.txt", "/sitemap.xml", "/404.html", "/manifest.webmanifest", "/og-image.png", "/sw.js"):
+        status, _, _ = fetch_http_response(f"{base_url}{path}")
+        assert status == 200, f"GET {path} returned {status}"
+
+    page.goto(f"{base_url}/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.console.assert_no_errors()
+
+    # Wait for Service Worker registration & activation before going offline
+    sw_ready = page.evaluate(
+        """async () => {
+            if (!('serviceWorker' in navigator)) return false;
+            const reg = await navigator.serviceWorker.ready;
+            return Boolean(reg && reg.active);
+        }"""
+    )
+    assert sw_ready is True, "Service Worker failed to become active"
+
+    # Reload once so SW controls the client, then verify Proof offline card
+    page.reload(wait_until="networkidle")
+    modal = ui.open_privacy_proof_modal("header")
+    assert page.locator("[data-testid='proof-offline-card']").is_visible()
+    offline_text = modal.inner_text()
+    assert "Офлайн готов" in offline_text
+    assert "Отключите интернет" in offline_text
+    ui.close_active_modal()
+
+    # Cut network connectivity completely and verify offline reload + sanitize/rehydrate
+    try:
+        page.context.set_offline(True)
+        page.reload(wait_until="domcontentloaded")
+        page.locator("[data-testid='raw-prompt-input']").wait_for(state="visible", timeout=5000)
+
+        offline_in = "ИНН 7707083893, СНИЛС 112-233-445 95, offline@example.ru"
+        offline_out = ui.sanitize_text(offline_in)
+        assert "[INN_1]" in offline_out and "[SNILS_1]" in offline_out and "[EMAIL_1]" in offline_out
+        assert ui.rehydrate_text(offline_out).strip() == offline_in
+    finally:
+        page.context.set_offline(False)
+
+    raw_session.console.assert_no_errors()
+
+
+def test_ACC_12_ai_launchers_dark_theme_and_screenshots(e2e_session: E2ESession) -> None:
+    """P1: Verify 'Open in AI' links, Dark Theme persistence + Proof storage clean, & screenshots."""
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    expected_launchers = {
+        "ai-launcher-chatgpt": "https://chatgpt.com/",
+        "ai-launcher-deepseek": "https://chat.deepseek.com/",
+        "ai-launcher-gigachat": "https://giga.chat/",
+        "ai-launcher-alice": "https://alice.yandex.ru/",
+        "ai-launcher-claude": "https://claude.ai/",
+    }
+    launchers_bar = page.locator("[data-testid='ai-launchers-bar']")
+    assert launchers_bar.is_visible()
+    for tid, expected_href in expected_launchers.items():
+        link = page.locator(f"[data-testid='{tid}']")
+        assert link.is_visible()
+        assert link.get_attribute("href") == expected_href
+        assert link.get_attribute("target") == "_blank"
+        assert "noopener" in (link.get_attribute("rel") or "")
+
+    ui.sanitize_text("Почта dev@example.ru")
+    assert "is-ready" in (launchers_bar.get_attribute("class") or "")
+
+    # Toggle dark theme and verify persistence + Proof unknownKeys=0
+    theme_btn = page.locator("[data-testid='theme-toggle-btn']")
+    assert theme_btn.is_visible()
+    theme_btn.click()
+    assert page.evaluate("() => document.documentElement.dataset.theme") == "dark"
+    assert page.evaluate("() => localStorage.getItem('promptveil_theme_v1')") == "dark"
+
+    modal = ui.open_privacy_proof_modal("header")
+    assert "неизвестные ключи: 0" in modal.inner_text()
+    ui.close_active_modal()
+
+    ui.select_preset("ru_requisites")
+    for label_prefix, width, height in (("desktop", 1440, 900), ("mobile", 390, 844)):
+        verify_responsive_layout(page, width, height)
+        if width <= 639:
+            top_rail_h = page.locator("header.top-rail").evaluate("el => el.getBoundingClientRect().height")
+            assert top_rail_h <= 64.5, f"Mobile top-rail height exceeded 64px with theme btn: {top_rail_h}"
+        capture_viewport_screenshot(
+            page,
+            f"acc_{label_prefix}_dark",
+            width,
+            height,
+            output_dir=ACCEPTANCE_SCREENSHOTS_DIR,
+            full_page=False,
+        )
+
+    e2e_session.net.assert_zero_egress(["dev@example.ru"])
     e2e_session.console.assert_no_errors()
