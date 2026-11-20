@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T18:16+03:00  
-**Session Status:** Stage 3A (`app.js` Modularization) Complete — Proceeding to Stage 3B (Lighthouse Audit >= 95)  
-**Exact Stop Point:** Modularized `app/static/js/app.js` (`1534` -> `972` lines) into focused ES6 modules `clipboard.js` (`187` lines), `pricing.js` (`152` lines), and `modals.js` (`343` lines), updated `app/static/sw.js` `PRECACHE_URLS` (`promptveil-static-v2`), and re-verified `pytest tests/test_server.py` (`22 passed`), `run_e2e.py --mode self-test` (`ALL CHECKS PASSED`), and full live E2E `run_e2e.py --mode live --tier all` (`150 passed`, `0 failed`). Next: Stage 3B Lighthouse desktop & mobile audit (`>= 95` all categories) + Netlify production deploy (`https://promptveil.netlify.app`).
+**Checkpoint Date:** 2026-11-20T18:18+03:00  
+**Session Status:** Stage 3B (Lighthouse Audit 95+) Complete — Proceeding to Netlify Production Deploy & Live Verification  
+**Exact Stop Point:** Modularized `app/static/js/app.js` (`1534` -> `972` lines) into `clipboard.js`, `pricing.js`, `modals.js` + updated `sw.js` (`promptveil-static-v2`), verified `pytest tests/test_server.py` (`22 passed`), `run_e2e.py --mode self-test` (`ALL CHECKS PASSED`), `run_e2e.py --mode live --tier all` (`150 passed`, `0 failed`), and ran Lighthouse audits against `http://127.0.0.1:8000` (Desktop: Performance **100**, Accessibility **100**, Best Practices **100**, SEO **100**; Mobile: Performance **98**, Accessibility **100**, Best Practices **100**, SEO **100**). Temporary server stopped cleanly. Next: Deploy `app/static` to Netlify `promptveil` (`12775486-f2aa-4d79-90c2-a85446c2b7a8`) and verify live HTTPS/offline via `browser` subagent.
 
 ---
 
@@ -38,6 +38,9 @@
 - **`pytest tests/test_server.py -v`:** **`22 passed`** (`1.19s`, exit `0`, including Stage 1 SEO/PWA and Stage 2 SW/AI-launcher/Dark-theme contract checks).
 - **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`109` Tier 1–4 + `29` Tier 5 + `12` Acceptance = `150` unique tests, exit `0`).
 - **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`150 passed`** (`323.51s` on modular Stage 3A, exit `0`, `0` failed, `0` skipped, `0` console/page/CSP errors).
+- **Lighthouse Audit (`http://127.0.0.1:8000`, Chrome Headless):**
+  - Desktop (`--preset=desktop`): Performance **`100`**, Accessibility **`100`**, Best Practices **`100`**, SEO **`100`**.
+  - Mobile (default): Performance **`98`**, Accessibility **`100`**, Best Practices **`100`**, SEO **`100`**.
 - **Visual Inspection (`e2e_tests/artifacts/acceptance/*.png`):** Inspected `1440×900` & `390×844` light and dark screenshots (`acc_desktop_dark_1440x900.png`, `acc_mobile_dark_390x844.png`, `acc_desktop_pricing_footer_1440x900.png`) — zero overlaps, zero clipping, zero horizontal overflow, WCAG AA contrast, mobile `.top-rail <= 64px`.
 
 ---
