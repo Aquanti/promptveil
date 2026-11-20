@@ -214,9 +214,9 @@ class PromptVeilUI:
     # -----------------------------------------------------------------------
 
     def get_zero_egress_pill(self) -> Locator:
-        """Locate the top-rail browser-local privacy badge."""
+        """Locate the top-rail Zero-Retention privacy badge / trigger."""
         pattern = re.compile(
-            r"(только\s+в\s+браузере|локально\s+в\s+браузере|100%\s*BROWSER[- ]LOCAL|ZERO[- ]EGRESS|CLIENT[- ]SIDE)",
+            r"(гарантия\s*0\s*хранения|zero[- ]retention|только\s+в\s+браузере|100%\s*BROWSER[- ]LOCAL|ZERO[- ]EGRESS|CLIENT[- ]SIDE)",
             re.I,
         )
         candidates = [
@@ -225,7 +225,7 @@ class PromptVeilUI:
             self.page.locator("header, [role='banner']").get_by_text(pattern),
             self.page.get_by_text(pattern),
         ]
-        return self._first_visible(candidates, "Local privacy badge ([data-testid='brand-badge'])")
+        return self._first_visible(candidates, "Zero-Retention badge ([data-testid='brand-badge'])")
 
     def switch_language(self, lang: LangType) -> None:
         """Switch UI language via [data-testid='lang-ru'] or [data-testid='lang-en']."""
@@ -1877,3 +1877,111 @@ class PromptVeilUI:
                 except Exception:  # noqa: BLE001
                     continue
         return ""
+
+    # -----------------------------------------------------------------------
+    # R2–R5: Zero-Retention Proof, UX Speedups, Pricing & Modals, Trust Footer
+    # -----------------------------------------------------------------------
+
+    def open_privacy_proof_modal(self, via: Literal["header", "footer"] = "header") -> Locator:
+        """Open #modal-privacy-proof from header or footer trigger."""
+        testid = "footer-open-proof-btn" if via == "footer" else "brand-badge"
+        trigger = self._first_visible(
+            [self.page.locator(f"[data-testid='{testid}']")],
+            f"Privacy Proof trigger ({testid})",
+        )
+        trigger.click()
+        self.page.wait_for_timeout(120)
+        modal = self._first_visible(
+            [self.page.locator("[data-testid='modal-privacy-proof']")],
+            "Privacy Proof modal ([data-testid='modal-privacy-proof'])",
+        )
+        return modal
+
+    def run_privacy_proof_check(self) -> None:
+        """Click live self-test button inside Privacy Proof modal."""
+        btn = self._first_visible(
+            [self.page.locator("[data-testid='run-proof-check-btn']")],
+            "Run live proof check ([data-testid='run-proof-check-btn'])",
+        )
+        btn.click()
+        self.page.wait_for_timeout(100)
+
+    def click_reset_session_to_zero(self, via: Literal["modal", "workbench"] = "modal") -> None:
+        """Trigger instant resetSessionToZero() from Proof modal or workbench."""
+        testid = "reset-session-btn" if via == "modal" else "quick-reset-session-btn"
+        btn = self._first_visible(
+            [self.page.locator(f"[data-testid='{testid}']")],
+            f"Reset session button ({testid})",
+        )
+        btn.click()
+        self.page.wait_for_timeout(120)
+
+    def click_paste_raw(self) -> None:
+        """Click Step 1 Paste button ([data-testid='paste-raw-btn'])."""
+        btn = self._first_visible(
+            [self.page.locator("[data-testid='paste-raw-btn']")],
+            "Step 1 Paste button ([data-testid='paste-raw-btn'])",
+        )
+        btn.click()
+        self.page.wait_for_timeout(160)
+
+    def click_paste_rehydrate(self) -> None:
+        """Click Step 2 Paste button ([data-testid='paste-rehydrate-btn'])."""
+        btn = self._first_visible(
+            [self.page.locator("[data-testid='paste-rehydrate-btn']")],
+            "Step 2 Paste button ([data-testid='paste-rehydrate-btn'])",
+        )
+        btn.click()
+        self.page.wait_for_timeout(160)
+
+    def click_copy_goto_step2(self) -> None:
+        """Click Step 1 Copy & Go to Step 2 combo button ([data-testid='copy-goto-step2-btn'])."""
+        btn = self._first_visible(
+            [self.page.locator("[data-testid='copy-goto-step2-btn']")],
+            "Copy & Go Step 2 button ([data-testid='copy-goto-step2-btn'])",
+        )
+        btn.click()
+        self._active_mode = "rehydrate"
+        self.page.wait_for_timeout(150)
+
+    def select_billing_cycle(self, cycle: Literal["month", "year"]) -> None:
+        """Select Month or Year -20% billing toggle in Pricing section."""
+        testid = "billing-year-btn" if cycle == "year" else "billing-month-btn"
+        btn = self._first_visible(
+            [self.page.locator(f"[data-testid='{testid}']")],
+            f"Billing toggle ({testid})",
+        )
+        btn.click()
+        self.page.wait_for_timeout(100)
+
+    def open_plan_request_modal(self, plan: Literal["pro", "team"]) -> Locator:
+        """Open Pro or Team client-side request modal."""
+        testid = "open-team-modal-btn" if plan == "team" else "open-pro-modal-btn"
+        btn = self._first_visible(
+            [self.page.locator(f"[data-testid='{testid}']")],
+            f"Plan CTA ({testid})",
+        )
+        btn.click()
+        self.page.wait_for_timeout(120)
+        return self._first_visible(
+            [self.page.locator("[data-testid='modal-plan-request']")],
+            "Plan request modal ([data-testid='modal-plan-request'])",
+        )
+
+    def open_privacy_policy_modal(self) -> Locator:
+        """Open Privacy Policy modal from Trust Footer."""
+        btn = self._first_visible(
+            [self.page.locator("[data-testid='open-privacy-policy-btn']")],
+            "Privacy Policy button ([data-testid='open-privacy-policy-btn'])",
+        )
+        btn.click()
+        self.page.wait_for_timeout(120)
+        return self._first_visible(
+            [self.page.locator("[data-testid='modal-privacy-policy']")],
+            "Privacy Policy modal ([data-testid='modal-privacy-policy'])",
+        )
+
+    def close_active_modal(self) -> None:
+        """Close whichever centered modal or drawer is currently visible via Escape."""
+        self.page.keyboard.press("Escape")
+        self.page.wait_for_timeout(120)

@@ -13,7 +13,7 @@ Standalone Playwright + Pytest end-to-end verification harness for **PromptVeil 
   - Header & Layout Verifiers: `GET /health`, strict CSP (`connect-src 'self'`), and `1280x800` / `390x844` zero-horizontal-overflow checks.
 - **Per-Test Isolation (`conftest.py`)**: Fresh incognito `BrowserContext` (`localStorage` + vault isolation) and `%TEMP%` `uploads/` + `downloads/` directories per test.
 
-## Test Inventory (109 Cases)
+## Test Inventory (146 Cases)
 
 | Module | Tier | Count | Coverage |
 |---|---|---|---|
@@ -21,6 +21,8 @@ Standalone Playwright + Pytest end-to-end verification harness for **PromptVeil 
 | `test_tier2_boundaries.py` | Tier 2 | 45 | Empty & 55KB inputs, Luhn/IBAN/SSN checksum boundaries, `[EMAIL_1]` vs `[EMAIL_10]`/`[EMAIL_11]`, dates/IPs/versions vs phones/IPv4, URL/UUID/placeholder exclusions, overlap priorities, XSS inertness, malformed JSON/corrupted `localStorage` |
 | `test_tier3_combinations.py` | Tier 3 | 8 | Cross-feature pairwise workflows (toggle + Re-Hydrate, Cyrillic rule + bilingual preset + audit, export/clear/import rules, FileReader + chip disable + unresolved tokens, 12-email non-collision) |
 | `test_tier4_scenarios.py` | Tier 4 | 5 | Consulting NDA, Prod `.env` + stacktrace, Bilingual RU/CIS HR screening, Zero-HTTP-egress canary audit, Desktop `1280x800` + Mobile `390x844` responsive check |
+| `test_tier5_adversarial.py` | Tier 5 | 29 | Adversarial edge cases, XSS/CSP traps, retranslation, WCAG AA contrast, card suffix & SSN boundaries |
+| `test_acceptance.py` | Acceptance | 8 | RU purity, `RU | EN` persistence, full PII cycle, responsive `1440x900` & `390x844` screenshots, FastAPI/static parity, Zero-Retention Proof & reset, Paste/Combo UX, Pricing/Modals/Trust Footer |
 
 ## Commands
 

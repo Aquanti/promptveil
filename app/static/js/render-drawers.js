@@ -160,18 +160,40 @@ export function renderAuditList(
   }
 }
 
+export const DIALOG_IDS = Object.freeze([
+  "drawer-rulebook",
+  "drawer-audit",
+  "modal-privacy-proof",
+  "modal-plan-request",
+  "modal-privacy-policy",
+]);
+
+export function getOpenDialogEl() {
+  for (const id of DIALOG_IDS) {
+    const el = getEl(id);
+    if (el && !el.hidden) {
+      return el;
+    }
+  }
+  return null;
+}
+
 export function closeDrawers(restoreFocus, state) {
   const backdrop = getEl("drawer-backdrop");
-  const ruleDrawer = getEl("drawer-rulebook");
-  const auditDrawer = getEl("drawer-audit");
   const openRuleBtn = getEl("open-rulebook-btn");
   const openAuditBtn = getEl("open-audit-btn");
+  const openProofBtn = getEl("open-proof-btn");
+  const footerProofBtn = getEl("footer-open-proof-btn");
 
   if (openRuleBtn) openRuleBtn.setAttribute("aria-expanded", "false");
   if (openAuditBtn) openAuditBtn.setAttribute("aria-expanded", "false");
+  if (openProofBtn) openProofBtn.setAttribute("aria-expanded", "false");
+  if (footerProofBtn) footerProofBtn.setAttribute("aria-expanded", "false");
   if (backdrop) backdrop.hidden = true;
-  if (ruleDrawer) ruleDrawer.hidden = true;
-  if (auditDrawer) auditDrawer.hidden = true;
+  for (const id of DIALOG_IDS) {
+    const dlg = getEl(id);
+    if (dlg) dlg.hidden = true;
+  }
 
   if (
     restoreFocus &&
@@ -192,6 +214,8 @@ export function openDrawer(drawerId, triggerEl, state) {
   const drawer = getEl(drawerId);
   const openRuleBtn = getEl("open-rulebook-btn");
   const openAuditBtn = getEl("open-audit-btn");
+  const openProofBtn = getEl("open-proof-btn");
+  const footerProofBtn = getEl("footer-open-proof-btn");
 
   if (openRuleBtn) {
     openRuleBtn.setAttribute(
@@ -203,6 +227,18 @@ export function openDrawer(drawerId, triggerEl, state) {
     openAuditBtn.setAttribute(
       "aria-expanded",
       drawerId === "drawer-audit" ? "true" : "false"
+    );
+  }
+  if (openProofBtn) {
+    openProofBtn.setAttribute(
+      "aria-expanded",
+      drawerId === "modal-privacy-proof" ? "true" : "false"
+    );
+  }
+  if (footerProofBtn) {
+    footerProofBtn.setAttribute(
+      "aria-expanded",
+      drawerId === "modal-privacy-proof" ? "true" : "false"
     );
   }
   if (backdrop) backdrop.hidden = false;

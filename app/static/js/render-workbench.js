@@ -312,6 +312,7 @@ export function renderTelemetryAndActions(
     vaultReadyMetaEl,
     copySanitizedBtn,
     downloadSanitizedBtn,
+    copyGoStep2Btn,
     toggleRevealBtn,
   },
   { rawText, result, vaultSize, revealValues, lang }
@@ -337,6 +338,9 @@ export function renderTelemetryAndActions(
   }
   if (downloadSanitizedBtn) {
     downloadSanitizedBtn.disabled = !hasOutput;
+  }
+  if (copyGoStep2Btn) {
+    copyGoStep2Btn.disabled = !hasOutput;
   }
   if (toggleRevealBtn) {
     toggleRevealBtn.setAttribute("aria-pressed", revealValues ? "true" : "false");

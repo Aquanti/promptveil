@@ -404,6 +404,9 @@ def verify_no_overlap_or_clipping(page: Page) -> dict[str, Any]:
             const innerWidth = window.innerWidth;
             const selector = [
                 'button',
+                'header a',
+                'main a',
+                'footer a',
                 '[role="tab"]',
                 '[role="button"]',
                 '[role="switch"]',
@@ -580,6 +583,7 @@ def verify_no_overlap_or_clipping(page: Page) -> dict[str, Any]:
                 }
                 if (
                     tag === 'button' ||
+                    tag === 'a' ||
                     tag === 'input' ||
                     tag === 'textarea' ||
                     tag === 'select' ||

@@ -60,6 +60,18 @@ export async function copyTextToClipboard(text) {
   return ok;
 }
 
+export async function readTextFromClipboard() {
+  if (!navigator.clipboard || typeof navigator.clipboard.readText !== "function") {
+    return { ok: false, text: "", reason: "unsupported" };
+  }
+  try {
+    const text = await navigator.clipboard.readText();
+    return { ok: true, text: String(text || ""), reason: "" };
+  } catch {
+    return { ok: false, text: "", reason: "blocked" };
+  }
+}
+
 export function showCopyFeedback(
   buttonEl,
   feedbackText,

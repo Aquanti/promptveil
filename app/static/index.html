@@ -14,23 +14,36 @@
   <header class="top-rail">
     <div class="rail-brand">
       <svg class="brand-emblem" viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
-        <rect width="32" height="32" rx="8" fill="#072F1F" stroke="#B4F105" stroke-opacity="0.35" stroke-width="1" />
-        <path d="M16 5L25 9v7c0 5.5-3.8 10.2-9 11.5C10.8 26.2 7 21.5 7 16V9l9-4z" fill="none" stroke="#B4F105" stroke-width="2.2" />
-        <path d="M12 16l3 3 5-6" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+        <rect width="32" height="32" rx="8" fill="#072F1F" stroke="#B4F105" stroke-opacity="0.38" stroke-width="1" />
+        <polygon points="7,8 13.5,8 18.5,19 16,25" fill="#FFFFFF" />
+        <polygon points="18.5,8 25,8 16,25 13.5,19" fill="#B4F105" />
+        <polygon points="16,13.5 18.5,19 16,25 13.5,19" fill="#051C12" />
       </svg>
       <div class="brand-lockup">
         <span class="brand-name">PromptVeil</span>
-        <span
+        <button
+          type="button"
+          id="open-proof-btn"
           class="brand-badge"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="modal-privacy-proof"
           data-testid="brand-badge"
-          data-i18n="brand.badge"
-          data-i18n-title="brand.badgeTitle"
-          title="Все проверки и замены выполняются только в вашем браузере"
-        >Только в браузере</span>
+          data-i18n="proof.triggerLabel"
+          data-i18n-title="proof.triggerTitle"
+          title="Открыть клиентскую проверку конфиденциальности (0 хранения)"
+        >Гарантия 0 хранения • Проверить</button>
       </div>
     </div>
 
     <div class="rail-actions">
+      <a
+        href="#pricing-section"
+        id="nav-pricing-link"
+        class="rail-nav-link"
+        data-testid="nav-pricing-link"
+        data-i18n="nav.pricing"
+      >Тарифы</a>
       <button
         type="button"
         id="open-rulebook-btn"
@@ -95,7 +108,7 @@
         <div class="hero-copy">
           <h1 id="hero-title" class="hero-title" data-i18n="hero.title">Защитите личные данные перед отправкой текста в ИИ</h1>
           <p class="hero-lead" data-i18n="hero.subtitle">
-            Вставьте письмо, договор или код — сервис заменит контакты, карты и пароли на безопасные метки прямо в браузере, а затем вернёт исходные данные в ответ нейросети.
+            Вставьте письмо, договор или код — сервис заменит контакты, карты и пароли на безопасные метки в памяти вкладки, а затем вернёт исходные данные в ответ нейросети.
           </p>
           <ol class="steps-rail" aria-label="Порядок работы" data-i18n-aria="hero.stepsAria">
             <li class="step-pill">
@@ -198,6 +211,13 @@
           <span id="rehydrate-ready-badge" class="tab-badge tabular-nums" hidden>0</span>
         </button>
       </div>
+      <button
+        type="button"
+        id="quick-reset-session-btn"
+        class="btn-ghost-sm"
+        data-testid="quick-reset-session-btn"
+        data-i18n="nav.resetSession"
+      >Сбросить сессию в 0</button>
     </nav>
 
     <section
@@ -215,6 +235,13 @@
               <span id="raw-metrics" class="pane-meta tabular-nums">0 символов • 0 строк</span>
             </div>
             <div class="pane-actions">
+              <button
+                type="button"
+                id="paste-raw-btn"
+                class="btn-secondary"
+                data-testid="paste-raw-btn"
+                data-i18n="action.paste"
+              >Вставить</button>
               <button
                 type="button"
                 id="upload-file-btn"
@@ -248,7 +275,7 @@
               rows="12"
               spellcheck="false"
               data-i18n-placeholder="step1.inputPlaceholder"
-              placeholder="Вставьте письмо, договор, резюме или фрагмент кода — ничего не отправляется на сервер..."
+              placeholder="Вставьте письмо, договор, резюме или фрагмент кода..."
               data-testid="raw-prompt-input"
             ></textarea>
           </div>
@@ -258,7 +285,7 @@
             class="inline-state--loading"
             hidden
             data-i18n="step1.fileLoading"
-          >Читаем файл в браузере...</div>
+          >Читаем файл...</div>
           <div id="input-error-banner" class="inline-alert inline-alert--error" role="alert" hidden></div>
 
           <div class="pane-footer">
@@ -323,14 +350,24 @@
           ></div>
 
           <div class="pane-footer">
-            <span class="pane-hint" data-i18n="step1.outputHint">Замены запоминаются только в текущей вкладке.</span>
-            <button
-              type="button"
-              id="goto-rehydrate-btn"
-              class="btn-lime"
-              data-testid="go-rehydrate-btn"
-              data-i18n="step1.goStep2Btn"
-            >Перейти к шагу 2: вернуть данные →</button>
+            <span class="pane-hint" data-i18n="step1.outputHint">Замены хранятся только в оперативной памяти текущей вкладки.</span>
+            <div class="pane-footer-actions">
+              <button
+                type="button"
+                id="copy-goto-step2-btn"
+                class="btn-lime"
+                disabled
+                data-testid="copy-goto-step2-btn"
+                data-i18n="step1.copyGoStep2Btn"
+              >Скопировать и перейти к шагу 2 →</button>
+              <button
+                type="button"
+                id="goto-rehydrate-btn"
+                class="btn-secondary"
+                data-testid="go-rehydrate-btn"
+                data-i18n="step1.goStep2Btn"
+              >Перейти к шагу 2 →</button>
+            </div>
           </div>
         </section>
       </div>
@@ -394,6 +431,13 @@
             <div class="pane-actions">
               <button
                 type="button"
+                id="paste-rehydrate-btn"
+                class="btn-secondary"
+                data-testid="paste-rehydrate-btn"
+                data-i18n="action.paste"
+              >Вставить</button>
+              <button
+                type="button"
                 id="clear-rehydrate-btn"
                 class="btn-ghost-sm"
                 data-testid="clear-rehydrate-btn"
@@ -416,7 +460,7 @@
           <div id="rehydrate-error-banner" class="inline-alert inline-alert--error" role="alert" hidden></div>
 
           <div class="pane-footer">
-            <span class="pane-hint" data-i18n="step2.inputHint">Метки подставляются за один проход в памяти браузера.</span>
+            <span class="pane-hint" data-i18n="step2.inputHint">Метки подставляются за один проход в оперативной памяти.</span>
             <button
               type="button"
               id="rehydrate-btn"
@@ -472,7 +516,7 @@
           ></div>
 
           <div class="pane-footer">
-            <span class="pane-hint" data-i18n="step2.outputHint">Восстановление происходит полностью в памяти браузера.</span>
+            <span class="pane-hint" data-i18n="step2.outputHint">Восстановление происходит в оперативной памяти вкладки.</span>
             <button
               type="button"
               id="back-to-sanitize-btn"
@@ -484,22 +528,244 @@
         </section>
       </div>
     </section>
+
+    <section
+      id="pricing-section"
+      class="pricing-section"
+      aria-labelledby="pricing-title"
+      data-testid="pricing-section"
+    >
+      <div class="pricing-header">
+        <div class="pricing-title-group">
+          <h2 id="pricing-title" class="pricing-title" data-i18n="pricing.title">Тарифы</h2>
+          <p class="pricing-subtitle" data-i18n="pricing.subtitle">Весь базовый функционал сервиса полностью бесплатен и открыт для старта.</p>
+        </div>
+
+        <div
+          class="billing-toggle"
+          role="group"
+          aria-label="Период оплаты"
+          data-i18n-aria="pricing.toggleAria"
+          data-testid="billing-toggle"
+        >
+          <button
+            type="button"
+            id="billing-month-btn"
+            class="billing-btn is-active"
+            aria-pressed="true"
+            data-testid="billing-month-btn"
+            data-i18n="pricing.toggleMonth"
+          >Месяц</button>
+          <button
+            type="button"
+            id="billing-year-btn"
+            class="billing-btn"
+            aria-pressed="false"
+            data-testid="billing-year-btn"
+            data-i18n="pricing.toggleYear"
+          >Год −20%</button>
+        </div>
+      </div>
+
+      <div class="pricing-grid">
+        <article class="pricing-card" data-testid="pricing-card-free">
+          <div class="pricing-card-top">
+            <h3 class="pricing-plan-name" data-i18n="pricing.freeName">Старт (Free)</h3>
+            <span class="pricing-plan-badge" data-i18n="pricing.freeBadge">Активен сейчас</span>
+          </div>
+          <div class="pricing-price-block">
+            <div class="pricing-price-row">
+              <span id="price-free-value" class="pricing-price-value tabular-nums" data-i18n="pricing.freePrice">0 ₽</span>
+              <span class="pricing-price-period" data-i18n="pricing.periodMonth">/ мес</span>
+            </div>
+            <p class="pricing-price-note" data-i18n="pricing.noteFree">Открыт без регистрации и карты</p>
+          </div>
+          <ul class="pricing-features">
+            <li data-i18n="pricing.freeFeat1">Полная защита текстов и файлов до 2 МБ (11 категорий)</li>
+            <li data-i18n="pricing.freeFeat2">Возврат данных в ответ ИИ в 1 клик</li>
+            <li data-i18n="pricing.freeFeat3">Свои слова-исключения и экспорт правил</li>
+            <li data-i18n="pricing.freeFeat4">Живая проверка «0 хранения» и сброс сессии в 0</li>
+          </ul>
+          <div class="pricing-card-footer">
+            <button
+              type="button"
+              id="pricing-free-start-btn"
+              class="btn-secondary"
+              data-testid="pricing-free-start-btn"
+              data-i18n="pricing.freeCta"
+            >Пользоваться бесплатно</button>
+          </div>
+        </article>
+
+        <article class="pricing-card pricing-card--featured" data-testid="pricing-card-pro">
+          <div class="pricing-card-top">
+            <h3 class="pricing-plan-name" data-i18n="pricing.proName">Pro</h3>
+            <span class="pricing-plan-badge" data-i18n="pricing.proBadge">Ранний доступ</span>
+          </div>
+          <div class="pricing-price-block">
+            <div class="pricing-price-row">
+              <span id="price-pro-value" class="pricing-price-value tabular-nums" data-testid="price-pro-value">490 ₽</span>
+              <span class="pricing-price-period" data-i18n="pricing.periodMonth">/ мес</span>
+            </div>
+            <p id="price-pro-note" class="pricing-price-note" data-i18n="pricing.noteMonthly">Помесячная оплата</p>
+          </div>
+          <ul class="pricing-features">
+            <li data-i18n="pricing.proFeat1">Пакетная обработка .docx, .pdf, .xlsx до 50 МБ</li>
+            <li data-i18n="pricing.proFeat2">Расширение для браузера поверх ChatGPT / Claude / DeepSeek</li>
+            <li data-i18n="pricing.proFeat3">Отдельные профили правил под рабочие проекты</li>
+            <li data-i18n="pricing.proFeat4">Авто-распознавание реквизитов РФ/СНГ (ИНН, СНИЛС, паспорт)</li>
+          </ul>
+          <div class="pricing-card-footer">
+            <button
+              type="button"
+              id="open-pro-modal-btn"
+              class="btn-lime"
+              aria-haspopup="dialog"
+              aria-controls="modal-plan-request"
+              data-testid="open-pro-modal-btn"
+              data-i18n="pricing.proCta"
+            >Ранний доступ • 30 дней бесплатно</button>
+          </div>
+        </article>
+
+        <article class="pricing-card" data-testid="pricing-card-team">
+          <div class="pricing-card-top">
+            <h3 class="pricing-plan-name" data-i18n="pricing.teamName">Бизнес / Команда</h3>
+            <span class="pricing-plan-badge pricing-plan-badge--team" data-i18n="pricing.teamBadge">Для команд</span>
+          </div>
+          <div class="pricing-price-block">
+            <div class="pricing-price-row">
+              <span id="price-team-value" class="pricing-price-value tabular-nums" data-testid="price-team-value">1 990 ₽</span>
+              <span class="pricing-price-period" data-i18n="pricing.periodMonth">/ мес</span>
+            </div>
+            <p id="price-team-note" class="pricing-price-note" data-i18n="pricing.noteTeamSeats">до 10 человек</p>
+          </div>
+          <ul class="pricing-features">
+            <li data-i18n="pricing.teamFeat1">Общий корпоративный словарь NDA-терминов</li>
+            <li data-i18n="pricing.teamFeat2">Брендированные сертификаты проверки для ИБ (152-ФЗ / GDPR)</li>
+            <li data-i18n="pricing.teamFeat3">Единый вход (SSO) и управление ролями</li>
+            <li data-i18n="pricing.teamFeat4">Приоритетная поддержка и помощь с внедрением</li>
+          </ul>
+          <div class="pricing-card-footer">
+            <button
+              type="button"
+              id="open-team-modal-btn"
+              class="btn-primary"
+              aria-haspopup="dialog"
+              aria-controls="modal-plan-request"
+              data-testid="open-team-modal-btn"
+              data-i18n="pricing.teamCta"
+            >Оставить корпоративную заявку</button>
+          </div>
+        </article>
+      </div>
+    </section>
   </main>
 
-  <footer class="site-footer">
-    <div class="footer-brand">
-      <svg class="footer-spark-icon" viewBox="0 0 100 100" width="16" height="16" fill="none" aria-hidden="true">
-        <g transform="translate(50,50)">
-          <rect x="-8" y="-44" width="16" height="88" rx="8" ry="8" fill="#051C12" />
-          <rect x="-8" y="-44" width="16" height="88" rx="8" ry="8" fill="#051C12" transform="rotate(60)" />
-          <rect x="-8" y="-44" width="16" height="88" rx="8" ry="8" fill="#051C12" transform="rotate(120)" />
-        </g>
-      </svg>
-      <span>PromptVeil</span>
+  <footer class="site-footer" data-testid="site-footer">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <div class="footer-brand">
+          <svg class="footer-brand-emblem" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="#051C12" />
+            <polygon points="7,8 13.5,8 18.5,19 16,25" fill="#FFFFFF" />
+            <polygon points="18.5,8 25,8 16,25 13.5,19" fill="#B4F105" />
+            <polygon points="16,13.5 18.5,19 16,25 13.5,19" fill="#072F1F" />
+          </svg>
+          <span>PromptVeil</span>
+        </div>
+        <p class="footer-desc" data-i18n="footer.brandDesc">
+          Инструмент защиты персональных и корпоративных данных перед работой с нейросетями.
+        </p>
+        <div class="footer-links-row">
+          <a href="#main-workbench" class="footer-nav-link" data-i18n="footer.navWorkbench">Рабочая область</a>
+          <a href="#pricing-section" class="footer-nav-link" data-i18n="footer.navPricing">Тарифы</a>
+          <button
+            type="button"
+            id="open-privacy-policy-btn"
+            class="footer-link-btn"
+            aria-haspopup="dialog"
+            aria-controls="modal-privacy-policy"
+            data-testid="open-privacy-policy-btn"
+            data-i18n="footer.privacyPolicyBtn"
+          >Политика конфиденциальности</button>
+        </div>
+      </div>
+
+      <div class="footer-col">
+        <h2 class="footer-heading" data-i18n="footer.trustHeading">Архитектура доверия</h2>
+        <div class="trust-badges-grid">
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeTls">HTTPS / TLS</span></span>
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeZero">Zero-Retention (0 логов)</span></span>
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeCsp">Strict CSP</span></span>
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeNoTrack">Без cookies и трекеров</span></span>
+        </div>
+        <button
+          type="button"
+          id="footer-open-proof-btn"
+          class="footer-proof-btn"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          aria-controls="modal-privacy-proof"
+          data-testid="footer-open-proof-btn"
+          data-i18n="proof.triggerLabel"
+        >Гарантия 0 хранения • Проверить</button>
+      </div>
+
+      <div class="footer-col" data-testid="footer-contacts">
+        <h2 class="footer-heading" data-i18n="footer.contactsHeading">Контакты и связь</h2>
+        <ul class="footer-contacts-list">
+          <li class="footer-contact-row">
+            <div class="footer-contact-meta">
+              <span class="footer-contact-label" data-i18n="footer.telegramLabel">Telegram</span>
+              <span id="contact-telegram-text" class="footer-contact-value" data-testid="contact-telegram-text">@supv1rus</span>
+            </div>
+            <button
+              type="button"
+              id="copy-contact-telegram-btn"
+              class="btn-copy-xs"
+              data-testid="copy-contact-telegram-btn"
+              data-i18n="action.copy"
+            >Скопировать</button>
+          </li>
+          <li class="footer-contact-row">
+            <div class="footer-contact-meta">
+              <span class="footer-contact-label" data-i18n="footer.emailLabel">Эл. почта / Поддержка</span>
+              <a
+                id="contact-email-link"
+                class="footer-contact-value"
+                href="mailto:kilkauciha@gmail.com"
+                data-testid="contact-email-link"
+              >kilkauciha@gmail.com</a>
+            </div>
+            <button
+              type="button"
+              id="copy-contact-email-btn"
+              class="btn-copy-xs"
+              data-testid="copy-contact-email-btn"
+              data-i18n="action.copy"
+            >Скопировать</button>
+          </li>
+          <li class="footer-contact-row">
+            <div class="footer-contact-meta">
+              <span class="footer-contact-label" data-i18n="footer.githubLabel">GitHub</span>
+              <span id="contact-github-text" class="footer-contact-value" data-testid="contact-github-text">github.com/Aquanti</span>
+            </div>
+            <button
+              type="button"
+              id="copy-contact-github-btn"
+              class="btn-copy-xs"
+              data-testid="copy-contact-github-btn"
+              data-i18n="action.copy"
+            >Скопировать</button>
+          </li>
+        </ul>
+      </div>
     </div>
-    <div class="footer-status">
-      <span class="footer-status-dot" aria-hidden="true"></span>
-      <span data-i18n="footer.localNote">Все проверки выполняются локально в вашем браузере</span>
+
+    <div class="footer-bottom-bar">
+      <span id="footer-copyright" data-testid="footer-copyright">© 2026 PromptVeil • Автор проекта: SupV1rus</span>
+      <span data-i18n="footer.zeroNote">Никаких cookies, рекламных трекеров и серверных логов промптов.</span>
     </div>
   </footer>
 
@@ -630,7 +896,7 @@
 
     <div class="drawer-body">
       <div class="zero-pii-notice" data-i18n="audit.notice">
-        Контрольные отпечатки вычисляются прямо в браузере (SHA-256). Исходные тексты, секреты и таблица замен не сохраняются и никуда не отправляются.
+        Контрольные отпечатки (SHA-256) вычисляются на вашем устройстве. Исходные тексты, секреты и таблица замен не сохраняются.
       </div>
 
       <div id="audit-empty" class="drawer-empty" data-i18n="audit.empty">
@@ -657,5 +923,239 @@
       >Очистить журнал</button>
     </div>
   </aside>
+
+  <section
+    id="modal-privacy-proof"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="proof-modal-title"
+    hidden
+    data-testid="modal-privacy-proof"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="proof-modal-title" class="modal-title" data-i18n="proof.title">Клиентская проверка конфиденциальности (Zero-Retention Proof)</h2>
+        <p class="modal-subtitle" data-i18n="proof.subtitle">Живая проверка изоляции страницы в реальном времени без единого сетевого запроса.</p>
+      </div>
+      <button
+        type="button"
+        id="close-proof-btn"
+        class="drawer-close"
+        aria-label="Закрыть"
+        data-i18n-aria="common.close"
+        data-testid="close-proof-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <div id="proof-summary-card" class="proof-summary-card" data-testid="proof-summary-card">
+        <span id="proof-summary-status" class="proof-summary-title">Подтверждено: 0 хранения и 0 утечек текста</span>
+        <span id="proof-checked-at" class="proof-summary-time tabular-nums"></span>
+      </div>
+
+      <ul id="proof-checks-list" class="proof-checks-list" data-testid="proof-checks-list"></ul>
+
+      <div id="proof-ram-note" class="proof-ram-note tabular-nums" data-testid="proof-ram-note"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button
+        type="button"
+        id="run-proof-check-btn"
+        class="btn-primary"
+        data-testid="run-proof-check-btn"
+        data-i18n="proof.runBtn"
+      >Запустить самопроверку</button>
+      <div class="modal-footer-actions">
+        <button
+          type="button"
+          id="reset-session-btn"
+          class="btn-danger-ghost"
+          data-testid="reset-session-btn"
+          data-i18n="proof.resetBtn"
+        >Сбросить сессию в 0</button>
+        <button
+          type="button"
+          id="close-proof-footer-btn"
+          class="btn-secondary"
+          data-i18n="common.close"
+        >Закрыть</button>
+      </div>
+    </div>
+  </section>
+
+  <section
+    id="modal-plan-request"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="plan-modal-title"
+    hidden
+    data-testid="modal-plan-request"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="plan-modal-title" class="modal-title">Ранний доступ к PromptVeil Pro</h2>
+        <p id="plan-modal-subtitle" class="modal-subtitle">Предзаказ: 30 дней бесплатно после запуска без сбора текстов промптов.</p>
+      </div>
+      <button
+        type="button"
+        id="close-plan-modal-btn"
+        class="drawer-close"
+        aria-label="Закрыть"
+        data-i18n-aria="common.close"
+        data-testid="close-plan-modal-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <div id="plan-summary-pill" class="plan-summary-pill tabular-nums">Pro • 490 ₽ / мес</div>
+      <div class="plan-privacy-note" data-i18n="request.privacyNote">
+        Полностью клиентская форма: никаких сетевых запросов и сбора ваших промптов. Готовый текст заявки формируется на вашем устройстве.
+      </div>
+
+      <form id="plan-request-form" class="plan-request-form" novalidate>
+        <div class="form-field">
+          <label for="plan-req-name" class="field-label" data-i18n="request.nameLabel">Имя или компания</label>
+          <input
+            type="text"
+            id="plan-req-name"
+            class="field-input"
+            maxlength="120"
+            data-i18n-placeholder="request.namePlaceholder"
+            placeholder="Например: Алексей или ООО «Вектор»"
+            data-testid="plan-req-name"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="plan-req-contact" class="field-label" data-i18n="request.contactLabel">Эл. почта или Telegram для связи</label>
+          <input
+            type="text"
+            id="plan-req-contact"
+            class="field-input"
+            maxlength="120"
+            data-i18n-placeholder="request.contactPlaceholder"
+            placeholder="name@company.ru или @username"
+            data-testid="plan-req-contact"
+          />
+        </div>
+
+        <div id="plan-req-seats-field" class="form-field" hidden>
+          <label for="plan-req-seats" class="field-label" data-i18n="request.seatsLabel">Размер команды (чел.)</label>
+          <input
+            type="number"
+            id="plan-req-seats"
+            class="field-input tabular-nums"
+            min="1"
+            max="5000"
+            value="10"
+            data-testid="plan-req-seats"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="plan-req-note" class="field-label" data-i18n="request.noteLabel">Комментарий (необязательно)</label>
+          <input
+            type="text"
+            id="plan-req-note"
+            class="field-input"
+            maxlength="300"
+            data-i18n-placeholder="request.notePlaceholder"
+            placeholder="Какие форматы файлов или требования ИБ актуальны?"
+            data-testid="plan-req-note"
+          />
+        </div>
+
+        <div id="plan-request-alert" class="inline-alert" role="alert" hidden data-testid="plan-request-alert"></div>
+
+        <button
+          type="submit"
+          id="plan-req-submit-btn"
+          class="btn-primary btn-full"
+          data-testid="plan-req-submit-btn"
+          data-i18n="request.submitBtn"
+        >Сформировать заявку</button>
+      </form>
+
+      <div id="plan-request-result" class="plan-result-box" hidden data-testid="plan-request-result">
+        <p class="plan-result-title" data-i18n="request.resultTitle">Готовая заявка (без отправки с сайта):</p>
+        <pre id="plan-request-preview" class="plan-preview-pre" data-testid="plan-request-preview"></pre>
+        <div class="plan-result-actions">
+          <button
+            type="button"
+            id="plan-req-copy-btn"
+            class="btn-lime"
+            data-testid="plan-req-copy-btn"
+            data-i18n="request.copyBtn"
+          >Скопировать заявку</button>
+          <a
+            id="plan-req-mailto-link"
+            class="btn-primary"
+            href="mailto:kilkauciha@gmail.com"
+            data-testid="plan-req-mailto-link"
+            data-i18n="request.mailtoBtn"
+          >Открыть в почтовом клиенте</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section
+    id="modal-privacy-policy"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="policy-modal-title"
+    hidden
+    data-testid="modal-privacy-policy"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="policy-modal-title" class="modal-title" data-i18n="policy.title">Краткая политика конфиденциальности</h2>
+        <p class="modal-subtitle" data-i18n="policy.subtitle">Прозрачные принципы работы с текстом и настройками.</p>
+      </div>
+      <button
+        type="button"
+        id="close-policy-modal-btn"
+        class="drawer-close"
+        aria-label="Закрыть"
+        data-i18n-aria="common.close"
+        data-testid="close-policy-modal-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <ul class="policy-list">
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="policy.item1Title">1. Нулевое хранение текстов и секретов</h3>
+          <p class="policy-item-body" data-i18n="policy.item1Body">Исходный текст, ответ ИИ и таблица временных замен существуют только в оперативной памяти текущей вкладки и очищаются при сбросе или закрытии страницы.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="policy.item2Title">2. Нулевая сетевая передача</h3>
+          <p class="policy-item-body" data-i18n="policy.item2Body">Политика безопасности CSP (connect-src 'self') технически блокирует любые сторонние запросы. Тексты не передаются на сервер или в аналитику.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="policy.item3Title">3. Что хранится локально по желанию</h3>
+          <p class="policy-item-body" data-i18n="policy.item3Body">В настройках устройства могут сохраняться выбранный язык, список ваших слов-исключений и журнал цифровых отпечатков (SHA-256 без исходного текста), которые можно удалить в любой момент.</p>
+        </li>
+        <li class="policy-item">
+          <h3 class="policy-item-title" data-i18n="policy.item4Title">4. Контакты владельца проекта</h3>
+          <p id="policy-owner-contact-body" class="policy-item-body">По вопросам безопасности, поддержки и сотрудничества: kilkauciha@gmail.com или Telegram @supv1rus.</p>
+        </li>
+      </ul>
+    </div>
+
+    <div class="modal-footer">
+      <span></span>
+      <button
+        type="button"
+        id="close-policy-footer-btn"
+        class="btn-secondary"
+        data-i18n="common.close"
+      >Закрыть</button>
+    </div>
+  </section>
 </body>
 </html>

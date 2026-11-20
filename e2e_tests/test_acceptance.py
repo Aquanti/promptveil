@@ -36,6 +36,18 @@ def test_ACC_01_default_russian_ui_and_zero_jargon_purity(e2e_session: E2ESessio
     assert re.search(r"[А-Яа-яЁё]", ui.get_zero_egress_pill().inner_text())
     assert re.search(r"[А-Яа-яЁё]", ui.get_hero_summary_text())
 
+    # R1 & R2: No shield/check paths and no obsolete local-browser nagging copy
+    body_text = page.locator("body").inner_text()
+    for obsolete in (
+        "Только в браузере",
+        "Все проверки выполняются локально в вашем браузере",
+        "ничего не отправляется на сервер",
+    ):
+        assert obsolete not in body_text, f"Obsolete phrase {obsolete!r} visible in body"
+    assert page.locator("svg.brand-emblem polygon").count() >= 2
+    assert page.locator("svg.footer-brand-emblem polygon").count() >= 2
+    assert "M16 5L25 9v7" not in page.content()
+
     for testid in (
         "mode-sanitize",
         "mode-rehydrate",
@@ -70,6 +82,19 @@ def test_ACC_01_default_russian_ui_and_zero_jargon_purity(e2e_session: E2ESessio
     ui.open_audit_drawer()
     verify_russian_purity(page)
     ui.close_open_drawer()
+
+    # Check new R2/R4/R5 modals for Russian purity
+    ui.open_privacy_proof_modal("header")
+    verify_russian_purity(page)
+    ui.close_active_modal()
+
+    ui.open_plan_request_modal("pro")
+    verify_russian_purity(page)
+    ui.close_active_modal()
+
+    ui.open_privacy_policy_modal()
+    verify_russian_purity(page)
+    ui.close_active_modal()
 
     e2e_session.console.assert_no_errors()
 
@@ -245,6 +270,56 @@ def test_ACC_04_responsive_layout_no_overlap_clipping_and_screenshots(e2e_sessio
         )
         ui.close_open_drawer()
 
+        # Verify compact mobile header <= 64px
+        if width <= 639:
+            top_rail_h = page.locator("header.top-rail").evaluate("el => el.getBoundingClientRect().height")
+            assert top_rail_h <= 64.5, f"Mobile top-rail height exceeded 64px: {top_rail_h}"
+
+        # Pricing + Trust Footer viewport screenshot & layout check
+        page.locator("[data-testid='pricing-section']").scroll_into_view_if_needed()
+        page.wait_for_timeout(150)
+        verify_responsive_layout(page, width, height)
+        capture_viewport_screenshot(
+            page,
+            f"acc_{label_prefix}_pricing_footer",
+            width,
+            height,
+            output_dir=ACCEPTANCE_SCREENSHOTS_DIR,
+            full_page=False,
+        )
+
+        # Zero-Retention Proof modal screenshot & layout check
+        ui.open_privacy_proof_modal("footer")
+        verify_responsive_layout(page, width, height)
+        page.wait_for_timeout(200)
+        capture_viewport_screenshot(
+            page,
+            f"acc_{label_prefix}_proof_modal",
+            width,
+            height,
+            output_dir=ACCEPTANCE_SCREENSHOTS_DIR,
+            full_page=False,
+        )
+        ui.close_active_modal()
+
+        # Plan Request modal screenshot & layout check
+        ui.open_plan_request_modal("pro")
+        page.locator("[data-testid='plan-req-name']").fill("ООО «Вектор»")
+        page.locator("[data-testid='plan-req-contact']").fill("@supv1rus")
+        page.locator("[data-testid='plan-req-submit-btn']").click()
+        assert page.locator("[data-testid='plan-request-result']").is_visible()
+        verify_responsive_layout(page, width, height)
+        page.wait_for_timeout(200)
+        capture_viewport_screenshot(
+            page,
+            f"acc_{label_prefix}_request_modal",
+            width,
+            height,
+            output_dir=ACCEPTANCE_SCREENSHOTS_DIR,
+            full_page=False,
+        )
+        ui.close_active_modal()
+
     e2e_session.net.assert_zero_egress()
     e2e_session.console.assert_no_errors()
 
@@ -314,3 +389,186 @@ def test_ACC_05_fastapi_and_static_only_netlify_parity(
             net.detach()
             ctx.close()
             _ = temp_io_dir
+
+
+def test_ACC_06_zero_retention_proof_and_session_reset(e2e_session: E2ESession) -> None:
+    """R2: Live Zero-Retention Proof scan, session reset to 0, and pagehide RAM/DOM scrub."""
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    ui.add_custom_rule("ООО «Горизонт»")
+    ui.close_open_drawer()
+    secret_email = "proof.user@example.ru"
+    masked = ui.sanitize_text(f"Компания ООО «Горизонт», почта {secret_email}")
+    assert "[CUSTOM_1]" in masked and "[EMAIL_1]" in masked
+
+    # Open from header and run live self-test
+    modal = ui.open_privacy_proof_modal("header")
+    ui.run_privacy_proof_check()
+    modal_text = modal.inner_text()
+    assert "0 запросов" in modal_text
+    assert "connect-src 'self'" in modal_text
+    assert "0 байт" in modal_text
+    assert "0 трекеров" in modal_text
+    ram_note = page.locator("[data-testid='proof-ram-note']").inner_text()
+    assert "активных замен — 2" in ram_note
+
+    # Instant reset session to 0 inside Proof modal
+    ui.click_reset_session_to_zero("modal")
+    assert page.locator("[data-testid='proof-ram-note']").inner_text().endswith("активных замен — 0.")
+    ui.close_active_modal()
+
+    assert ui.get_prompt_input().input_value() == ""
+    assert ui.get_sanitize_output_text() == ""
+    assert ui.get_vault_rows() == []
+    # Preferences & custom rules in localStorage remain preserved
+    assert ui.get_rulebook_badge_count() == 1
+
+    # Re-open from footer trigger and check pagehide scrub
+    ui.open_privacy_proof_modal("footer")
+    ui.close_active_modal()
+    ui.sanitize_text("Снова secret2@example.ru")
+    assert len(ui.get_vault_rows()) == 1
+    page.evaluate("() => window.dispatchEvent(new Event('pagehide'))")
+    assert ui.get_prompt_input().input_value() == ""
+    assert ui.get_sanitize_output_text() == ""
+    assert ui.get_vault_rows() == []
+
+    e2e_session.net.assert_zero_egress([secret_email, "secret2@example.ru"])
+    e2e_session.console.assert_no_errors()
+
+
+def test_ACC_07_ux_paste_and_copy_goto_step2(e2e_session: E2ESession) -> None:
+    """R3: Step 1 & Step 2 Paste buttons (with fallback) and Copy & Go to Step 2 combo CTA."""
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    sample = "Заявка от maria.ivanova@example.ru, тел +7 (916) 555-01-44"
+    page.evaluate("async (txt) => await navigator.clipboard.writeText(txt)", sample)
+    ui.click_paste_raw()
+    assert ui.get_prompt_input().input_value() == sample
+    masked = ui.get_sanitize_output_text()
+    assert "[EMAIL_1]" in masked and "[PHONE_1]" in masked
+
+    # Combo button copies masked output and switches to Step 2
+    ui.click_copy_goto_step2()
+    assert ui.get_rehydrate_input().is_visible()
+    clip = ui.read_clipboard_text()
+    assert clip == masked
+
+    # Paste AI reply in Step 2 via Paste button and restore
+    ai_reply = f"Готовый ответ для клиента:\n{masked}"
+    page.evaluate("async (txt) => await navigator.clipboard.writeText(txt)", ai_reply)
+    ui.click_paste_rehydrate()
+    assert ui.get_rehydrate_input().input_value() == ai_reply
+
+    restored = ui.rehydrate_text(ai_reply)
+    assert "maria.ivanova@example.ru" in restored
+    assert "+7 (916) 555-01-44" in restored
+
+    # Verify graceful fallback when Clipboard readText rejects
+    page.evaluate(
+        """() => {
+            Object.defineProperty(navigator, 'clipboard', {
+                configurable: true,
+                value: {
+                    readText: () => Promise.reject(new DOMException('Denied', 'NotAllowedError')),
+                    writeText: () => Promise.resolve()
+                }
+            });
+        }"""
+    )
+    ui.click_paste_rehydrate()
+    banner_txt = ui.get_status_banner_text()
+    assert "Ctrl+V" in banner_txt
+    assert page.evaluate("() => document.activeElement?.id") == "llm-reply-input"
+
+    ui.click_back_sanitize()
+    ui.click_paste_raw()
+    assert "Ctrl+V" in ui.get_status_banner_text()
+    assert page.evaluate("() => document.activeElement?.id") == "raw-prompt-input"
+
+    e2e_session.net.assert_zero_egress(["maria.ivanova@example.ru", "+7 (916) 555-01-44"])
+    e2e_session.console.assert_no_errors()
+
+
+def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2ESession) -> None:
+    """R4 & R5: Pricing toggle, Pro/Team client-only forms, Trust Footer, real contacts, and RU/EN i18n."""
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    # 1. Pricing section in RU (Month vs Year -20%)
+    assert page.locator("[data-testid='pricing-card-free']").is_visible()
+    assert "Активен сейчас" in page.locator("[data-testid='pricing-card-free']").inner_text()
+    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "490 ₽"
+    assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "1 990 ₽"
+
+    ui.select_billing_cycle("year")
+    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "390 ₽"
+    assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "1 590 ₽"
+
+    # 2. Pro & Team client-only validation + formatted request + copy + mailto
+    ui.open_plan_request_modal("pro")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    assert page.locator("[data-testid='plan-request-alert']").is_visible()
+
+    page.locator("[data-testid='plan-req-name']").fill("Иван Петров")
+    page.locator("[data-testid='plan-req-contact']").fill("bad-contact")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    assert page.locator("[data-testid='plan-request-alert']").is_visible()
+
+    page.locator("[data-testid='plan-req-contact']").fill("ivan@company.ru")
+    page.locator("[data-testid='plan-req-note']").fill("Нужна обработка docx")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    preview_txt = page.locator("[data-testid='plan-request-preview']").inner_text()
+    assert "Pro" in preview_txt and "Иван Петров" in preview_txt and "ivan@company.ru" in preview_txt
+    mailto_href = page.locator("[data-testid='plan-req-mailto-link']").get_attribute("href") or ""
+    assert mailto_href.startswith("mailto:kilkauciha@gmail.com?")
+    page.locator("[data-testid='plan-req-copy-btn']").click()
+    assert (ui.read_clipboard_text() or "").replace("\r\n", "\n") == preview_txt.replace("\r\n", "\n")
+    ui.close_active_modal()
+
+    ui.open_plan_request_modal("team")
+    assert page.locator("[data-testid='plan-req-seats']").is_visible()
+    page.locator("[data-testid='plan-req-seats']").fill("15")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    team_preview = page.locator("[data-testid='plan-request-preview']").inner_text()
+    assert "15" in team_preview
+    ui.close_active_modal()
+
+    # 3. Trust Footer, Real Contacts, and Privacy Policy modal
+    footer_text = page.locator("[data-testid='site-footer']").inner_text()
+    for token in (
+        "HTTPS / TLS",
+        "Zero-Retention (0 логов)",
+        "Strict CSP",
+        "Без cookies и трекеров",
+        "@supv1rus",
+        "kilkauciha@gmail.com",
+        "github.com/Aquanti",
+        "Автор проекта: SupV1rus",
+    ):
+        assert token in footer_text, f"Missing footer trust/contact token {token!r}"
+
+    page.locator("[data-testid='copy-contact-telegram-btn']").click()
+    assert ui.read_clipboard_text() == "@supv1rus"
+    page.locator("[data-testid='copy-contact-github-btn']").click()
+    assert ui.read_clipboard_text() == "github.com/Aquanti"
+
+    policy_modal = ui.open_privacy_policy_modal()
+    assert "kilkauciha@gmail.com" in policy_modal.inner_text()
+    assert "@supv1rus" in policy_modal.inner_text()
+    ui.close_active_modal()
+
+    # 4. EN translation across pricing, footer, and Proof modal
+    ui.switch_language("en")
+    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "$5"
+    assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "$19"
+    ui.select_billing_cycle("month")
+    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "$6"
+    assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "$24"
+    assert "Created by SupV1rus" in page.locator("[data-testid='footer-copyright']").inner_text()
+    assert "Zero-Retention • Verify" in ui.get_zero_egress_pill().inner_text()
+
+    e2e_session.net.assert_zero_egress(["ivan@company.ru", "Иван Петров"])
+    e2e_session.console.assert_no_errors()

@@ -314,8 +314,25 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
     """Verify static HTML/CSS/JS comply with strict CSP and zero-network guarantees."""
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
-    # No external http(s) URLs in HTML resource tags.
-    assert not re.search(r"<(?:script|link|img)\b[^>]*\b(?:src|href)\s*=\s*['\"]https?://", index_html, re.IGNORECASE)
+    # No external http(s)/ws(s) URLs anywhere in HTML (allowing standard SVG xmlns only).
+    html_without_svg_ns = re.sub(
+        r"""xmlns\s*=\s*['"]http://www\.w3\.org/2000/svg['"]""",
+        "",
+        index_html,
+        flags=re.IGNORECASE,
+    )
+    assert not re.search(r"(?:https?|wss?)://", html_without_svg_ns, re.IGNORECASE), (
+        "External http(s)/ws(s) URL found in app/static/index.html"
+    )
+    favicon_without_svg_ns = re.sub(
+        r"""xmlns\s*=\s*['"]http://www\.w3\.org/2000/svg['"]""",
+        "",
+        (STATIC_DIR / "favicon.svg").read_text(encoding="utf-8"),
+        flags=re.IGNORECASE,
+    )
+    assert not re.search(r"(?:https?|wss?)://", favicon_without_svg_ns, re.IGNORECASE), (
+        "External http(s)/ws(s) URL found in app/static/favicon.svg"
+    )
     # Every <script> tag must have src= and empty inline body.
     for script_match in re.finditer(r"<script\b([^>]*)>(.*?)</script>", index_html, re.IGNORECASE | re.DOTALL):
         attrs, body = script_match.groups()
@@ -564,4 +581,81 @@ def test_cache_control_and_netlify_parity() -> None:
         cache_control = resp.headers.get("cache-control")
         assert "public" not in (cache_control or "").lower()
         assert cache_control is None
+
+
+def test_r1_geometric_brand_emblem_without_shield_or_check() -> None:
+    """Verify favicon.svg and header/footer brand SVGs use geometric prism/veil polygons with zero shields/checks."""
+    favicon_svg = (STATIC_DIR / "favicon.svg").read_text(encoding="utf-8")
+    index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    old_shield_path = "M16 5L25 9v7"
+    old_check_path = "M12 16l3 3 5-6"
+    assert old_shield_path not in favicon_svg
+    assert old_check_path not in favicon_svg
+    assert old_shield_path not in index_html
+    assert old_check_path not in index_html
+
+    assert "<polygon" in favicon_svg
+    for color in ("#051C12", "#072F1F", "#B4F105", "#FFFFFF"):
+        assert color in favicon_svg, f"Missing Spark Admin color {color} in favicon.svg"
+        assert color in index_html, f"Missing Spark Admin color {color} in index.html"
+
+    assert 'class="brand-emblem"' in index_html
+    assert 'class="footer-brand-emblem"' in index_html
+    assert "footer-spark-icon" not in index_html
+
+
+def test_r2_obsolete_local_browser_nagging_removed() -> None:
+    """Verify obsolete repetitive local-browser/server-warning copy is removed from HTML and i18n."""
+    index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    i18n_js = (STATIC_DIR / "js" / "i18n.js").read_text(encoding="utf-8")
+
+    obsolete_phrases = (
+        "Только в браузере",
+        "Все проверки выполняются локально в вашем браузере",
+        "ничего не отправляется на сервер",
+        "Browser-local only",
+        "All checks run locally in your browser",
+        "nothing leaves your browser",
+    )
+    for phrase in obsolete_phrases:
+        assert phrase not in index_html, f"Obsolete phrase {phrase!r} still in index.html"
+        assert phrase not in i18n_js, f"Obsolete phrase {phrase!r} still in i18n.js"
+
+
+def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
+    """Verify Zero-Retention Proof, UX paste/combo controls, pricing, trust footer, and real owner contacts."""
+    index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    contacts_js = (STATIC_DIR / "js" / "contacts.js").read_text(encoding="utf-8")
+    proof_js = (STATIC_DIR / "js" / "privacy-proof.js").read_text(encoding="utf-8")
+
+    for hook in (
+        'id="open-proof-btn"',
+        'id="footer-open-proof-btn"',
+        'id="modal-privacy-proof"',
+        'id="run-proof-check-btn"',
+        'id="reset-session-btn"',
+        'id="quick-reset-session-btn"',
+        'id="paste-raw-btn"',
+        'id="paste-rehydrate-btn"',
+        'id="copy-goto-step2-btn"',
+        'id="goto-rehydrate-btn"',
+        'id="pricing-section"',
+        'id="billing-month-btn"',
+        'id="billing-year-btn"',
+        'id="open-pro-modal-btn"',
+        'id="open-team-modal-btn"',
+        'id="modal-plan-request"',
+        'id="modal-privacy-policy"',
+    ):
+        assert hook in index_html, f"Missing required R2-R5 hook {hook} in index.html"
+
+    for contact_literal in ("@supv1rus", "kilkauciha@gmail.com", "github.com/Aquanti", "SupV1rus"):
+        assert contact_literal in contacts_js, f"Missing owner contact {contact_literal!r} in contacts.js"
+        assert contact_literal in index_html, f"Missing fallback owner contact {contact_literal!r} in index.html"
+
+    assert 'href="mailto:kilkauciha@gmail.com"' in index_html
+    assert "runZeroRetentionSelfTest" in proof_js
+    assert "securitypolicyviolation" in proof_js
+
 
