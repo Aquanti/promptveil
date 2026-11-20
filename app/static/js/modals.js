@@ -294,6 +294,8 @@ export function renderContactsAndPolicy(lang = getLang()) {
   const tgEl = getEl("contact-telegram-text");
   const emailLinkEl = getEl("contact-email-link");
   const githubEl = getEl("contact-github-text");
+  const planEmailDirectEl = getEl("plan-req-email-direct");
+  const planTgHandleEl = getEl("plan-req-tg-handle");
   const copyrightEl = getEl("footer-copyright");
   const policyOwnerEl = getEl("policy-owner-contact-body");
   const termsOwnerEl = getEl("terms-owner-contact-body");
@@ -304,6 +306,11 @@ export function renderContactsAndPolicy(lang = getLang()) {
     emailLinkEl.setAttribute("href", buildMailtoHref(SITE_CONTACTS.email));
   }
   if (githubEl) githubEl.textContent = SITE_CONTACTS.githubDisplay;
+  if (planEmailDirectEl) {
+    planEmailDirectEl.textContent = SITE_CONTACTS.email;
+    planEmailDirectEl.setAttribute("href", buildMailtoHref(SITE_CONTACTS.email));
+  }
+  if (planTgHandleEl) planTgHandleEl.textContent = SITE_CONTACTS.telegramHandle;
   if (copyrightEl) {
     copyrightEl.textContent = t(
       "footer.copyright",
@@ -451,6 +458,10 @@ export function bindModalAndThemeEvents({
   });
 
   getEl("open-rulebook-btn")?.addEventListener("click", (event) => {
+    hideInlineAlert("rulebook-alert");
+    openDrawer("drawer-rulebook", event.currentTarget, state);
+  });
+  getEl("limits-open-rulebook-btn")?.addEventListener("click", (event) => {
     hideInlineAlert("rulebook-alert");
     openDrawer("drawer-rulebook", event.currentTarget, state);
   });

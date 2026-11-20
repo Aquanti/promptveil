@@ -4,6 +4,14 @@ All notable changes to PromptVeil are documented in this file.
 
 ## [2.1.0] - 2026-11-20
 
+### Stage E — Safe Growth Features (Items 28, 31–34, 36)
+- **One-Click Copy & Open AI (Item 28):** Delegated click handler on `#ai-launchers-bar .ai-launcher-pill` synchronously flushes pending live sanitization (`ensureFreshSanitizedOutput()`), copies `sanitizedText` to clipboard, displays a status banner, and preserves native `<a target="_blank" rel="noopener noreferrer">` navigation with zero external URLs in JS.
+- **Plan Request Telegram Copy & Email Fallback (Items 31–32):** Added `#plan-req-telegram-link` (`https://t.me/supv1rus`) inside `#tpl-modal-plan-request` to copy the generated inquiry summary and show a status banner above the modal, plus `.plan-fallback-box` (`kilkauciha@gmail.com`, `@supv1rus`, copy buttons) and `.footer-contact-note`.
+- **How It Works & Honest Limits (Item 33):** Added `#how-it-works` (3-step static HTML + Spark-palette inline SVG diagram) and `#honest-limits` (honest boundary cards + `#limits-open-rulebook-btn` opening `#drawer-rulebook`) with full RU/EN and dark-theme parity.
+- **Sensitivity Mode & Detection Reason Tooltips (Item 34):** Added Step 1 `"Обычный / Строгий"` (`Normal / Strict`) switcher synced with `#detect-uuid-toggle`; extended `Strict` mode in `detector.js` for `UUID`, unquoted `RU_ORG`, broader 2-word `RU_FIO`, and `16+` char `HIGH_ENTROPY`; added `reasonKey` metadata across `detector.js`, `vault.js`, `i18n.js`, and `.vault-reason` + `title`/`data-reason` in `render-workbench.js`.
+- **Industry Custom Word Packs (Item 36):** Added 4 one-click deduplicating packs (`legal`, `hr`, `medical`, `accounting`) in `presets.js`, `pipeline.js`, and `#drawer-rulebook` (outside `#rulebook-list`).
+- **Deferred / Rejected Decisions:** Documented `#29` browser extension (Pro roadmap), `#30` custom domain (out of scope), `#35` `.docx`/`.pdf` parsing (Pro roadmap / CSP & zip-bomb risk), and `#37` cookie-free analytics (rejected under `connect-src 'self'` and zero-tracker guarantee).
+
 ### Stage D — Performance, Security Headers, Hygiene & CI (Items 19–26)
 - **CSS & JS Bundling (`esbuild`):** Eliminated the 6-file CSS `@import` chain by bundling and minifying `app/static/styles.css` and code-split ESM `app/static/js/app.js` into content-hashed files under `app/static/dist/` via `scripts/build.mjs`, with immutable `Cache-Control: public, max-age=31536000, immutable` in `netlify.toml`.
 - **Lazy i18n & `<template>` Modals:** Split `i18n.js` into lazy ES modules (`i18n-ru.js`, `i18n-en.js`) loaded on demand via dynamic `import()` (zero `fetch()`), and moved `#modal-privacy-proof`, `#modal-plan-request`, `#modal-privacy-policy`, and `#modal-terms` into `<template>` elements hydrated via `document.importNode()` on first open.

@@ -100,6 +100,19 @@ export function getCustomRuleTagLabel(ruleCategory, lang = currentLang) {
   return dict[key] || dict["rulebook.tag.CUSTOM"] || loadedDicts.ru?.[key] || "CUSTOM";
 }
 
+export function getDetectionReasonLabel(entry, lang = currentLang) {
+  const reasonKey = typeof entry?.reasonKey === "string" ? entry.reasonKey : "";
+  if (reasonKey) {
+    const resolved = t(reasonKey, {}, lang);
+    if (resolved !== reasonKey) {
+      return resolved;
+    }
+  }
+  const catLabel = getCategoryLabel(entry?.category, lang);
+  const fallback = t("reason.fallback", { label: catLabel }, lang);
+  return fallback === "reason.fallback" ? catLabel : fallback;
+}
+
 export function applyTranslationsToRoot(root, lang = currentLang) {
   if (!root || typeof root.querySelectorAll !== "function") {
     return;

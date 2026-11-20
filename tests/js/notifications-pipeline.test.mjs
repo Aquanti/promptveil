@@ -188,4 +188,72 @@ describe("PromptVeil M4 notifications.js, pipeline.js & contacts.js (Items 25 & 
       "mailto:kilkauciha@gmail.com?subject=Waitlist%20Pro&body=Line%201%0ALine%202"
     );
   });
+
+  test("M5 Item 28 flush cancels live timers, sensitivity forwards to vault, and industry word packs deduplicate", () => {
+    let nextTimer = 1;
+    const clearedTimers = [];
+    globalThis.window = {
+      setTimeout() {
+        return nextTimer++;
+      },
+      clearTimeout(id) {
+        clearedTimers.push(id);
+      },
+    };
+    const storageMap = new Map();
+    globalThis.window.localStorage = {
+      getItem: (k) => (storageMap.has(k) ? storageMap.get(k) : null),
+      setItem: (k, v) => storageMap.set(k, String(v)),
+      removeItem: (k) => storageMap.delete(k),
+    };
+
+    const state = {
+      rawText: "",
+      llmReply: "",
+      activePresetId: "",
+      lastSanitizeResult: null,
+      lastSanitizedInput: "",
+      lastRehydrateResult: null,
+      mobileVaultExpanded: false,
+      showAllCategories: false,
+      highlightedToken: "",
+      pinnedToken: "",
+      rules: [],
+      auditLog: [],
+      detectUuid: false,
+      sensitivity: "normal",
+      vault: new SessionVault(),
+    };
+
+    const pipeline = createPipelineController({
+      state,
+      getFileController: () => ({ cancelPendingFileRead() {} }),
+      refreshWorkbenchUi: () => {},
+      refreshDrawersUi: () => {},
+      renderPrivacyProofModal: () => {},
+    });
+
+    const uuidText = "ID 550e8400-e29b-41d4-a716-446655440000";
+    elements.get("raw-prompt-input").value = uuidText;
+    state.rawText = uuidText;
+    pipeline.scheduleLiveSanitize(uuidText, () => true);
+    const normalOut = pipeline.ensureFreshSanitizedOutput();
+    assert.equal(normalOut, uuidText);
+    assert.deepEqual(clearedTimers, [1, 2]);
+
+    state.sensitivity = "strict";
+    const strictRes = pipeline.runSanitizePipeline(false);
+    assert.equal(strictRes.sanitizedText, "ID [UUID_1]");
+
+    const added1 = pipeline.applyIndustryWordPack("legal");
+    assert.equal(added1 >= 5, true);
+    const added2 = pipeline.applyIndustryWordPack("legal");
+    assert.equal(added2, 0);
+
+    const firstLegalTerm = state.rules[0].term;
+    state.rawText = `Условие ${firstLegalTerm}.`;
+    elements.get("raw-prompt-input").value = state.rawText;
+    const legalRes = pipeline.runSanitizePipeline(false);
+    assert.equal(legalRes.sanitizedText, "Условие [CUSTOM_1].");
+  });
 });

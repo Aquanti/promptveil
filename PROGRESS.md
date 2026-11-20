@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T17:30Z (`20:30+03:00`)  
-**Session Status:** v2 Audit Remediation — Stage D / Milestone M4 (Performance, Security Headers, Hygiene & CI, Items 19–26) COMPLETE  
-**Exact Stop Point:** Stage D / M4 (Items 19–26) implemented, Gate-verified (Gate PASS: Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`; deterministic `esbuild` bundle `25408dc9ec`, `44/44` `node:test`, `24/24` `pytest`, `172` E2E self-test, `12/12` targeted live E2E + real HTTP SW update probe), and committed locally (`checkpoint: stage D performance bundling sw and ci`). Stage A (`5636cd9`), E2E Alignment (`664f816`), Stage B (`2d91890`), and Stage C (`3c6fb1f`) are preserved below; `e2e_tests/` and `render-drawers.js` remain untouched by M4. Next planned stage: `Milestone M5: Stage E Safe Growth Features` (Items 28, 31–34, 36).
+**Checkpoint Date:** 2026-11-20T17:56Z (`20:56+03:00`)  
+**Session Status:** v2 Audit Remediation — Stage E / Milestone M5 (Safe Growth Features, Items 28, 31–34, 36) COMPLETE  
+**Exact Stop Point:** Stage E / M5 (Items 28, 31–34, 36 + documentation for deferred/rejected items 29, 30, 35, 37) implemented, Gate-verified (Gate PASS: Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`; deterministic `esbuild` bundle `7d1ffd0739`, `48/48` `node:test`, `25/25` `pytest`, `172` E2E self-test, `16/16` targeted live E2E), and committed locally (`checkpoint: stage E safe growth features`). Stage A (`5636cd9`), E2E Alignment (`664f816`), Stage B (`2d91890`), Stage C (`3c6fb1f`), and Stage D (`4d944a4`) are preserved below; `e2e_tests/` remains untouched by M5. Next planned stage: `Milestone M6` (fix `T5_32` SW hook + full `--tier all` verification gate) -> `Milestone M7` (Netlify deploy, live browser & Lighthouse, completion email).
 
 ---
 
@@ -176,6 +176,39 @@
 
 ---
 
+## 6c. v2 Audit Remediation — Stage E (Milestone M5: Safe Growth Features, Items 28, 31–34, 36)
+
+### Completed Items (Items 28, 31–34, 36)
+1. **Item 28 — One-Click Copy & Open AI (`app/static/js/app.js`, `app/static/{index,en/index}.html`):**
+   - Added delegated click handling on `#ai-launchers-bar` (`a.ai-launcher-pill`) without `event.preventDefault()`, synchronously flushing pending live sanitization via `pipeline.ensureFreshSanitizedOutput()`, copying `sanitizedText` to the clipboard, and showing `#global-status-banner` (`banner.copiedForAi` / `banner.copyFailed`) while preserving allowlisted `<a target="_blank" rel="noopener noreferrer">` links and zero external `http(s)://` literals in JS.
+2. **Items 31 & 32 — Plan Request Telegram Copy & Email Fallback (`app/static/{index,en/index}.html`, `app/static/js/{pricing,modals}.js`, `app/static/css/{modals,sections}.css`):**
+   - Added `#plan-req-telegram-link` (`data-testid="plan-req-telegram-link"`, `https://t.me/supv1rus`) inside `#tpl-modal-plan-request` (`#plan-request-result`) to copy the generated inquiry summary synchronously and display `#global-status-banner` (`z-index: 80` above modal backdrop `z-index: 60`) with `!ok` clipboard error fallback.
+   - Added `.plan-fallback-box` (`data-testid="plan-fallback-box"`) with `kilkauciha@gmail.com` (`#plan-req-email-direct`, `#plan-req-copy-email-btn`), `@supv1rus` (`#plan-req-tg-handle`, `#plan-req-copy-tg-btn`), `.footer-contact-note`, `SITE_CONTACTS` sync in `modals.js`, and `>= 44px` mobile tap targets.
+3. **Item 33 — Static HTML+SVG "Как это работает" & Honest "Что мы пока НЕ ловим" (`app/static/{index,en/index}.html`, `app/static/js/modals.js`, `app/static/css/sections.css`, `app/static/js/i18n-{ru,en}.js`):**
+   - Added `#how-it-works` (`data-testid="how-it-works-section"`, 3 `.how-step-card` blocks with Spark-palette inline `<svg aria-hidden="true">` diagrams, zero `style=`/`<style>`) and `#honest-limits` (`data-testid="honest-limits-section"`, 4 honest boundary cards + `#limits-open-rulebook-btn` wired in `modals.js` to open `#drawer-rulebook`, keeping `app.js` at `728` lines `< 750`) with full RU/EN and dark-theme parity.
+4. **Item 34 — Sensitivity Mode `"Обычный / Строгий"` & `"почему это скрыто"` Tooltips (`app/static/js/{app,pipeline,detector,vault,i18n,i18n-ru,i18n-en,render-workbench}.js`, `app/static/css/components.css`, `app/static/{index,en/index}.html`):**
+   - Added Step 1 sensitivity toggle (`#sensitivity-normal-btn`, `#sensitivity-strict-btn`, default `"normal"`), syncing `#detect-uuid-toggle` (`checked` + `disabled` in `"strict"` mode without mutating `state.detectUuid`) and re-running sanitization immediately on switch.
+   - Extended `"strict"` mode in `detector.js` for `UUID`, unquoted `RU_ORG`, broader 2-word `RU_FIO` (with short-name/stopword/non-adjective guards), and `16+` char `HIGH_ENTROPY` (`minEntropy: 3.45`, semver/date guards), and attached `reasonKey` metadata across `detector.js`, `vault.js`, `i18n.js`, `render-workbench.js` (`title`, `data-reason`, and `.vault-reason` `[data-testid="vault-reason"]`).
+5. **Item 36 — 4 Industry Custom Word Packs in `"Свои слова"` (`app/static/js/{presets,pipeline,render-drawers}.js`, `app/static/{index,en/index}.html`):**
+   - Added `INDUSTRY_WORD_PACKS` (`legal`, `hr`, `medical`, `accounting`, 6 localized RU/EN terms per pack, zero `localStorage` writes on load) in `presets.js`, `.word-packs-box` (`[data-testid="word-pack-*"]`) inside `#drawer-rulebook` outside `#rulebook-list`, deduplicated addition via `makeRuleDedupKey` + immediate re-sanitize in `pipeline.js`, and `data-term` on `.rule-term-text` in `render-drawers.js`.
+6. **Documented Deferred / Rejected Stage E Items (`README.md`, `CHANGELOG.md`):**
+   - `#29` Browser extension: Deferred to Pro roadmap (separate MV3 project).
+   - `#30` Custom domain: Out of scope (environment limit — no registrar/DNS access).
+   - `#35` `.docx` / `.pdf` parsing: Deferred to Pro roadmap (`pdf.js` / `.docx` parsers conflict with CSP/bundle budget and zip-bomb/encoding safety).
+   - `#37` Cookie-free analytics: Rejected (violates `connect-src 'self'`, `"0 трекеров"`, and zero-paid-analytics constraint).
+7. **Bundle Rebuild & Tests (`scripts/build.mjs`, `app/static/dist/*`, `app/static/sw.js`, `app/static/{index,en/index,404}.html`, `tests/js/*.test.mjs`, `tests/test_server.py`):**
+   - Rebuilt deterministic `esbuild` production bundle (`7d1ffd0739`) generating `app/static/dist/styles.OSO7ZGEU.css`, `app/static/dist/app.7ZFZXPFV.js`, `app/static/dist/i18n-en-DA7RUS5J.js`, and `app/static/dist/i18n-ru-XC3DQG4V.js`, and updated `app/static/sw.js` (`CACHE_NAME = "promptveil-build-7d1ffd0739"` + `PRECACHE_URLS`).
+
+### Stage E Verification Results (Gate PASS)
+- **Gate Iteration 1 Result:** **PASS** (Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`).
+- **`npm run build`:** Deterministic build `7d1ffd0739` (`styles.OSO7ZGEU.css`, `app.7ZFZXPFV.js`, `i18n-en-DA7RUS5J.js`, `i18n-ru-XC3DQG4V.js`; `sw.js` `CACHE_NAME = "promptveil-build-7d1ffd0739"`).
+- **`node --test tests\js\*.test.mjs`:** **`48/48` passed** (`13` suites, `0` failures).
+- **`pytest tests\test_server.py -v`:** **`25/25` passed** (`0` failures, including `test_stage_e_growth_contracts`).
+- **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`172` tests collected).
+- **Targeted Live Playwright E2E:** **`16/16` passed** (`T1_F1_21`, `T1_F4_06`, `T1_F8_07`, `T1_F8_08`, `T1_F8_09`, `T1_F8_10`, `T3_09`, `ACC_01`, `ACC_02`, `ACC_04`, `ACC_06`, `ACC_12`, `ACC_13`, `T4_05`, `T4_06`, `T5_28`, `0` failures) + independent Challenger Node ESM & Playwright desktop/mobile/dark-mode/SW probes passed.
+
+---
+
 ## 7. GitHub Remote & Push Instructions (Item 4)
 No GitHub credentials or `origin` remote are configured in this local environment. Once ready to publish the repository to `https://github.com/Aquanti/promptveil`, run:
 
@@ -190,6 +223,5 @@ git push -u origin master
 ---
 
 ## 8. Next Steps
-1. **Next Planned Stage — `Milestone M5: Stage E Safe Growth Features` (Items 28, 31–34, 36 + roadmap notes for 29, 30, 35, 37):** One-click Copy & Open AI, client-side Telegram/email plan request flow, static `"Как это работает"` & `"Что мы пока НЕ ловим"`, sensitivity mode (`"Обычный / Строгий"`) + tooltips, 4 industry word packs, rebuild `dist/`, and `PROGRESS.md` checkpoint.
-2. **`E2E_TRACK` / `M6` — Full Live E2E (`172` tests):** Update `T5_32` `/sw.js` update harness (replacing `page.context.route("**/sw.js")` with a real HTTP version-bump hook), then run `pytest`, `node --test`, `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all` (`172/172` with `0` failures).
-3. **`M7` — Production Netlify Deploy & Delivery:** Deploy to production Netlify + confirm via `netlify-open-deployments`, verify live `https://promptveil.netlify.app` in browser, run Desktop & Mobile Lighthouse outside repo, update `PROGRESS.md` + commit, and send completion email to `kilkauciha@gmail.com`.
+1. **Next Planned Stage — `Milestone M6: Final Verification Gate`:** Fix `T5_32` `/sw.js` update harness (replacing `page.context.route("**/sw.js")` with a real HTTP version-bump hook), then run `pytest tests\test_server.py -v`, `node --test tests\js\*.test.mjs`, `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all` (`0` failures, port `8000` free) + `PROGRESS.md` checkpoint.
+2. **`Milestone M7: Production Netlify Deploy & Delivery`:** Deploy via `netlify_netlify` MCP + confirm via `netlify-open-deployments`, verify live `https://promptveil.netlify.app` in browser, run Desktop & Mobile Lighthouse outside the repo, update `PROGRESS.md` + commit, and send completion email to `kilkauciha@gmail.com`.

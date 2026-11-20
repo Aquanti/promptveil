@@ -581,4 +581,43 @@ describe("PromptVeil M2 Counter Sync & Toggle Stability (Item 6)", () => {
     const restoredEarlyCopy = vault.rehydrate("Copied earlier: [EMAIL_1]");
     assert.equal(restoredEarlyCopy.rehydratedText, "Copied earlier: a@example.com");
   });
+
+  test("M5 sensitivity='strict' enables UUID, unquoted RU_ORG, broader RU_FIO, and shorter HIGH_ENTROPY without affecting 'normal'", () => {
+    const sample =
+      "ООО Вектор, Иван Коваль, Ян Мельников, Армен Мелконян, Надежда России, Главный Договор, " +
+      "ул. Большая Никитская, д. 5, v2.4.1.0-rc12345, secret Ab3Kp9Qm2Rx7Wz4L, " +
+      "uuid 550e8400-e29b-41d4-a716-446655440000.";
+
+    const normalSpans = detectEntities(sample, [], { sensitivity: "normal" });
+    const normalPairs = normalSpans.map((s) => `${s.category}:${s.value}`);
+    assert.equal(normalPairs.includes("RU_ORG:ООО Вектор"), false);
+    assert.equal(normalPairs.includes("RU_FIO:Иван Коваль"), false);
+    assert.equal(normalPairs.includes("RU_FIO:Ян Мельников"), false);
+    assert.equal(normalPairs.includes("RU_FIO:Армен Мелконян"), false);
+    assert.equal(normalPairs.includes("UUID:550e8400-e29b-41d4-a716-446655440000"), false);
+    assert.equal(normalPairs.includes("HIGH_ENTROPY:Ab3Kp9Qm2Rx7Wz4L"), false);
+
+    const strictSpans = detectEntities(sample, [], { sensitivity: "strict" });
+    const strictPairs = strictSpans.map((s) => `${s.category}:${s.value}`);
+    assert.ok(strictPairs.includes("RU_ORG:ООО Вектор"));
+    assert.ok(strictPairs.includes("RU_FIO:Иван Коваль"));
+    assert.ok(strictPairs.includes("RU_FIO:Ян Мельников"));
+    assert.ok(strictPairs.includes("RU_FIO:Армен Мелконян"));
+    assert.ok(strictPairs.includes("UUID:550e8400-e29b-41d4-a716-446655440000"));
+    assert.ok(strictPairs.includes("HIGH_ENTROPY:Ab3Kp9Qm2Rx7Wz4L"));
+    assert.equal(strictPairs.some((p) => p.includes("Надежда России")), false);
+    assert.equal(strictPairs.some((p) => p.includes("Главный Договор")), false);
+    assert.equal(strictPairs.some((p) => p.includes("v2.4.1.0-rc12345")), false);
+    assert.ok(strictPairs.includes("RU_ADDRESS:ул. Большая Никитская, д. 5"));
+
+    for (const span of strictSpans) {
+      assert.equal(typeof span.reasonKey, "string");
+      assert.ok(span.reasonKey.startsWith("reason."));
+    }
+
+    const vault = new SessionVault();
+    const res = vault.sanitize(sample, [], { sensitivity: "strict" });
+    assert.ok(res.vaultEntries.every((e) => typeof e.reasonKey === "string" && e.reasonKey.startsWith("reason.")));
+    assert.equal(vault.rehydrate(res.sanitizedText).rehydratedText, sample);
+  });
 });

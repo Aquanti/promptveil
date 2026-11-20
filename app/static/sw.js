@@ -1,6 +1,6 @@
 /* PromptVeil Self-Hosted Offline Service Worker (Network-First HTML, Cache-First /dist/*, SWR Static) */
 
-const CACHE_NAME = "promptveil-build-25408dc9ec";
+const CACHE_NAME = "promptveil-build-7d1ffd0739";
 
 const PRECACHE_URLS = [
   "/",
@@ -12,10 +12,10 @@ const PRECACHE_URLS = [
   "/icon-192.png",
   "/icon-512.png",
   "/og-image.png",
-  "/dist/styles.V6OENGR4.css",
-  "/dist/app.G2JSUUFJ.js",
-  "/dist/i18n-en-4AZRN63R.js",
-  "/dist/i18n-ru-K33PTIXV.js"
+  "/dist/styles.OSO7ZGEU.css",
+  "/dist/app.7ZFZXPFV.js",
+  "/dist/i18n-en-DA7RUS5J.js",
+  "/dist/i18n-ru-XC3DQG4V.js"
 ];
 
 self.addEventListener("install", (event) => {

@@ -429,6 +429,122 @@ a.footer-contact-value:hover {
   border-color: var(--bg-forest);
 }
 
+.footer-contact-note {
+  margin: 0.55rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+/* How It Works & Honest Limits Sections (Item 33) */
+.info-section {
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xxl);
+  padding: 1.5rem 1.6rem;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+}
+
+.info-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.how-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.how-step-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-subtle);
+  min-width: 0;
+}
+
+.how-step-svg {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.how-step-title {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.how-step-body {
+  margin: 0;
+  font-size: 0.83rem;
+  line-height: 1.48;
+  color: var(--text-secondary);
+}
+
+.limits-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.limits-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+  padding: 1rem 1.1rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-subtle);
+  min-width: 0;
+}
+
+.limits-card-title {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.limits-card-body {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.48;
+  color: var(--text-secondary);
+}
+
+.limits-cta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  padding: 0.95rem 1.15rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--accent-safe-border);
+  background-color: var(--accent-safe-bg);
+}
+
+.limits-cta-note {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--accent-safe-fg);
+  flex: 1 1 260px;
+}
+
 .footer-bottom-bar {
   display: flex;
   align-items: center;
@@ -442,16 +558,24 @@ a.footer-contact-value:hover {
 
 @media (max-width: 959px) {
   .pricing-grid,
-  .footer-grid {
+  .footer-grid,
+  .how-grid,
+  .limits-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
 @media (max-width: 639px) {
+  .info-section,
   .pricing-section,
   .footer-grid {
     padding: 1rem;
     border-radius: var(--radius-xl);
+  }
+
+  .limits-cta-row .btn-primary {
+    min-height: 44px;
+    width: 100%;
   }
 
   .pricing-card {

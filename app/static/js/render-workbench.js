@@ -7,6 +7,7 @@ import { clearCopyFeedback, clearEl, createEl } from "./dom.js";
 import {
   getCategoryLabel,
   getCustomRuleTagLabel,
+  getDetectionReasonLabel,
   pluralizeRu,
   t,
 } from "./i18n.js";
@@ -230,6 +231,7 @@ export function renderVaultList(
 
   for (const entry of allEntries) {
     const isHighlighted = Boolean(highlightedToken && highlightedToken === entry.token);
+    const reasonText = getDetectionReasonLabel(entry, lang);
     const rowClasses = ["vault-row"];
     if (!entry.enabled) rowClasses.push("is-unmasked");
     if (isHighlighted) rowClasses.push("is-highlighted");
@@ -240,6 +242,8 @@ export function renderVaultList(
       "data-category": entry.category,
       "data-value": entry.value,
       "data-enabled": entry.enabled ? "true" : "false",
+      "data-reason": reasonText,
+      title: reasonText,
       tabindex: "-1",
     });
 
@@ -281,6 +285,13 @@ export function renderVaultList(
         "vault-hits-badge tabular-nums",
         t("step1.hits", { count: entry.count }, lang)
       )
+    );
+    valueCol.appendChild(
+      createEl("span", "vault-reason", reasonText, {
+        "data-testid": "vault-reason",
+        "data-reason": reasonText,
+        title: reasonText,
+      })
     );
     li.appendChild(valueCol);
 

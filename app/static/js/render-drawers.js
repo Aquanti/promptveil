@@ -27,7 +27,7 @@ export function renderRulebookList(
     const li = createEl("li", "drawer-item");
 
     const topRow = createEl("div", "drawer-item-top");
-    topRow.appendChild(createEl("span", "rule-term-text", rule.term));
+    topRow.appendChild(createEl("span", "rule-term-text", rule.term, { "data-term": rule.term }));
 
     const actions = createEl("div", "pane-actions");
     const isEnabled = rule.enabled !== false;

@@ -20,6 +20,21 @@
 - **Журнал проверок в RAM по умолчанию:** Записи с SHA-256 отпечатками (без исходного текста) хранятся только в памяти вкладки; сохранение в `localStorage` включается вручную опцией **«Сохранять журнал на этом устройстве»**.
 - **Офлайн-режим (PWA):** Service Worker кэширует только статические ресурсы своего origin.
 
+### Удобство работы и прозрачность (Stage E)
+
+- **Копирование и открытие ИИ в 1 клик:** Нажатие на любую кнопку ИИ (`ChatGPT`, `DeepSeek`, `GigaChat`, `Алиса / YandexGPT`, `Claude`) синхронно сбрасывает отложенную проверку, копирует безопасный текст в буфер обмена и открывает сервис в новой вкладке.
+- **Режим чувствительности («Обычный / Строгий») и подсказки «почему это скрыто»:** Режим «Строгий» дополнительно маскирует `UUID`, организации без кавычек (`ООО Вектор`), более широкий набор пар `Имя + Фамилия` и короткие высокоэнтропийные строки (`>= 16` знаков); каждый элемент в списке «Что скрыто» показывает понятную причину срабатывания.
+- **Отраслевые наборы в «Свои слова»:** В выдвижной панели доступны 4 готовых набора терминов (`Юриспруденция`, `Кадры и найм`, `Медицина`, `Бухгалтерия`) с добавлением в 1 клик без дублей.
+- **Разделы «Как это работает» и «Что мы пока НЕ ловим»:** Визуальная схема трёх шагов и честный список ограничений клиентских правил со ссылкой на добавление своих слов.
+- **Заявка на Pro / Команда:** Локальная генерация текста заявки с кнопкой **«Скопировать заявку и открыть Telegram»** (`@supv1rus`) и резервной отправкой на `kilkauciha@gmail.com`.
+
+### Архитектурные решения и отложенные функции
+
+- **#29 (Браузерное расширение):** Отложено в дорожную карту Pro как отдельный проект Manifest V3.
+- **#30 (Собственный домен):** Вне рамок текущего релиза — используется production-домен `promptveil.netlify.app`.
+- **#35 (Чтение `.docx` / `.pdf` в браузере):** Отложено в Pro-версию из-за бюджета бандла, строгого CSP и рисков парсинга бинарных архивов.
+- **#37 (Аналитика без cookies):** Отклонено — противоречит строгому CSP `connect-src 'self'` и гарантии «0 трекеров и 0 сетевых запросов».
+
 ### 25 детекторов (в порядке приоритета)
 
 1. `API_KEY` (100, `[API_KEY_N]`) — ключи AWS, OpenAI, Anthropic, Stripe, GitHub, Slack, Google
@@ -88,6 +103,21 @@ node --test tests\js\*.test.mjs
 - **Strict Content Security Policy (CSP):** Enforced identically by both FastAPI (`app/config.py`) and Netlify (`netlify.toml`): `default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'`.
 - **RAM-Only Audit Journal by Default:** SHA-256 verification receipts (never raw text) stay in volatile tab RAM by default; `localStorage` persistence (`promptveil_audit_v1`) is strictly opt-in via `#audit-persist-toggle`.
 - **Offline PWA Support:** Static-only Service Worker (`sw.js`) caches same-origin assets only.
+
+### Workflow Ergonomics & Transparency (Stage E)
+
+- **1-Click Copy & Open AI:** Clicking any AI launcher pill (`ChatGPT`, `DeepSeek`, `GigaChat`, `Alice / YandexGPT`, `Claude`) flushes live masking synchronously, copies the safe text to clipboard, and opens the assistant in a new tab.
+- **Sensitivity Mode (`Normal / Strict`) & Detection Reasons:** `Strict` mode enables `UUID` detection, unquoted Russian legal entities, broader capitalized two-word name pairs, and shorter high-entropy secrets (`>= 16` chars); every entry in *What was hidden* explains why it was masked.
+- **Industry Custom Word Packs:** One-click deduplicating packs (`Legal`, `HR & Hiring`, `Medical`, `Accounting`) inside *Custom Words* (`#drawer-rulebook`).
+- **How It Works & Honest Limits:** Static HTML+SVG 3-step visual flow and transparent boundaries linking directly to *Custom Words*.
+- **Waitlist Request Flow:** Client-side inquiry builder with **Copy inquiry & open Telegram** (`@supv1rus`) and prominent direct email fallback (`kilkauciha@gmail.com`).
+
+### Architecture Decisions & Deferred Scope
+
+- **#29 (Browser Extension):** Deferred to the Pro roadmap as a separate Manifest V3 codebase.
+- **#30 (Custom Domain):** Out of scope in the current environment (`promptveil.netlify.app` remains the production host).
+- **#35 (`.docx` / `.pdf` Parsing):** Deferred to Pro due to bundle/CSP budget and binary archive parsing risks.
+- **#37 (Cookie-Free Analytics):** Rejected to preserve strict `connect-src 'self'` CSP and the zero-tracker guarantee.
 
 ### All 25 Detectors (Priority Order)
 

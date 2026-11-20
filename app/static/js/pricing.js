@@ -4,7 +4,7 @@
 
 import { copyWithFeedback } from "./clipboard.js";
 import { SITE_CONTACTS, buildMailtoHref } from "./contacts.js";
-import { clearCopyFeedback, getEl } from "./dom.js";
+import { clearCopyFeedback, copyTextToClipboard, getEl, showCopyFeedback } from "./dom.js";
 import { getLang, t } from "./i18n.js";
 import { ensureModalMounted, registerModalHydrator } from "./modals.js";
 import { closeDrawers, openDrawer } from "./render-drawers.js";
@@ -57,10 +57,19 @@ export function clearPlanRequestResult(state) {
   const resultBox = getEl("plan-request-result");
   const previewEl = getEl("plan-request-preview");
   const mailtoLink = getEl("plan-req-mailto-link");
+  const emailDirectLink = getEl("plan-req-email-direct");
+  const tgHandleEl = getEl("plan-req-tg-handle");
   if (resultBox) resultBox.hidden = true;
   if (previewEl) previewEl.textContent = "";
   if (mailtoLink) {
     mailtoLink.setAttribute("href", buildMailtoHref(SITE_CONTACTS.email));
+  }
+  if (emailDirectLink) {
+    emailDirectLink.textContent = SITE_CONTACTS.email;
+    emailDirectLink.setAttribute("href", buildMailtoHref(SITE_CONTACTS.email));
+  }
+  if (tgHandleEl) {
+    tgHandleEl.textContent = SITE_CONTACTS.telegramHandle;
   }
 }
 
@@ -78,6 +87,8 @@ export function openPlanRequestModal(plan, triggerEl, state, hideInlineAlert) {
   if (seatsInput) seatsInput.value = "10";
   if (noteInput) noteInput.value = "";
   clearCopyFeedback(getEl("plan-req-copy-btn"), () => t("request.copyBtn"));
+  clearCopyFeedback(getEl("plan-req-copy-email-btn"), () => t("request.copyEmailBtn"));
+  clearCopyFeedback(getEl("plan-req-copy-tg-btn"), () => t("request.copyTgBtn"));
   syncPlanRequestModalMeta(state, getLang());
   openDrawer("modal-plan-request", triggerEl, state);
 }
@@ -154,12 +165,45 @@ export function bindPricingEvents({
       if (resultBox) resultBox.hidden = false;
     });
 
+    getEl("plan-req-telegram-link")?.addEventListener("click", () => {
+      const text = state.lastRequestSummary || getEl("plan-request-preview")?.textContent || "";
+      if (!text.trim()) return;
+      showStatusBanner("banner.planCopiedForTelegram");
+      void copyTextToClipboard(text).then((ok) => {
+        if (!ok) {
+          showStatusBanner("banner.copyFailed", {}, true);
+        }
+      });
+    });
+
     getEl("plan-req-copy-btn")?.addEventListener("click", async () => {
       const text = state.lastRequestSummary || getEl("plan-request-preview")?.textContent || "";
+      if (!text) return;
+      showStatusBanner("banner.copied");
+      const ok = await copyTextToClipboard(text);
+      if (ok) {
+        showCopyFeedback(getEl("plan-req-copy-btn"), t("action.copiedFeedback"), () =>
+          t("request.copyBtn")
+        );
+      } else {
+        showStatusBanner("banner.copyFailed", {}, true);
+      }
+    });
+
+    getEl("plan-req-copy-email-btn")?.addEventListener("click", async () => {
       await copyWithFeedback({
-        text,
-        buttonEl: getEl("plan-req-copy-btn"),
-        resetLabelGetter: () => t("request.copyBtn"),
+        text: SITE_CONTACTS.email,
+        buttonEl: getEl("plan-req-copy-email-btn"),
+        resetLabelGetter: () => t("request.copyEmailBtn"),
+        showStatusBanner,
+      });
+    });
+
+    getEl("plan-req-copy-tg-btn")?.addEventListener("click", async () => {
+      await copyWithFeedback({
+        text: SITE_CONTACTS.telegramHandle,
+        buttonEl: getEl("plan-req-copy-tg-btn"),
+        resetLabelGetter: () => t("request.copyTgBtn"),
         showStatusBanner,
       });
     });

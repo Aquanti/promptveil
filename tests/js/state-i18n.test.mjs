@@ -9,6 +9,7 @@ import {
   ensureDictionary,
   getCategoryLabel,
   getCustomRuleTagLabel,
+  getDetectionReasonLabel,
   isLangLoaded,
   pluralizeCount,
   pluralizeEn,
@@ -16,6 +17,8 @@ import {
   setLang,
   t,
 } from "../../app/static/js/i18n.js";
+import { INDUSTRY_WORD_PACKS, getLocalizedWordPack } from "../../app/static/js/presets.js";
+import { readFileSync } from "node:fs";
 import { LANG_STORAGE_KEY, detectPathLanguage, loadLanguage } from "../../app/static/js/storage.js";
 import { clearCopyFeedback, showCopyFeedback } from "../../app/static/js/dom.js";
 import { isValidContactInput } from "../../app/static/js/pricing.js";
@@ -451,5 +454,60 @@ describe("PromptVeil M3 Mobile UX Helpers (Items 14, 15, 17)", () => {
     assert.equal(stickyBtn.disabled, true);
     assert.equal(stickyBtn.hasAttribute("data-copied"), false);
     assert.equal(stickyBtn.textContent, EN["step1.mobileStickyCta"]);
+  });
+});
+
+describe("PromptVeil M5 Reason Labels, RU Purity & Industry Word Packs (Items 34 & 36)", () => {
+  test("every detector.js reasonKey exists in RU & EN, passes RU purity, and resolves via getDetectionReasonLabel", async () => {
+    await ensureDictionary("ru");
+    await ensureDictionary("en");
+
+    const detectorSrc = readFileSync(
+      new URL("../../app/static/js/detector.js", import.meta.url),
+      "utf8"
+    );
+    const reasonKeys = Array.from(
+      new Set(Array.from(detectorSrc.matchAll(/"(reason\.[A-Za-z0-9_]+)"/g), (m) => m[1]))
+    );
+    assert.ok(reasonKeys.length >= 25);
+
+    const forbiddenCodes = [
+      "API_KEY", "URL_TOKEN", "JWT", "CREDIT_CARD", "POSSIBLE_CARD", "IBAN",
+      "RU_ORG", "RU_INN", "RU_SNILS", "RU_PASSPORT", "RU_OGRN", "RU_BIK",
+      "RU_ACCOUNT", "RU_OMS", "RU_AUTO_PLATE", "RU_FIO", "RU_ADDRESS", "SSN",
+      "ENV_SECRET", "CUSTOM", "EMAIL", "PHONE", "IPV4", "HIGH_ENTROPY",
+    ];
+
+    for (const key of reasonKeys) {
+      assert.ok(Object.hasOwn(RU, key), `Missing RU key ${key}`);
+      assert.ok(Object.hasOwn(EN, key), `Missing EN key ${key}`);
+      assert.equal(getDetectionReasonLabel({ reasonKey: key }, "ru"), RU[key]);
+      assert.equal(getDetectionReasonLabel({ reasonKey: key }, "en"), EN[key]);
+      for (const code of forbiddenCodes) {
+        assert.equal(
+          new RegExp(`\\b${code}\\b`).test(RU[key]),
+          false,
+          `RU reason ${key} leaked dev code ${code}`
+        );
+      }
+    }
+
+    assert.match(getDetectionReasonLabel({ category: "EMAIL" }, "ru"), /Почта/);
+    assert.match(getDetectionReasonLabel({ category: "EMAIL" }, "en"), /Email/);
+  });
+
+  test("INDUSTRY_WORD_PACKS covers 4 packs with 5-8 unique RU/EN terms each", () => {
+    assert.deepEqual(
+      INDUSTRY_WORD_PACKS.map((p) => p.id),
+      ["legal", "hr", "medical", "accounting"]
+    );
+    for (const id of ["legal", "hr", "medical", "accounting"]) {
+      for (const lang of ["ru", "en"]) {
+        const pack = getLocalizedWordPack(id, lang);
+        assert.ok(pack && pack.terms.length >= 5 && pack.terms.length <= 8);
+        const norm = pack.terms.map((term) => term.trim().toLowerCase());
+        assert.equal(new Set(norm).size, norm.length, `Duplicate term in ${id}/${lang}`);
+      }
+    }
   });
 });

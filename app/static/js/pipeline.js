@@ -5,7 +5,7 @@
 import { clearCopyFeedback, getEl } from "./dom.js";
 import { getLang, t } from "./i18n.js";
 import { hideInlineAlert, showInlineAlert, showStatusBanner } from "./notifications.js";
-import { getLocalizedPreset } from "./presets.js";
+import { getLocalizedPreset, getLocalizedWordPack } from "./presets.js";
 import {
   appendAuditReceipt,
   clearAuditLog,
@@ -84,6 +84,7 @@ export function createPipelineController({
     const result = state.vault.sanitize(state.rawText, state.rules, {
       evolveTransient,
       detectUuid: Boolean(state.detectUuid),
+      sensitivity: state.sensitivity === "strict" ? "strict" : "normal",
     });
     state.lastSanitizeResult = result;
     state.lastSanitizedInput = state.rawText;
@@ -235,6 +236,46 @@ export function createPipelineController({
     }
   }
 
+  function applyIndustryWordPack(packKey) {
+    const lang = getLang();
+    const pack = getLocalizedWordPack(packKey, lang);
+    if (!pack) return 0;
+
+    const existingKeys = new Set(state.rules.map(makeRuleDedupKey));
+    const toAdd = [];
+    for (const rawTerm of pack.terms) {
+      const term = String(rawTerm || "").trim();
+      if (!term) continue;
+      const candidate = {
+        id: createRuleId(),
+        term,
+        category: pack.category || "CUSTOM",
+        caseSensitive: false,
+        enabled: true,
+      };
+      const key = makeRuleDedupKey(candidate);
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+      toAdd.push(candidate);
+    }
+
+    if (toAdd.length === 0) {
+      showInlineAlert("rulebook-alert", "rulebook.packAlreadyApplied", { title: pack.title }, "info");
+      return 0;
+    }
+
+    state.rules = saveRules([...state.rules, ...toAdd]);
+    refreshDrawersUi();
+    runSanitizePipeline(false);
+    showInlineAlert(
+      "rulebook-alert",
+      "rulebook.packApplied",
+      { title: pack.title, added: toAdd.length },
+      "success"
+    );
+    return toAdd.length;
+  }
+
   function bindRulebookAndAuditEvents(downloadTextFile) {
     getEl("rule-term-input")?.addEventListener("input", () => {
       hideInlineAlert("rulebook-alert");
@@ -309,6 +350,15 @@ export function createPipelineController({
       const nextEnabled = Boolean(event.currentTarget?.checked);
       state.auditPersist = setAuditPersistenceEnabled(nextEnabled, state.auditLog);
     });
+
+    for (const packBtn of document.querySelectorAll(".word-pack-btn[data-pack]")) {
+      packBtn.addEventListener("click", () => {
+        const packKey = packBtn.getAttribute("data-pack");
+        if (packKey) {
+          applyIndustryWordPack(packKey);
+        }
+      });
+    }
   }
 
   function renderVaultCollapseState(lang = getLang()) {
@@ -394,6 +444,7 @@ export function createPipelineController({
     scheduleLiveSanitize,
     runRehydratePipeline,
     loadPresetById,
+    applyIndustryWordPack,
     resetSessionToZero,
     bindRulebookAndAuditEvents,
     renderVaultCollapseState,

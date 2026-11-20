@@ -253,8 +253,56 @@
   gap: 0.5rem;
 }
 
-.plan-result-actions a.btn-primary {
+.plan-result-actions a.btn-primary,
+.plan-result-actions a.btn-lime {
   text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.plan-fallback-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface);
+}
+
+.plan-fallback-note {
+  margin: 0;
+  font-size: 0.79rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.plan-fallback-contacts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.plan-fallback-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.65rem;
+}
+
+.plan-fallback-value {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-accent);
+  overflow-wrap: anywhere;
+  text-decoration: none;
+}
+
+a.plan-fallback-value:hover {
+  text-decoration: underline;
 }
 
 /* Privacy Policy Modal */
@@ -299,5 +347,11 @@
   .modal-body,
   .modal-footer {
     padding: 0.95rem 1rem;
+  }
+
+  .plan-result-actions a,
+  .plan-result-actions button,
+  .plan-fallback-contacts .btn-copy-xs {
+    min-height: 44px;
   }
 }

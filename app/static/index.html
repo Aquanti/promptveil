@@ -36,9 +36,9 @@
     content="Бесплатная защита текстов, реквизитов РФ и ключей перед отправкой в нейросети с нулевым хранением данных."
   />
   <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
-  <link rel="stylesheet" href="/dist/styles.V6OENGR4.css" />
-  <script type="module" src="/dist/app.G2JSUUFJ.js"></script>
-  <link rel="modulepreload" href="/dist/i18n-en-4AZRN63R.js" />
+  <link rel="stylesheet" href="/dist/styles.OSO7ZGEU.css" />
+  <script type="module" src="/dist/app.7ZFZXPFV.js"></script>
+  <link rel="modulepreload" href="/dist/i18n-en-DA7RUS5J.js" />
 </head>
 <body>
   <a href="#main-workbench" class="skip-link" data-i18n="a11y.skipLink">Перейти к работе с текстом</a>
@@ -459,6 +459,38 @@
                 />
                 <span data-i18n="step1.detectUuidToggle">Скрывать UUID</span>
               </label>
+              <div
+                class="sensitivity-control"
+                title="Обычный снижает ложные срабатывания; Строгий включает UUID, организации без кавычек, редкие имена и короткие секреты"
+                data-i18n-title="step1.sensitivityTitle"
+              >
+                <span class="sensitivity-label" data-i18n="step1.sensitivityLabel">Режим:</span>
+                <div
+                  class="sensitivity-switch"
+                  role="group"
+                  aria-label="Режим:"
+                  data-i18n-aria="step1.sensitivityLabel"
+                >
+                  <button
+                    type="button"
+                    id="sensitivity-normal-btn"
+                    class="sensitivity-btn is-active"
+                    data-sensitivity="normal"
+                    data-testid="sensitivity-normal-btn"
+                    aria-pressed="true"
+                    data-i18n="step1.sensitivityNormal"
+                  >Обычный</button>
+                  <button
+                    type="button"
+                    id="sensitivity-strict-btn"
+                    class="sensitivity-btn"
+                    data-sensitivity="strict"
+                    data-testid="sensitivity-strict-btn"
+                    aria-pressed="false"
+                    data-i18n="step1.sensitivityStrict"
+                  >Строгий</button>
+                </div>
+              </div>
             </div>
             <button
               type="button"
@@ -725,6 +757,107 @@
     </section>
 
     <section
+      id="how-it-works"
+      class="info-section"
+      aria-labelledby="how-title"
+      data-testid="how-it-works-section"
+    >
+      <div class="info-section-header">
+        <h2 id="how-title" class="pricing-title" data-i18n="how.title">Как это работает</h2>
+        <p class="pricing-subtitle" data-i18n="how.subtitle">Три шага без передачи исходного текста на сервер: маскирование и возврат выполняются в памяти вкладки.</p>
+      </div>
+      <div class="how-grid">
+        <article class="how-step-card">
+          <svg class="how-step-svg" viewBox="0 0 280 96" aria-hidden="true">
+            <rect x="4" y="6" width="272" height="84" rx="14" fill="#F4F6F5" stroke="#072F1F" stroke-opacity="0.16" />
+            <rect x="16" y="20" width="96" height="56" rx="10" fill="#FFFFFF" stroke="#072F1F" stroke-opacity="0.22" />
+            <rect x="26" y="32" width="54" height="8" rx="4" fill="#072F1F" fill-opacity="0.22" />
+            <rect x="26" y="46" width="74" height="8" rx="4" fill="#072F1F" fill-opacity="0.14" />
+            <rect x="26" y="60" width="44" height="8" rx="4" fill="#EF4444" fill-opacity="0.45" />
+            <path d="M124 48h28m-8-7 8 7-8 7" fill="none" stroke="#072F1F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+            <rect x="164" y="20" width="100" height="56" rx="10" fill="#051C12" />
+            <rect x="174" y="30" width="52" height="14" rx="5" fill="#B4F105" />
+            <rect x="174" y="50" width="76" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.28" />
+            <rect x="174" y="62" width="60" height="8" rx="4" fill="#B4F105" fill-opacity="0.7" />
+          </svg>
+          <h3 class="how-step-title" data-i18n="how.step1Title">1. Локальная замена на устройстве</h3>
+          <p class="how-step-body" data-i18n="how.step1Body">Детекторы находят контакты, реквизиты, карты и секреты прямо на странице и заменяют их на короткие метки.</p>
+        </article>
+        <article class="how-step-card">
+          <svg class="how-step-svg" viewBox="0 0 280 96" aria-hidden="true">
+            <rect x="4" y="6" width="272" height="84" rx="14" fill="#051C12" />
+            <circle cx="52" cy="48" r="24" fill="#072F1F" stroke="#B4F105" stroke-width="2" />
+            <path d="M52 34l12 5v9c0 8-5.2 14.3-12 17-6.8-2.7-12-9-12-17v-9l12-5Z" fill="#B4F105" />
+            <rect x="92" y="26" width="84" height="16" rx="8" fill="#072F1F" stroke="#B4F105" stroke-opacity="0.45" />
+            <rect x="92" y="50" width="112" height="10" rx="5" fill="#FFFFFF" fill-opacity="0.22" />
+            <rect x="92" y="66" width="76" height="8" rx="4" fill="#22C55E" fill-opacity="0.75" />
+            <circle cx="242" cy="48" r="18" fill="#072F1F" />
+            <path d="M235 48l5 5 10-10" fill="none" stroke="#B4F105" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <h3 class="how-step-title" data-i18n="how.step2Title">2. Нейросеть видит только метки</h3>
+          <p class="how-step-body" data-i18n="how.step2Body">В чат с ИИ уходит обезличенный текст, а таблица соответствий остаётся только в оперативной памяти вкладки.</p>
+        </article>
+        <article class="how-step-card">
+          <svg class="how-step-svg" viewBox="0 0 280 96" aria-hidden="true">
+            <rect x="4" y="6" width="272" height="84" rx="14" fill="#F4F6F5" stroke="#072F1F" stroke-opacity="0.16" />
+            <rect x="16" y="20" width="96" height="56" rx="10" fill="#051C12" />
+            <rect x="26" y="31" width="56" height="13" rx="5" fill="#B4F105" />
+            <rect x="26" y="52" width="74" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.26" />
+            <path d="M124 48h28m-8-7 8 7-8 7" fill="none" stroke="#072F1F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+            <rect x="164" y="20" width="100" height="56" rx="10" fill="#FFFFFF" stroke="#22C55E" stroke-width="1.5" />
+            <rect x="174" y="31" width="66" height="13" rx="5" fill="#DCFCE7" stroke="#22C55E" />
+            <rect x="174" y="52" width="78" height="8" rx="4" fill="#072F1F" fill-opacity="0.22" />
+            <rect x="174" y="64" width="54" height="8" rx="4" fill="#072F1F" fill-opacity="0.14" />
+          </svg>
+          <h3 class="how-step-title" data-i18n="how.step3Title">3. Мгновенный возврат в ответ</h3>
+          <p class="how-step-body" data-i18n="how.step3Body">Вставьте ответ ИИ на шаге 2 — сервис за один проход подставит исходные имена, счета и номера обратно.</p>
+        </article>
+      </div>
+    </section>
+
+    <section
+      id="honest-limits"
+      class="info-section info-section--limits"
+      aria-labelledby="limits-title"
+      data-testid="honest-limits-section"
+    >
+      <div class="info-section-header">
+        <h2 id="limits-title" class="pricing-title" data-i18n="limits.title">Что мы пока НЕ ловим</h2>
+        <p class="pricing-subtitle" data-i18n="limits.subtitle">Честные границы клиентских правил — чтобы вы знали, что проверять вручную или добавлять в «Свои слова».</p>
+      </div>
+      <div class="limits-grid">
+        <article class="limits-card">
+          <h3 class="limits-card-title" data-i18n="limits.item1Title">Необычные имена и кодовые названия в прозе</h3>
+          <p class="limits-card-body" data-i18n="limits.item1Body">В обычном режиме редкие фамилии, псевдонимы и названия внутренних проектов не скрываются автоматически, чтобы не портить текст.</p>
+        </article>
+        <article class="limits-card">
+          <h3 class="limits-card-title" data-i18n="limits.item2Title">Сканы, фото, .pdf, .docx и таблицы</h3>
+          <p class="limits-card-body" data-i18n="limits.item2Body">Сейчас обрабатываются только текстовые форматы (.txt, .md, .csv, .json, .log, .env) до 2 МБ; распознавание изображений и офисных файлов не встроено.</p>
+        </article>
+        <article class="limits-card">
+          <h3 class="limits-card-title" data-i18n="limits.item3Title">Опечатки, транслит и разбитые цифры</h3>
+          <p class="limits-card-body" data-i18n="limits.item3Body">Номера карт с буквами вместо цифр или пробелом в каждом разряде и нестандартные сокращения адресов могут остаться без маски.</p>
+        </article>
+        <article class="limits-card">
+          <h3 class="limits-card-title" data-i18n="limits.item4Title">Специфические внутренние номера и секреты</h3>
+          <p class="limits-card-body" data-i18n="limits.item4Body">Короткие пароли, номера заявок, артикулы и корпоративные идентификаторы без явного шаблона лучше добавить вручную.</p>
+        </article>
+      </div>
+      <div class="limits-cta-row">
+        <p class="limits-cta-note" data-i18n="limits.rulebookNote">Добавьте свои слова или готовый отраслевой набор — они всегда скрываются в приоритетном порядке.</p>
+        <button
+          type="button"
+          id="limits-open-rulebook-btn"
+          class="btn-primary"
+          aria-haspopup="dialog"
+          aria-controls="drawer-rulebook"
+          data-testid="limits-open-rulebook-btn"
+          data-i18n="limits.openRulebookBtn"
+        >Добавить в «Свои слова»</button>
+      </div>
+    </section>
+
+    <section
       id="pricing-section"
       class="pricing-section"
       aria-labelledby="pricing-title"
@@ -960,6 +1093,7 @@
             >Скопировать</button>
           </li>
         </ul>
+        <p class="footer-contact-note" data-i18n="footer.contactFallbackNote">Если Telegram недоступен в вашей сети, пишите напрямую на почту kilkauciha@gmail.com.</p>
       </div>
     </div>
 
@@ -1037,6 +1171,43 @@
           data-i18n="rulebook.addBtn"
         >Добавить</button>
       </form>
+
+      <div class="word-packs-box" data-testid="word-packs-box">
+        <div class="word-packs-head">
+          <span class="field-label" data-i18n="rulebook.packsHeading">Отраслевые наборы (1 клик)</span>
+          <span class="pane-meta" data-i18n="rulebook.packsHint">Добавляют типовые термины в ваш список без дублей</span>
+        </div>
+        <div class="word-packs-grid">
+          <button
+            type="button"
+            class="btn-secondary word-pack-btn"
+            data-pack="legal"
+            data-testid="word-pack-legal"
+            data-i18n="rulebook.pack.legal"
+          >Юриспруденция</button>
+          <button
+            type="button"
+            class="btn-secondary word-pack-btn"
+            data-pack="hr"
+            data-testid="word-pack-hr"
+            data-i18n="rulebook.pack.hr"
+          >Кадры и найм</button>
+          <button
+            type="button"
+            class="btn-secondary word-pack-btn"
+            data-pack="medical"
+            data-testid="word-pack-medical"
+            data-i18n="rulebook.pack.medical"
+          >Медицина</button>
+          <button
+            type="button"
+            class="btn-secondary word-pack-btn"
+            data-pack="accounting"
+            data-testid="word-pack-accounting"
+            data-i18n="rulebook.pack.accounting"
+          >Бухгалтерия</button>
+        </div>
+      </div>
 
       <div id="rulebook-alert" class="inline-alert" role="status" hidden></div>
 
@@ -1318,10 +1489,19 @@
         <p class="plan-result-title" data-i18n="request.resultTitle">Готовая заявка (без отправки с сайта):</p>
         <pre id="plan-request-preview" class="plan-preview-pre" data-testid="plan-request-preview"></pre>
         <div class="plan-result-actions">
+          <a
+            id="plan-req-telegram-link"
+            class="btn-lime"
+            href="https://t.me/supv1rus"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="plan-req-telegram-link"
+            data-i18n="request.telegramBtn"
+          >Скопировать заявку и открыть Telegram</a>
           <button
             type="button"
             id="plan-req-copy-btn"
-            class="btn-lime"
+            class="btn-secondary"
             data-testid="plan-req-copy-btn"
             data-i18n="request.copyBtn"
           >Скопировать заявку</button>
@@ -1332,6 +1512,36 @@
             data-testid="plan-req-mailto-link"
             data-i18n="request.mailtoBtn"
           >Открыть в почтовом клиенте</a>
+        </div>
+        <div class="plan-fallback-box" data-testid="plan-fallback-box">
+          <p class="plan-fallback-note" data-i18n="request.fallbackNote">Если t.me открывается медленно или недоступен, отправьте заявку напрямую на почту или скопируйте ник для личного сообщения.</p>
+          <div class="plan-fallback-contacts">
+            <div class="plan-fallback-item">
+              <a
+                id="plan-req-email-direct"
+                class="plan-fallback-value"
+                href="mailto:kilkauciha@gmail.com"
+                data-testid="plan-req-email-direct"
+              >kilkauciha@gmail.com</a>
+              <button
+                type="button"
+                id="plan-req-copy-email-btn"
+                class="btn-copy-xs"
+                data-testid="plan-req-copy-email-btn"
+                data-i18n="request.copyEmailBtn"
+              >Скопировать почту</button>
+            </div>
+            <div class="plan-fallback-item">
+              <span id="plan-req-tg-handle" class="plan-fallback-value">@supv1rus</span>
+              <button
+                type="button"
+                id="plan-req-copy-tg-btn"
+                class="btn-copy-xs"
+                data-testid="plan-req-copy-tg-btn"
+                data-i18n="request.copyTgBtn"
+              >Скопировать ник</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

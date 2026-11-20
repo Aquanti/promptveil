@@ -164,3 +164,126 @@ export function getLocalizedPreset(idOrPreset, lang = "ru") {
     suggestedRules: preset.suggestedRules || [],
   };
 }
+
+export const INDUSTRY_WORD_PACKS = Object.freeze([
+  {
+    id: "legal",
+    category: "CUSTOM",
+    titleByLang: Object.freeze({
+      ru: "Юриспруденция",
+      en: "Legal",
+    }),
+    termsByLang: Object.freeze({
+      ru: Object.freeze([
+        "коммерческая тайна",
+        "конфиденциальная информация",
+        "персональные данные",
+        "арбитражная оговорка",
+        "лицензионное вознаграждение",
+        "дополнительное соглашение",
+      ]),
+      en: Object.freeze([
+        "confidential information",
+        "trade secret",
+        "non-disclosure",
+        "arbitration clause",
+        "indemnification",
+        "liquidated damages",
+      ]),
+    }),
+  },
+  {
+    id: "hr",
+    category: "CUSTOM",
+    titleByLang: Object.freeze({
+      ru: "Кадры и найм",
+      en: "HR & Hiring",
+    }),
+    termsByLang: Object.freeze({
+      ru: Object.freeze([
+        "размер оклада",
+        "испытательный срок",
+        "кадровый резерв",
+        "должностной оклад",
+        "трудовой договор",
+        "премиальная часть",
+      ]),
+      en: Object.freeze([
+        "base salary",
+        "performance review",
+        "severance package",
+        "background check",
+        "compensation band",
+        "disciplinary action",
+      ]),
+    }),
+  },
+  {
+    id: "medical",
+    category: "CUSTOM",
+    titleByLang: Object.freeze({
+      ru: "Медицина",
+      en: "Medical",
+    }),
+    termsByLang: Object.freeze({
+      ru: Object.freeze([
+        "история болезни",
+        "амбулаторная карта",
+        "клинический диагноз",
+        "врачебная тайна",
+        "результаты анализов",
+        "выписной эпикриз",
+      ]),
+      en: Object.freeze([
+        "medical record",
+        "clinical diagnosis",
+        "patient history",
+        "lab results",
+        "discharge summary",
+        "prescription dosage",
+      ]),
+    }),
+  },
+  {
+    id: "accounting",
+    category: "CUSTOM",
+    titleByLang: Object.freeze({
+      ru: "Бухгалтерия",
+      en: "Accounting",
+    }),
+    termsByLang: Object.freeze({
+      ru: Object.freeze([
+        "налоговая база",
+        "бухгалтерский баланс",
+        "акт сверки",
+        "счёт-фактура",
+        "оборотная ведомость",
+        "платёжное поручение",
+      ]),
+      en: Object.freeze([
+        "balance sheet",
+        "tax liability",
+        "payroll register",
+        "accounts receivable",
+        "general ledger",
+        "wire transfer",
+      ]),
+    }),
+  },
+]);
+
+export function getLocalizedWordPack(packId, lang = "ru") {
+  const pack = INDUSTRY_WORD_PACKS.find((item) => item.id === packId);
+  if (!pack) return null;
+  const normLang = lang === "en" ? "en" : "ru";
+  return {
+    id: pack.id,
+    category: pack.category,
+    title: pack.titleByLang[normLang] || pack.titleByLang.ru,
+    terms: pack.termsByLang[normLang] || pack.termsByLang.ru,
+  };
+}
+
+export function getIndustryWordPacks(lang = "ru") {
+  return INDUSTRY_WORD_PACKS.map((pack) => getLocalizedWordPack(pack.id, lang));
+}

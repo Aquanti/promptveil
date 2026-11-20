@@ -1202,6 +1202,59 @@ button:disabled {
   color: var(--text-muted);
 }
 
+.vault-reason {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.sensitivity-control {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.sensitivity-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sensitivity-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg-surface-subtle);
+  gap: 2px;
+}
+
+.sensitivity-btn {
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 0.28rem 0.72rem;
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 0.77rem;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+
+.sensitivity-btn:hover {
+  color: var(--text-primary);
+}
+
+.sensitivity-btn.is-active {
+  background-color: var(--bg-forest);
+  color: var(--text-on-rail);
+}
+
 .vault-actions-col {
   display: flex;
   align-items: center;

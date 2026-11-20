@@ -36,9 +36,9 @@
     content="Free client-side masking and restoration workspace for AI prompts with zero data retention."
   />
   <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
-  <link rel="stylesheet" href="/dist/styles.V6OENGR4.css" />
-  <script type="module" src="/dist/app.G2JSUUFJ.js"></script>
-  <link rel="modulepreload" href="/dist/i18n-ru-K33PTIXV.js" />
+  <link rel="stylesheet" href="/dist/styles.OSO7ZGEU.css" />
+  <script type="module" src="/dist/app.7ZFZXPFV.js"></script>
+  <link rel="modulepreload" href="/dist/i18n-ru-XC3DQG4V.js" />
 </head>
 <body>
   <a href="#main-workbench" class="skip-link" data-i18n="a11y.skipLink">Skip to workbench</a>
@@ -459,6 +459,38 @@
                 />
                 <span data-i18n="step1.detectUuidToggle">Hide UUIDs</span>
               </label>
+              <div
+                class="sensitivity-control"
+                title="Normal reduces false positives; Strict enables UUIDs, unquoted organizations, broader name pairs, and shorter secrets"
+                data-i18n-title="step1.sensitivityTitle"
+              >
+                <span class="sensitivity-label" data-i18n="step1.sensitivityLabel">Mode:</span>
+                <div
+                  class="sensitivity-switch"
+                  role="group"
+                  aria-label="Mode:"
+                  data-i18n-aria="step1.sensitivityLabel"
+                >
+                  <button
+                    type="button"
+                    id="sensitivity-normal-btn"
+                    class="sensitivity-btn is-active"
+                    data-sensitivity="normal"
+                    data-testid="sensitivity-normal-btn"
+                    aria-pressed="true"
+                    data-i18n="step1.sensitivityNormal"
+                  >Normal</button>
+                  <button
+                    type="button"
+                    id="sensitivity-strict-btn"
+                    class="sensitivity-btn"
+                    data-sensitivity="strict"
+                    data-testid="sensitivity-strict-btn"
+                    aria-pressed="false"
+                    data-i18n="step1.sensitivityStrict"
+                  >Strict</button>
+                </div>
+              </div>
             </div>
             <button
               type="button"
@@ -725,6 +757,107 @@
     </section>
 
     <section
+      id="how-it-works"
+      class="info-section"
+      aria-labelledby="how-title"
+      data-testid="how-it-works-section"
+    >
+      <div class="info-section-header">
+        <h2 id="how-title" class="pricing-title" data-i18n="how.title">How it works</h2>
+        <p class="pricing-subtitle" data-i18n="how.subtitle">Three steps with zero text uploaded to any server: masking and restoration happen in volatile tab RAM.</p>
+      </div>
+      <div class="how-grid">
+        <article class="how-step-card">
+          <svg class="how-step-svg" viewBox="0 0 280 96" aria-hidden="true">
+            <rect x="4" y="6" width="272" height="84" rx="14" fill="#F4F6F5" stroke="#072F1F" stroke-opacity="0.16" />
+            <rect x="16" y="20" width="96" height="56" rx="10" fill="#FFFFFF" stroke="#072F1F" stroke-opacity="0.22" />
+            <rect x="26" y="32" width="54" height="8" rx="4" fill="#072F1F" fill-opacity="0.22" />
+            <rect x="26" y="46" width="74" height="8" rx="4" fill="#072F1F" fill-opacity="0.14" />
+            <rect x="26" y="60" width="44" height="8" rx="4" fill="#EF4444" fill-opacity="0.45" />
+            <path d="M124 48h28m-8-7 8 7-8 7" fill="none" stroke="#072F1F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+            <rect x="164" y="20" width="100" height="56" rx="10" fill="#051C12" />
+            <rect x="174" y="30" width="52" height="14" rx="5" fill="#B4F105" />
+            <rect x="174" y="50" width="76" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.28" />
+            <rect x="174" y="62" width="60" height="8" rx="4" fill="#B4F105" fill-opacity="0.7" />
+          </svg>
+          <h3 class="how-step-title" data-i18n="how.step1Title">1. Local masking on your device</h3>
+          <p class="how-step-body" data-i18n="how.step1Body">Deterministic detectors find contacts, bank numbers, IDs, and secrets directly in the page and swap them for short tags.</p>
+        </article>
+        <article class="how-step-card">
+          <svg class="how-step-svg" viewBox="0 0 280 96" aria-hidden="true">
+            <rect x="4" y="6" width="272" height="84" rx="14" fill="#051C12" />
+            <circle cx="52" cy="48" r="24" fill="#072F1F" stroke="#B4F105" stroke-width="2" />
+            <path d="M52 34l12 5v9c0 8-5.2 14.3-12 17-6.8-2.7-12-9-12-17v-9l12-5Z" fill="#B4F105" />
+            <rect x="92" y="26" width="84" height="16" rx="8" fill="#072F1F" stroke="#B4F105" stroke-opacity="0.45" />
+            <rect x="92" y="50" width="112" height="10" rx="5" fill="#FFFFFF" fill-opacity="0.22" />
+            <rect x="92" y="66" width="76" height="8" rx="4" fill="#22C55E" fill-opacity="0.75" />
+            <circle cx="242" cy="48" r="18" fill="#072F1F" />
+            <path d="M235 48l5 5 10-10" fill="none" stroke="#B4F105" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <h3 class="how-step-title" data-i18n="how.step2Title">2. AI only sees placeholder tags</h3>
+          <p class="how-step-body" data-i18n="how.step2Body">Only scrubbed text goes to the AI chat, while the replacement table stays strictly inside volatile tab memory.</p>
+        </article>
+        <article class="how-step-card">
+          <svg class="how-step-svg" viewBox="0 0 280 96" aria-hidden="true">
+            <rect x="4" y="6" width="272" height="84" rx="14" fill="#F4F6F5" stroke="#072F1F" stroke-opacity="0.16" />
+            <rect x="16" y="20" width="96" height="56" rx="10" fill="#051C12" />
+            <rect x="26" y="31" width="56" height="13" rx="5" fill="#B4F105" />
+            <rect x="26" y="52" width="74" height="8" rx="4" fill="#FFFFFF" fill-opacity="0.26" />
+            <path d="M124 48h28m-8-7 8 7-8 7" fill="none" stroke="#072F1F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+            <rect x="164" y="20" width="100" height="56" rx="10" fill="#FFFFFF" stroke="#22C55E" stroke-width="1.5" />
+            <rect x="174" y="31" width="66" height="13" rx="5" fill="#DCFCE7" stroke="#22C55E" />
+            <rect x="174" y="52" width="78" height="8" rx="4" fill="#072F1F" fill-opacity="0.22" />
+            <rect x="174" y="64" width="54" height="8" rx="4" fill="#072F1F" fill-opacity="0.14" />
+          </svg>
+          <h3 class="how-step-title" data-i18n="how.step3Title">3. Instant restoration in the reply</h3>
+          <p class="how-step-body" data-i18n="how.step3Body">Paste the AI reply into Step 2 — PromptVeil swaps original names, accounts, and numbers back in a single pass.</p>
+        </article>
+      </div>
+    </section>
+
+    <section
+      id="honest-limits"
+      class="info-section info-section--limits"
+      aria-labelledby="limits-title"
+      data-testid="honest-limits-section"
+    >
+      <div class="info-section-header">
+        <h2 id="limits-title" class="pricing-title" data-i18n="limits.title">What we don't catch yet</h2>
+        <p class="pricing-subtitle" data-i18n="limits.subtitle">Honest boundaries of client-side rules — so you know what to review manually or add to Custom Words.</p>
+      </div>
+      <div class="limits-grid">
+        <article class="limits-card">
+          <h3 class="limits-card-title" data-i18n="limits.item1Title">Unlisted prose names &amp; project codenames</h3>
+          <p class="limits-card-body" data-i18n="limits.item1Body">In Normal mode, rare surnames, nicknames, and internal project codenames are not auto-masked to avoid false positives.</p>
+        </article>
+        <article class="limits-card">
+          <h3 class="limits-card-title" data-i18n="limits.item2Title">Scans, images, .pdf, .docx &amp; spreadsheets</h3>
+          <p class="limits-card-body" data-i18n="limits.item2Body">Only plain-text formats (.txt, .md, .csv, .json, .log, .env) up to 2 MB are supported; OCR and binary office files are not parsed.</p>
+        </article>
+        <article class="limits-card">
+          <h3 class="limits-card-title" data-i18n="limits.item3Title">Typos, transliteration &amp; split digits</h3>
+          <p class="limits-card-body" data-i18n="limits.item3Body">Card digits broken up with letters or extra spaces and unconventional address abbreviations may pass through unmasked.</p>
+        </article>
+        <article class="limits-card">
+          <h3 class="limits-card-title" data-i18n="limits.item4Title">Custom internal IDs &amp; domain secrets</h3>
+          <p class="limits-card-body" data-i18n="limits.item4Body">Short passwords, ticket numbers, SKUs, and internal identifiers without a fixed pattern should be added as custom rules.</p>
+        </article>
+      </div>
+      <div class="limits-cta-row">
+        <p class="limits-cta-note" data-i18n="limits.rulebookNote">Add your own terms or apply a starter industry pack — custom rules always mask with high priority.</p>
+        <button
+          type="button"
+          id="limits-open-rulebook-btn"
+          class="btn-primary"
+          aria-haspopup="dialog"
+          aria-controls="drawer-rulebook"
+          data-testid="limits-open-rulebook-btn"
+          data-i18n="limits.openRulebookBtn"
+        >Add to Custom Words</button>
+      </div>
+    </section>
+
+    <section
       id="pricing-section"
       class="pricing-section"
       aria-labelledby="pricing-title"
@@ -960,6 +1093,7 @@
             >Copy</button>
           </li>
         </ul>
+        <p class="footer-contact-note" data-i18n="footer.contactFallbackNote">If Telegram is unavailable on your network, email kilkauciha@gmail.com directly.</p>
       </div>
     </div>
 
@@ -1037,6 +1171,43 @@
           data-i18n="rulebook.addBtn"
         >Add</button>
       </form>
+
+      <div class="word-packs-box" data-testid="word-packs-box">
+        <div class="word-packs-head">
+          <span class="field-label" data-i18n="rulebook.packsHeading">Industry packs (1 click)</span>
+          <span class="pane-meta" data-i18n="rulebook.packsHint">Add starter domain terms without duplicates</span>
+        </div>
+        <div class="word-packs-grid">
+          <button
+            type="button"
+            class="btn-secondary word-pack-btn"
+            data-pack="legal"
+            data-testid="word-pack-legal"
+            data-i18n="rulebook.pack.legal"
+          >Legal</button>
+          <button
+            type="button"
+            class="btn-secondary word-pack-btn"
+            data-pack="hr"
+            data-testid="word-pack-hr"
+            data-i18n="rulebook.pack.hr"
+          >HR &amp; Hiring</button>
+          <button
+            type="button"
+            class="btn-secondary word-pack-btn"
+            data-pack="medical"
+            data-testid="word-pack-medical"
+            data-i18n="rulebook.pack.medical"
+          >Medical</button>
+          <button
+            type="button"
+            class="btn-secondary word-pack-btn"
+            data-pack="accounting"
+            data-testid="word-pack-accounting"
+            data-i18n="rulebook.pack.accounting"
+          >Accounting</button>
+        </div>
+      </div>
 
       <div id="rulebook-alert" class="inline-alert" role="status" hidden></div>
 
@@ -1318,10 +1489,19 @@
         <p class="plan-result-title" data-i18n="request.resultTitle">Ready-to-send inquiry (0 bytes transmitted):</p>
         <pre id="plan-request-preview" class="plan-preview-pre" data-testid="plan-request-preview"></pre>
         <div class="plan-result-actions">
+          <a
+            id="plan-req-telegram-link"
+            class="btn-lime"
+            href="https://t.me/supv1rus"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="plan-req-telegram-link"
+            data-i18n="request.telegramBtn"
+          >Copy inquiry &amp; open Telegram</a>
           <button
             type="button"
             id="plan-req-copy-btn"
-            class="btn-lime"
+            class="btn-secondary"
             data-testid="plan-req-copy-btn"
             data-i18n="request.copyBtn"
           >Copy inquiry</button>
@@ -1332,6 +1512,36 @@
             data-testid="plan-req-mailto-link"
             data-i18n="request.mailtoBtn"
           >Open in mail client</a>
+        </div>
+        <div class="plan-fallback-box" data-testid="plan-fallback-box">
+          <p class="plan-fallback-note" data-i18n="request.fallbackNote">If t.me is slow or unavailable, send the inquiry directly by email or copy the handle for a direct message.</p>
+          <div class="plan-fallback-contacts">
+            <div class="plan-fallback-item">
+              <a
+                id="plan-req-email-direct"
+                class="plan-fallback-value"
+                href="mailto:kilkauciha@gmail.com"
+                data-testid="plan-req-email-direct"
+              >kilkauciha@gmail.com</a>
+              <button
+                type="button"
+                id="plan-req-copy-email-btn"
+                class="btn-copy-xs"
+                data-testid="plan-req-copy-email-btn"
+                data-i18n="request.copyEmailBtn"
+              >Copy email</button>
+            </div>
+            <div class="plan-fallback-item">
+              <span id="plan-req-tg-handle" class="plan-fallback-value">@supv1rus</span>
+              <button
+                type="button"
+                id="plan-req-copy-tg-btn"
+                class="btn-copy-xs"
+                data-testid="plan-req-copy-tg-btn"
+                data-i18n="request.copyTgBtn"
+              >Copy handle</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

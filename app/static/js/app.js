@@ -85,6 +85,7 @@ const state = {
   auditLog: [],
   auditPersist: false,
   detectUuid: false,
+  sensitivity: "normal",
   vault: new SessionVault(),
   lastFocusedTrigger: null,
   activeRequestPlan: "pro",
@@ -246,6 +247,22 @@ function refreshWorkbenchUi() {
       "is-ready",
       Boolean(state.rawText.trim() && result?.sanitizedText)
     );
+  }
+  const isStrict = state.sensitivity === "strict";
+  for (const [btnId, active] of [
+    ["sensitivity-normal-btn", !isStrict],
+    ["sensitivity-strict-btn", isStrict],
+  ]) {
+    const sBtn = getEl(btnId);
+    if (sBtn) {
+      sBtn.classList.toggle("is-active", active);
+      sBtn.setAttribute("aria-pressed", active ? "true" : "false");
+    }
+  }
+  const uuidToggle = getEl("detect-uuid-toggle");
+  if (uuidToggle) {
+    uuidToggle.checked = Boolean(state.detectUuid || isStrict);
+    uuidToggle.disabled = isStrict;
   }
 }
 
@@ -415,6 +432,17 @@ function bindEvents() {
     pipeline.runSanitizePipeline(false);
   });
 
+  for (const [btnId, mode] of [
+    ["sensitivity-normal-btn", "normal"],
+    ["sensitivity-strict-btn", "strict"],
+  ]) {
+    getEl(btnId)?.addEventListener("click", () => {
+      if (state.sensitivity === mode) return;
+      state.sensitivity = mode;
+      pipeline.runSanitizePipeline(false);
+    });
+  }
+
   const rawInput = getEl("raw-prompt-input");
   rawInput?.addEventListener("input", () => {
     fileController.cancelPendingFileRead();
@@ -537,6 +565,20 @@ function bindEvents() {
     if (!text) return;
     downloadTextFile("promptveil-sanitized.txt", text);
     showStatusBanner("banner.downloaded");
+  });
+
+  getEl("ai-launchers-bar")?.addEventListener("click", (event) => {
+    const pill =
+      event.target instanceof Element ? event.target.closest("a.ai-launcher-pill") : null;
+    if (!pill) return;
+    const text = pipeline.ensureFreshSanitizedOutput();
+    if (!text.trim()) return;
+    showStatusBanner("banner.copiedForAi");
+    void copyTextToClipboard(text).then((ok) => {
+      if (!ok) {
+        showStatusBanner("banner.copyFailed", {}, true);
+      }
+    });
   });
 
   const llmInput = getEl("llm-reply-input");

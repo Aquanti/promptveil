@@ -20,6 +20,11 @@ function syncRuleMetadata(entry, span) {
   } else {
     delete entry.ruleId;
   }
+  if (span.reasonKey) {
+    entry.reasonKey = span.reasonKey;
+  } else {
+    delete entry.reasonKey;
+  }
 }
 
 export class SessionVault {
@@ -263,6 +268,11 @@ export class SessionVault {
         } else {
           delete existingAgg.ruleId;
         }
+        if (span.reasonKey) {
+          existingAgg.reasonKey = span.reasonKey;
+        } else {
+          delete existingAgg.reasonKey;
+        }
       } else {
         entryAgg.set(token, {
           token,
@@ -275,6 +285,7 @@ export class SessionVault {
           valueExcluded,
           ...(span.ruleCategory ? { ruleCategory: span.ruleCategory } : {}),
           ...(span.ruleId ? { ruleId: span.ruleId } : {}),
+          ...(span.reasonKey ? { reasonKey: span.reasonKey } : {}),
         });
       }
 

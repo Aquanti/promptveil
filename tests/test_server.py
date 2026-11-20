@@ -1024,4 +1024,49 @@ def test_stage_c_mobile_ux_contracts() -> None:
     )
 
 
+def test_stage_e_growth_contracts() -> None:
+    """Verify M5 Stage E UI hooks, RU/EN parity, and rulebook pack separation."""
+    index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    en_html = (STATIC_DIR / "en" / "index.html").read_text(encoding="utf-8")
+
+    required_m5_hooks = (
+        'id="sensitivity-normal-btn"',
+        'data-testid="sensitivity-normal-btn"',
+        'id="sensitivity-strict-btn"',
+        'data-testid="sensitivity-strict-btn"',
+        'id="how-it-works"',
+        'data-testid="how-it-works-section"',
+        'id="honest-limits"',
+        'data-testid="honest-limits-section"',
+        'id="limits-open-rulebook-btn"',
+        'data-testid="limits-open-rulebook-btn"',
+        'data-testid="word-packs-box"',
+        'data-testid="word-pack-legal"',
+        'data-testid="word-pack-hr"',
+        'data-testid="word-pack-medical"',
+        'data-testid="word-pack-accounting"',
+        'id="plan-req-telegram-link"',
+        'data-testid="plan-req-telegram-link"',
+        'data-testid="plan-fallback-box"',
+        'id="plan-req-email-direct"',
+        'id="plan-req-copy-email-btn"',
+        'id="plan-req-copy-tg-btn"',
+        'class="footer-contact-note"',
+    )
+    for hook in required_m5_hooks:
+        assert hook in index_html, f"Missing M5 hook {hook} in index.html"
+        assert hook in en_html, f"Missing M5 hook {hook} in en/index.html"
+
+    for html_name, html_src in (("index.html", index_html), ("en/index.html", en_html)):
+        rules_ul_match = re.search(
+            r'<ul id="rulebook-list"[^>]*>.*?</ul>',
+            html_src,
+            re.DOTALL,
+        )
+        assert rules_ul_match is not None, f"Could not locate #rulebook-list in {html_name}"
+        assert "word-pack-" not in rules_ul_match.group(0), (
+            f"Word pack buttons must stay outside #rulebook-list in {html_name}"
+        )
+
+
 

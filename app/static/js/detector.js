@@ -425,6 +425,30 @@ function hasRuSurnameSuffix(word) {
   return parts.some((part) => hasSingleRuSurnameSuffix(part));
 }
 
+const RU_STRICT_NON_SURNAME_WORDS = new Set([
+  "россии", "россия", "федерации", "федерация", "москвы", "москва",
+  "мира", "года", "века", "прав", "труда", "дела", "слова", "жизни",
+  "любви", "веры", "надежды", "добрый", "доброе", "утро", "вечер",
+  "ночи", "день", "компании", "фирмы", "проекта", "системы", "сервиса",
+  "банка", "клиентов", "договора", "рынка", "страны", "города", "области",
+]);
+
+function isStrictRuNonAdjective(word) {
+  const norm = normalizeRuWord(word);
+  return Boolean(norm) && !/(?:ый|ий|ой|ая|яя|ое|ее|ые|ие)$/.test(norm);
+}
+
+function hasStrictRuSurnameSuffix(word) {
+  if (hasRuSurnameSuffix(word)) {
+    return true;
+  }
+  const norm = normalizeRuWord(word);
+  if (!norm || norm.length < 5 || RU_FIO_STOPWORDS.has(norm)) {
+    return false;
+  }
+  return norm.split("-").some((part) => part.length >= 5 && /(?:ян|швили|адзе|уни|идзе)$/.test(part));
+}
+
 export function isValidRuAutoPlate(raw) {
   const compact = String(raw || "")
     .trim()
@@ -629,8 +653,8 @@ function resolveIbanSpan(text, matchIndex, raw) {
   return null;
 }
 
-function isHighEntropySecret(token) {
-  if (token.length < 20) {
+function isHighEntropySecret(token, { minLength = 20, minEntropy = 3.8 } = {}) {
+  if (token.length < minLength) {
     return false;
   }
   if (/^(?:https?|ftp|wss?|postgres(?:ql)?|mysql|redis|mongodb(?:\+srv)?):\/\//i.test(token)) {
@@ -649,6 +673,9 @@ function isHighEntropySecret(token) {
   if (/^\[[A-Z_]+_\d+\]$/.test(token)) {
     return false;
   }
+  if (/^v?\d+(?:\.\d+){2,}(?:-[A-Za-z0-9.]+)?$/i.test(token) || /^\d{4}[-_]\d{2}[-_]\d{2}/.test(token)) {
+    return false;
+  }
 
   let classes = 0;
   if (/[A-Z]/.test(token)) classes += 1;
@@ -663,7 +690,7 @@ function isHighEntropySecret(token) {
     return false;
   }
 
-  return shannonEntropy(token) >= 3.8;
+  return shannonEntropy(token) >= minEntropy;
 }
 
 /**
@@ -675,7 +702,8 @@ export function detectEntities(text, customRules = [], options = {}) {
     return [];
   }
 
-  const detectUuid = Boolean(options?.detectUuid) || options?.sensitivity === "strict";
+  const isStrict = options?.sensitivity === "strict";
+  const detectUuid = Boolean(options?.detectUuid) || isStrict;
   const candidates = [];
 
   // 1. API_KEY (priority 100)
@@ -689,6 +717,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + m[0].length,
       priority: 100,
+      reasonKey: "reason.apiKey",
     });
   }
 
@@ -714,6 +743,7 @@ export function detectEntities(text, customRules = [], options = {}) {
         start: valStart,
         end: valStart + val.length,
         priority: 96,
+        reasonKey: "reason.urlToken",
       });
     }
   }
@@ -729,6 +759,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + m[0].length,
       priority: 95,
+      reasonKey: "reason.jwt",
     });
   }
 
@@ -750,6 +781,7 @@ export function detectEntities(text, customRules = [], options = {}) {
           start: cardMatch.index,
           end: resolved.end,
           priority: 90,
+          reasonKey: "reason.creditCard",
         });
       }
       cardRegex.lastIndex = resolved.end;
@@ -775,6 +807,7 @@ export function detectEntities(text, customRules = [], options = {}) {
         start: ibanMatch.index,
         end: resolved.end,
         priority: 92,
+        reasonKey: "reason.iban",
       });
       ibanRegex.lastIndex = resolved.end;
     } else {
@@ -802,6 +835,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start,
       end: start + bikVal.length,
       priority: 86,
+      reasonKey: "reason.ruBik",
     });
   }
 
@@ -826,6 +860,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + rawVal.length,
       priority: 91,
+      reasonKey: hasBiks ? "reason.ruAccountBik" : "reason.ruAccountLabel",
     });
   }
 
@@ -846,6 +881,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + rawVal.length,
       priority: 91,
+      reasonKey: "reason.ruOms",
     });
   }
 
@@ -861,6 +897,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + rawVal.length,
       priority: 89,
+      reasonKey: "reason.ruSnils",
     });
   }
   const ruSnilsLabeledRegex =
@@ -876,6 +913,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start,
       end: start + rawVal.length,
       priority: 89,
+      reasonKey: "reason.ruSnils",
     });
   }
 
@@ -897,6 +935,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + rawVal.length,
       priority: hasLabel ? 91 : 88,
+      reasonKey: hasLabel ? "reason.ruOgrnLabel" : "reason.ruOgrn",
     });
   }
 
@@ -916,6 +955,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + rawVal.length,
       priority: 88,
+      reasonKey: "reason.ruInn",
     });
   }
 
@@ -936,6 +976,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start,
       end: start + rawVal.length,
       priority: 87,
+      reasonKey: "reason.ruPassport",
     });
   }
 
@@ -950,6 +991,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + m[0].length,
       priority: 85,
+      reasonKey: "reason.ssn",
     });
   }
 
@@ -976,6 +1018,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: digitStart,
       end: resolved.end,
       priority: 84,
+      reasonKey: "reason.possibleCard",
     };
     possibleCardSpans.push(span);
     candidates.push(span);
@@ -1021,6 +1064,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start,
       end,
       priority: 82,
+      reasonKey: "reason.envSecret",
     });
   }
 
@@ -1051,6 +1095,7 @@ export function detectEntities(text, customRules = [], options = {}) {
             priority: 80,
             ruleId: rule.id || undefined,
             ruleCategory,
+            reasonKey: "reason.customRule",
           });
         }
       } catch {
@@ -1070,6 +1115,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + m[0].length,
       priority: 75,
+      reasonKey: "reason.email",
     });
   }
 
@@ -1097,6 +1143,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + val.length,
       priority: 70,
+      reasonKey: "reason.phone",
     });
   }
 
@@ -1111,6 +1158,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + m[0].length,
       priority: 68,
+      reasonKey: "reason.ruOrg",
     });
   }
 
@@ -1125,6 +1173,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + m[1].length,
       priority: 68,
+      reasonKey: "reason.ruOrg",
     });
   }
 
@@ -1139,6 +1188,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + m[1].length,
       priority: 68,
+      reasonKey: "reason.ruOrg",
     });
   }
 
@@ -1164,6 +1214,7 @@ export function detectEntities(text, customRules = [], options = {}) {
           start: m.index,
           end: m.index + m[1].length,
           priority: 68,
+          reasonKey: "reason.ruOrg",
         });
         continue;
       }
@@ -1185,6 +1236,26 @@ export function detectEntities(text, customRules = [], options = {}) {
         start: m.index,
         end: twoEnd,
         priority: 68,
+        reasonKey: "reason.ruOrg",
+      });
+    }
+  }
+
+  if (isStrict) {
+    const ruOrgUnquotedRe =
+      /(?<![\p{L}\p{N}_])((?:ООО|ПАО|ЗАО|ОАО|НКО|АО)[ \t]+([А-ЯЁA-Z][А-ЯЁа-яёA-Za-z0-9-]{2,}))(?![\p{L}\p{N}_-])/gu;
+    for (const m of text.matchAll(ruOrgUnquotedRe)) {
+      if (RU_FIO_STOPWORDS.has(normalizeRuWord(m[2]))) continue;
+      const after = text.slice(m.index + m[1].length).trimStart();
+      if (/^[«"„“']/.test(after)) continue;
+      candidates.push({
+        category: "RU_ORG",
+        tokenPrefix: "ORG",
+        value: m[1],
+        start: m.index,
+        end: m.index + m[1].length,
+        priority: 68,
+        reasonKey: "reason.ruOrgStrict",
       });
     }
   }
@@ -1202,6 +1273,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + val.length,
       priority: 65,
+      reasonKey: "reason.ruAutoPlate",
     });
   }
 
@@ -1218,6 +1290,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + m[1].length,
       priority: 64,
+      reasonKey: "reason.ruFioInitials",
     });
   }
   const ruInitialBeforeRe =
@@ -1233,6 +1306,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + m[1].length,
       priority: 64,
+      reasonKey: "reason.ruFioInitials",
     });
   }
   const STREET_PREFIX_BEFORE_FIO_RE =
@@ -1284,6 +1358,7 @@ export function detectEntities(text, customRules = [], options = {}) {
               start: t1.start,
               end: t3.end,
               priority: 64,
+              reasonKey: "reason.ruFio3",
             });
           }
         }
@@ -1308,7 +1383,38 @@ export function detectEntities(text, customRules = [], options = {}) {
               start: t1.start,
               end: t2.end,
               priority: 64,
+              reasonKey: isNamePat ? "reason.ruFio3" : "reason.ruFio2",
             });
+          } else if (isStrict && !isRuPatronymic(t1.word) && !isRuPatronymic(t2.word)) {
+            const strictFirstPair =
+              (RU_FIRST_NAME_FORMS.has(t1.norm) &&
+                isCapitalizedRuSurnameCandidate(t2.word) &&
+                t2.norm.length >= 3 &&
+                isStrictRuNonAdjective(t2.word) &&
+                !RU_STRICT_NON_SURNAME_WORDS.has(t2.norm)) ||
+              (isCapitalizedRuSurnameCandidate(t1.word) &&
+                t1.norm.length >= 3 &&
+                isStrictRuNonAdjective(t1.word) &&
+                !RU_STRICT_NON_SURNAME_WORDS.has(t1.norm) &&
+                RU_FIRST_NAME_FORMS.has(t2.norm));
+            const strictRareFirstWithSurname =
+              isCapitalizedRuSurnameCandidate(t1.word) &&
+              (t1.norm.length >= 3 || t1.norm === "ян") &&
+              isStrictRuNonAdjective(t1.word) &&
+              !RU_STRICT_NON_SURNAME_WORDS.has(t1.norm) &&
+              isCapitalizedRuSurnameCandidate(t2.word) &&
+              hasStrictRuSurnameSuffix(t2.word);
+            if (strictFirstPair || strictRareFirstWithSurname) {
+              candidates.push({
+                category: "RU_FIO",
+                tokenPrefix: "FIO",
+                value: text.slice(t1.start, t2.end),
+                start: t1.start,
+                end: t2.end,
+                priority: 64,
+                reasonKey: "reason.ruFioStrict",
+              });
+            }
           }
         }
       }
@@ -1364,6 +1470,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start,
       end: start + val.length,
       priority: 63,
+      reasonKey: "reason.ruAddress",
     });
   }
 
@@ -1378,6 +1485,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + m[0].length,
       priority: 60,
+      reasonKey: "reason.ipv4",
     });
   }
 
@@ -1393,17 +1501,21 @@ export function detectEntities(text, customRules = [], options = {}) {
         start: m.index,
         end: m.index + m[0].length,
         priority: 58,
+        reasonKey:
+          isStrict && !options?.detectUuid ? "reason.uuidStrict" : "reason.uuid",
       });
     }
   }
 
   // 11. HIGH_ENTROPY (priority 50)
-  const entropyRegex =
-    /(?<=^|[\s"'`()[\]{}<>,;:=])([A-Za-z0-9_.~+/\\-]{20,}={0,2})(?=$|[\s"'`()[\]{}<>,;:=!?])/g;
+  const entropyRegex = isStrict
+    ? /(?<=^|[\s"'`()[\]{}<>,;:=])([A-Za-z0-9_.~+/\\-]{16,}={0,2})(?=$|[\s"'`()[\]{}<>,;:=!?])/g
+    : /(?<=^|[\s"'`()[\]{}<>,;:=])([A-Za-z0-9_.~+/\\-]{20,}={0,2})(?=$|[\s"'`()[\]{}<>,;:=!?])/g;
+  const entropyOpts = isStrict ? { minLength: 16, minEntropy: 3.45 } : undefined;
   for (const m of text.matchAll(entropyRegex)) {
     const rawToken = m[1];
     const trimmed = rawToken.replace(/[.!?]+$/, "");
-    if (!trimmed || !isHighEntropySecret(trimmed)) {
+    if (!trimmed || !isHighEntropySecret(trimmed, entropyOpts)) {
       continue;
     }
     // Ignore URL :port/path suffixes such as https://example.com:8443/v1/... or grpcs://host:9443/...
@@ -1420,6 +1532,7 @@ export function detectEntities(text, customRules = [], options = {}) {
       start: m.index,
       end: m.index + trimmed.length,
       priority: 50,
+      reasonKey: isStrict ? "reason.highEntropyStrict" : "reason.highEntropy",
     });
   }
 
