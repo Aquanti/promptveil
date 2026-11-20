@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T16:28+03:00  
-**Session Status:** Pre-Release Product, Branding & UX Update (R1–R6, Cycle 1 Iteration 2 Hardening) complete — ready for Netlify deployment  
-**Exact Stop Point:** Cycle 1 Iteration 2 Hardening Complete — synchronized `pagehide` / `pageshow` (`persisted=true`) bfcache reset with full workbench UI/button/counter refresh (`localStorage` prefs preserved), added `ensureFreshSanitizedOutput()` to `#copy-goto-step2-btn` / `#copy-sanitized-btn` / `#download-sanitized-btn` to flush pending live-sanitize timers and handle unchecked `#live-sanitize-toggle`, tightened Team `#plan-req-seats` empty check & `isValidContactInput()` email regex (`<`/`>` rejected), parameterized `{trackers}` in `proof.trackersMetric*` (RU & EN), and added regression checks in `e2e_tests/test_acceptance.py` (`test_ACC_06`..`test_ACC_08`); `py_compile` (`16` files), `pytest tests/test_server.py` (`20/20`), `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --tier all` (`146/146`, `320.80s`) all PASS; port `8000` free, `.agents/` absent, no Netlify deployment executed.
+**Checkpoint Date:** 2026-11-20T17:01+03:00  
+**Session Status:** Live Public HTTPS Launch on Netlify (`https://promtveil.netlify.app`) Complete & Verified  
+**Exact Stop Point:** Deployed `app/static` to public Netlify HTTPS (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`, `deployId: 6b0051571b776911337bae67`, `teamSlug: kil-ka-uchikha`), enabled public visitor access (`requiresSSOTeamLogin: false`, `requiresPassword: false`), added `.netlify/` to `.gitignore`, verified live `https://promtveil.netlify.app` via browser subagent (`HTTP 200`, `HTTPS / TLS`, `0` network requests, `0` stored bytes, `0` trackers, `0` app CSP violations, Step 1 preset -> Step 2 -> reset to `0`, `Месяц / Год −20%` pricing toggle, footer contacts & `SupV1rus`), and re-verified `pytest tests/test_server.py`.
 
 ---
 
@@ -43,5 +43,11 @@
 
 ---
 
-## 4. Exact Next Step (Public Launch)
-1. Deploy `app/static/` to public HTTPS hosting via Netlify (`netlify.toml`).
+## 4. Public Launch & Hosting Record
+- **Live Public URL:** `https://promtveil.netlify.app`
+- **Netlify Project:** `promtveil` (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`, `teamSlug: kil-ka-uchikha`, `plan: nf_team_dev` / Free)
+- **Production Deploy:** `deployId: 6b0051571b776911337bae67` (`state: ready`, `publish = "app/static"`)
+- **Visitor Access Controls:** Public (`requiresSSOTeamLogin: false`, `requiresPassword: false`)
+- **Live HTTPS Verification (`1440x900`):** Verified `HTTP 200` over `HTTPS / TLS` via browser subagent (`0` network requests, `0` stored bytes, `0` trackers, `0` app CSP violations, Step 1 preset -> `[EMAIL_1]`..`[CARD_1]` -> Step 2 -> reset to `0`, `Месяц / Год −20%` pricing toggle, footer contacts `@supv1rus`, `kilkauciha@gmail.com`, `github.com/Aquanti`, `© 2026 PromptVeil • Автор проекта: SupV1rus`).
+- **Repo Hygiene:** `.netlify/` added to `.gitignore`.
+- **Optional Next Step:** Attach a standalone custom domain (e.g., `promptveil.ru` / `promtveil.ru`) in Netlify Domain settings whenever desired.
