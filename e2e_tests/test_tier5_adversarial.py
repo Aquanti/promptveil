@@ -1718,4 +1718,45 @@ def test_T5_29_card_suffix_and_hyphen_ssn_edge_cases(
     assert "900-45-6789-123-00-6789" in restored
     assert "41111111111111110000" in restored
 
+    e2e_session.ui.switch_mode("sanitize")
+    e2e_session.ui.click_clear_input()
+
+    # 5. Valid Luhn 17- and 18-digit PANs with -N / -NN hyphen suffixes mask only the PAN and preserve -99 / -9
+    out_long_pan_suffix = e2e_session.ui.sanitize_text(
+        "C17 40000000000000006-99 | "
+        "H17 4000-0000-0000-00006-99 | "
+        "S17 4000 0000 0000 00006-99 | "
+        "C18 400000000000000002-9 | "
+        "H18 4000-0000-0000-000002-9"
+    )
+    assert out_long_pan_suffix.strip() == (
+        "C17 [CARD_1]-99 | H17 [CARD_2]-99 | S17 [CARD_3]-99 | C18 [CARD_4]-9 | H18 [CARD_5]-9"
+    )
+    for leaked in (
+        "40000000000000006",
+        "4000-0000-0000-00006",
+        "4000 0000 0000 00006",
+        "400000000000000002",
+        "4000-0000-0000-000002",
+    ):
+        assert leaked not in out_long_pan_suffix
+    assert e2e_session.ui.get_category_chip_count("CREDIT_CARD") == 5
+    assert len(e2e_session.ui.get_vault_rows()) == 5
+    restored_long_pan = e2e_session.ui.rehydrate_text(out_long_pan_suffix)
+    assert "C17 40000000000000006-99" in restored_long_pan
+    assert "H17 4000-0000-0000-00006-99" in restored_long_pan
+    assert "S17 4000 0000 0000 00006-99" in restored_long_pan
+    assert "C18 400000000000000002-9" in restored_long_pan
+    assert "H18 4000-0000-0000-000002-9" in restored_long_pan
+
+    e2e_session.ui.switch_mode("sanitize")
+    e2e_session.ui.click_clear_input()
+
+    # 6. Genuine 19-digit 4-4-4-4-3 PAN (non-Luhn 16-digit prefix) is masked in full
+    out_pan19 = e2e_session.ui.sanitize_text("PAN19 4000-0000-0000-0000-006")
+    assert out_pan19.strip() == "PAN19 [CARD_1]"
+    assert "4000-0000-0000-0000-006" not in out_pan19
+    assert e2e_session.ui.get_category_chip_count("CREDIT_CARD") == 1
+    assert e2e_session.ui.rehydrate_text(out_pan19).strip() == "PAN19 4000-0000-0000-0000-006"
+
 

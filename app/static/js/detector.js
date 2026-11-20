@@ -209,11 +209,33 @@ function resolveCardSpan(text, matchIndex, raw) {
     }
   }
 
-  // 2. Otherwise accept the full match (or space-trimmed 17-19 digit card) if structurally valid.
+  // 2a. Otherwise accept the full match (or space-trimmed 17-19 digit card) if structurally valid.
   candidate = raw;
   while (candidate.replace(/[ -]/g, "").length >= 13) {
     if (isValidCardFormat(candidate) && luhnCheck(candidate)) {
       return { value: candidate, end: matchIndex + candidate.length };
+    }
+    const lastSpace = candidate.lastIndexOf(" ");
+    if (lastSpace <= 0) {
+      break;
+    }
+    candidate = candidate.slice(0, lastSpace);
+  }
+
+  // 2b. If none matched, iteratively strip trailing -<digits> suffixes (and outer
+  //     space-trimmed segments) for valid 17-18 digit PANs with hyphenated suffixes.
+  candidate = raw;
+  while (candidate.replace(/[ -]/g, "").length >= 17) {
+    let stripped = candidate;
+    while (/-\d+$/.test(stripped)) {
+      stripped = stripped.replace(/-\d+$/, "");
+      const digitsLen = stripped.replace(/[ -]/g, "").length;
+      if (digitsLen < 17) {
+        break;
+      }
+      if (digitsLen <= 18 && isValidCardFormat(stripped) && luhnCheck(stripped)) {
+        return { value: stripped, end: matchIndex + stripped.length };
+      }
     }
     const lastSpace = candidate.lastIndexOf(" ");
     if (lastSpace <= 0) {
