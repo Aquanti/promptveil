@@ -1,4 +1,4 @@
-"""Tier 3: Cross-Feature Pairwise & Multi-Feature Combinations (8 Tests: T3-01..T3-08)."""
+"""Tier 3: Cross-Feature Pairwise & Multi-Feature Combinations (9 Tests: T3-01..T3-09)."""
 
 from __future__ import annotations
 
@@ -33,26 +33,26 @@ def test_T3_02_cyrillic_rule_bilingual_preset_audit_zero_pii(e2e_session: E2ESes
     assert "Секретный Проект Альфа" not in out
     hashes = e2e_session.ui.get_audit_hashes()
     assert len(hashes) >= 1
-    stored = e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1') || ''")
-    assert "Секретный Проект Альфа" not in stored
+    assert "Секретный Проект Альфа" not in e2e_session.ui.get_audit_drawer_text()
+    assert e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None
 
 
 def test_T3_03_export_rules_clear_rules_import_rules_rescan(e2e_session: E2ESession) -> None:
     e2e_session.ui.add_custom_rule("Project Falcon")
-    e2e_session.ui.add_custom_rule("ООО «Вектор»")
+    e2e_session.ui.add_custom_rule("Проект Альфа")
     exported = e2e_session.ui.export_rules_json(e2e_session.io.downloads)
 
     e2e_session.ui.delete_custom_rule("Project Falcon")
-    e2e_session.ui.delete_custom_rule("ООО «Вектор»")
+    e2e_session.ui.delete_custom_rule("Проект Альфа")
     e2e_session.ui.close_open_drawer()
-    unmasked = e2e_session.ui.sanitize_text("Project Falcon / ООО «Вектор»")
-    assert "Project Falcon" in unmasked and "ООО «Вектор»" in unmasked
+    unmasked = e2e_session.ui.sanitize_text("Project Falcon / Проект Альфа")
+    assert "Project Falcon" in unmasked and "Проект Альфа" in unmasked
 
     e2e_session.ui.import_rules_json(exported)
     e2e_session.ui.close_open_drawer()
-    remasked = e2e_session.ui.sanitize_text("Project Falcon / ООО «Вектор»")
+    remasked = e2e_session.ui.sanitize_text("Project Falcon / Проект Альфа")
     assert "[CUSTOM_1]" in remasked and "[CUSTOM_2]" in remasked
-    assert "Project Falcon" not in remasked and "ООО «Вектор»" not in remasked
+    assert "Project Falcon" not in remasked and "Проект Альфа" not in remasked
 
 
 def test_T3_04_filereader_upload_chip_disable_rehydrate_unresolved(e2e_session: E2ESession) -> None:
@@ -80,6 +80,8 @@ def test_T3_05_multi_category_overlap_entity_toggle_and_reload(e2e_session: E2ES
     assert "[API_KEY_1]" in out1 and "[CUSTOM_1]" in out1 and "ops@example.com" in out1
 
     e2e_session.page.reload(wait_until="networkidle")
+    assert e2e_session.ui.get_audit_hashes() == []
+    e2e_session.ui.close_open_drawer()
     out2 = e2e_session.ui.sanitize_text(prompt)
     assert "[CUSTOM_1]" in out2
     assert len(e2e_session.ui.get_audit_hashes()) >= 1
@@ -94,8 +96,7 @@ def test_T3_06_preset_export_audit_zero_secrets_and_clear(e2e_session: E2ESessio
         assert marker not in raw
     e2e_session.ui.clear_audit_log()
     assert e2e_session.ui.get_audit_hashes() == []
-    stored = e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1') || '[]'")
-    assert json.loads(stored) == []
+    assert e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None
 
 
 def test_T3_07_xss_custom_rule_filereader_and_rehydrate(e2e_session: E2ESession) -> None:
@@ -125,3 +126,42 @@ def test_T3_08_twelve_emails_plus_chip_toggle_and_rehydrate(e2e_session: E2ESess
 
     restored = e2e_session.ui.rehydrate_text("To [EMAIL_1], [EMAIL_10], [EMAIL_12] from 192.0.2.50")
     assert restored.strip() == "To user1@example.com, user10@example.com, user12@example.com from 192.0.2.50"
+
+
+def test_T3_09_strict_mode_industry_pack_stage_a_detectors_counter_sync_and_ram_audit(
+    e2e_session: E2ESession,
+) -> None:
+    drawer = e2e_session.ui.open_rulebook_drawer()
+    e2e_session.ui.apply_industry_word_pack("legal")
+    first_term = (
+        drawer.locator(
+            "[data-testid='rules-list'] .rule-term-text, "
+            "[data-testid='rules-list'] [data-term], "
+            "[data-testid='rules-list'] .rule-term"
+        )
+        .first.inner_text()
+        .strip()
+    )
+    e2e_session.ui.close_open_drawer()
+
+    e2e_session.ui.set_sensitivity_mode("strict")
+    prompt = (
+        f"Договор с ООО «Вектор» (подписант Алексей Смирнов), {first_term}, "
+        "карта 4276 3800 1234 5678, адрес Москва, ул. Ленина, д. 5, "
+        "ID 550e8400-e29b-41d4-a716-446655440000."
+    )
+    masked = e2e_session.ui.sanitize_text(prompt)
+    for tok in ("[ORG_1]", "[FIO_1]", "[CUSTOM_1]", "[POSSIBLE_CARD_1]", "[ADDRESS_1]", "[UUID_1]"):
+        assert tok in masked, f"Missing {tok} in {masked!r}"
+
+    count_before = e2e_session.ui.get_telemetry_masked_count()
+    assert count_before >= 6
+    e2e_session.ui.toggle_vault_entity("[UUID_1]")
+    assert e2e_session.ui.get_telemetry_masked_count() == count_before - 1
+    e2e_session.ui.toggle_vault_entity("[UUID_1]")
+    assert e2e_session.ui.get_telemetry_masked_count() == count_before
+
+    restored = e2e_session.ui.rehydrate_text(e2e_session.ui.get_sanitize_output_text())
+    assert restored.strip() == prompt.strip()
+    assert len(e2e_session.ui.get_audit_hashes()) >= 1
+    assert e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None

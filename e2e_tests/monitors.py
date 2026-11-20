@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -65,7 +66,9 @@ FORBIDDEN_RU_DEV_CODES: tuple[str, ...] = (
     "URL_TOKEN",
     "JWT",
     "CREDIT_CARD",
+    "POSSIBLE_CARD",
     "IBAN",
+    "RU_ORG",
     "RU_INN",
     "RU_SNILS",
     "RU_PASSPORT",
@@ -370,8 +373,13 @@ def parse_csp_directives(csp_header: str) -> dict[str, list[str]]:
 
 
 def verify_csp_and_security_headers(base_url: str) -> dict[str, str]:
-    """Verify GET / returns strict CSP and all 5 security hardening headers."""
-    root_url = f"{base_url.rstrip('/')}/"
+    """Verify GET on target URL (defaulting empty path to '/') returns strict CSP and all 7 security hardening headers."""
+    parsed = urllib.parse.urlsplit(base_url)
+    root_url = (
+        urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "/", parsed.query, parsed.fragment))
+        if not parsed.path
+        else base_url
+    )
     status, headers, _ = fetch_http_response(root_url)
     assert status == 200, f"Expected HTTP 200 from {root_url}, got {status}"
 
@@ -405,6 +413,12 @@ def verify_csp_and_security_headers(base_url: str) -> dict[str, str]:
     assert permissions_policy and "camera=()" in permissions_policy, (
         f"Unexpected or missing Permissions-Policy: {headers.get('permissions-policy')!r}"
     )
+    assert headers.get("cross-origin-opener-policy", "").lower() == "same-origin", (
+        f"Unexpected Cross-Origin-Opener-Policy: {headers.get('cross-origin-opener-policy')!r}"
+    )
+    assert headers.get("cross-origin-resource-policy", "").lower() == "same-origin", (
+        f"Unexpected Cross-Origin-Resource-Policy: {headers.get('cross-origin-resource-policy')!r}"
+    )
     return headers
 
 
@@ -413,6 +427,7 @@ def verify_no_overlap_or_clipping(page: Page) -> dict[str, Any]:
     report: dict[str, Any] = page.evaluate(
         """() => {
             const innerWidth = window.innerWidth;
+            const innerHeight = window.innerHeight;
             const selector = [
                 'button',
                 'header a',
@@ -429,7 +444,9 @@ def verify_no_overlap_or_clipping(page: Page) -> dict[str, Any]:
                 '[data-testid="brand-badge"]',
                 '[data-testid="hero-summary"]',
                 '[data-testid="vault-item"]',
-                '[data-testid="status-banner"]'
+                '[data-testid="status-banner"]',
+                '[data-testid="sw-update-banner"]',
+                '[data-testid="mobile-sticky-cta"]'
             ].join(', ');
 
             const isVisible = (el) => {
@@ -452,6 +469,24 @@ def verify_no_overlap_or_clipping(page: Page) -> dict[str, Any]:
                 return true;
             };
 
+            const getLayer = (el, tid) => {
+                if (tid === 'status-banner' || el.closest('#global-status-banner, [data-testid="status-banner"]')) {
+                    return 'toast';
+                }
+                if (tid === 'sw-update-banner' || el.closest('#sw-update-banner, [data-testid="sw-update-banner"]')) {
+                    return 'sw-banner';
+                }
+                if (el.closest('[role="dialog"], dialog[open], [data-drawer]')) {
+                    return 'dialog';
+                }
+                if (tid === 'mobile-sticky-cta' || el.closest('#mobile-sticky-cta, [data-testid="mobile-sticky-cta"]')) {
+                    return 'sticky-cta';
+                }
+                if (tid === 'mobile-more-menu' || el.closest('#mobile-more-menu, [data-testid="mobile-more-menu"]')) {
+                    return 'popover';
+                }
+                return 'page';
+            };
             const seen = new Set();
             const visibleEls = [];
             for (const el of document.querySelectorAll(selector)) {
@@ -510,6 +545,7 @@ def verify_no_overlap_or_clipping(page: Page) -> dict[str, Any]:
                 const tid = el.getAttribute('data-testid') || '';
                 const desc = tid || el.id || `${tag}:${(el.textContent || '').trim().slice(0, 32)}`;
                 const st = window.getComputedStyle(el);
+                const layer = getLayer(el, tid);
 
                 if (rect.left < -1 || rect.right > innerWidth + 1) {
                     clipped.push({
@@ -518,6 +554,19 @@ def verify_no_overlap_or_clipping(page: Page) -> dict[str, Any]:
                         left: Math.round(rect.left),
                         right: Math.round(rect.right),
                         innerWidth
+                    });
+                }
+                if (
+                    st.position === 'fixed' &&
+                    (layer === 'toast' || layer === 'sw-banner' || layer === 'sticky-cta') &&
+                    (rect.top < -1 || rect.bottom > innerHeight + 1)
+                ) {
+                    clipped.push({
+                        desc,
+                        reason: 'out-of-viewport',
+                        top: Math.round(rect.top),
+                        bottom: Math.round(rect.bottom),
+                        innerHeight
                     });
                 }
                 if (
@@ -614,7 +663,7 @@ def verify_no_overlap_or_clipping(page: Page) -> dict[str, Any]:
                             el,
                             desc,
                             rect: visibleRect,
-                            inDialog: Boolean(el.closest('[role="dialog"], dialog[open], [data-drawer]'))
+                            layer
                         });
                     }
                 }
@@ -625,7 +674,7 @@ def verify_no_overlap_or_clipping(page: Page) -> dict[str, Any]:
                 const a = boxItems[i];
                 for (let j = i + 1; j < boxItems.length; j++) {
                     const b = boxItems[j];
-                    if (a.inDialog !== b.inDialog) continue;
+                    if (a.layer !== b.layer) continue;
                     if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
                     const ix = Math.max(0, Math.min(a.rect.right, b.rect.right) - Math.max(a.rect.left, b.rect.left));
                     const iy = Math.max(0, Math.min(a.rect.bottom, b.rect.bottom) - Math.max(a.rect.top, b.rect.top));

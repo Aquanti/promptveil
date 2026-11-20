@@ -1,4 +1,4 @@
-"""Tier 1: Isolated Happy-Path E2E Feature Coverage (51 Tests: T1-F1-01..T1-F8-06)."""
+"""Tier 1: Isolated Happy-Path E2E Feature Coverage (63 Tests: T1-F1-01..T1-F8-10)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,12 @@ from typing import Any
 import pytest
 
 from conftest import E2ESession
-from monitors import verify_csp_and_security_headers, verify_health_endpoint
+from monitors import (
+    fetch_http_response,
+    verify_csp_and_security_headers,
+    verify_health_endpoint,
+    verify_russian_purity,
+)
 
 
 pytestmark = [pytest.mark.tier1]
@@ -184,6 +189,121 @@ def test_T1_F1_15_deterministic_deduplication_identical_values(
     assert len(email_rows) == 2
 
 
+def test_T1_F1_16_ru_org_detection_and_roundtrip(
+    e2e_session: E2ESession, test_cases_data: dict[str, Any]
+) -> None:
+    case = _t1_data(test_cases_data, "T1-F1-16")
+    out = e2e_session.ui.sanitize_text(case["input"])
+    for tok in case["expected_tokens"]:
+        assert tok in out
+    for raw in case["raw_secrets"]:
+        assert raw not in out
+    assert e2e_session.ui.get_category_chip_count("RU_ORG") == 3
+    restored = e2e_session.ui.rehydrate_text(out)
+    assert restored.strip() == case["input"].strip()
+
+
+def test_T1_F1_17_ru_fio_two_word_detection_and_roundtrip(
+    e2e_session: E2ESession, test_cases_data: dict[str, Any]
+) -> None:
+    case = _t1_data(test_cases_data, "T1-F1-17")
+    out = e2e_session.ui.sanitize_text(case["input"])
+    for tok in case["expected_tokens"]:
+        assert tok in out
+    for raw in case["raw_secrets"]:
+        assert raw not in out
+    assert e2e_session.ui.get_category_chip_count("RU_FIO") == 2
+    restored = e2e_session.ui.rehydrate_text(out)
+    assert restored.strip() == case["input"].strip()
+
+
+def test_T1_F1_18_possible_card_context_detection_and_roundtrip(
+    e2e_session: E2ESession, test_cases_data: dict[str, Any]
+) -> None:
+    case = _t1_data(test_cases_data, "T1-F1-18")
+    out = e2e_session.ui.sanitize_text(case["input"])
+    for tok in case["expected_tokens"]:
+        assert tok in out
+    for raw in case["raw_secrets"]:
+        assert raw not in out
+    assert e2e_session.ui.get_category_chip_count("POSSIBLE_CARD") == 2
+    restored = e2e_session.ui.rehydrate_text(out)
+    assert restored.strip() == case["input"].strip()
+
+
+def test_T1_F1_19_optional_uuid_toggle_off_on_off(
+    e2e_session: E2ESession, test_cases_data: dict[str, Any]
+) -> None:
+    case = _t1_data(test_cases_data, "T1-F1-19")
+    assert e2e_session.ui.is_detect_uuid_enabled() is False
+    out_off = e2e_session.ui.sanitize_text(case["input"])
+    assert case["uuid"] in out_off
+    assert case["expected_token"] not in out_off
+
+    e2e_session.ui.set_detect_uuid(True)
+    out_on = e2e_session.ui.get_sanitize_output_text()
+    assert case["expected_token"] in out_on
+    assert case["uuid"] not in out_on
+    assert e2e_session.ui.get_category_chip_count("UUID") == 1
+
+    restored = e2e_session.ui.rehydrate_text(out_on)
+    assert restored.strip() == case["input"].strip()
+
+    e2e_session.ui.switch_mode("sanitize")
+    e2e_session.ui.set_detect_uuid(False)
+    out_off_again = e2e_session.ui.get_sanitize_output_text()
+    assert case["uuid"] in out_off_again
+    assert case["expected_token"] not in out_off_again
+
+
+def test_T1_F1_20_ru_address_city_capture_and_roundtrip(
+    e2e_session: E2ESession, test_cases_data: dict[str, Any]
+) -> None:
+    case = _t1_data(test_cases_data, "T1-F1-20")
+    out = e2e_session.ui.sanitize_text(case["input"])
+    for tok in case["expected_tokens"]:
+        assert tok in out
+    for raw in case["raw_secrets"]:
+        assert raw not in out
+    assert e2e_session.ui.get_category_chip_count("RU_ADDRESS") == 2
+    restored = e2e_session.ui.rehydrate_text(out)
+    assert restored.strip() == case["input"].strip()
+
+
+def test_T1_F1_21_sensitivity_mode_strict_and_reason_tooltips(e2e_session: E2ESession) -> None:
+    sample_uuid = "550e8400-e29b-41d4-a716-446655440000"
+    assert e2e_session.ui.get_sensitivity_mode() == "normal"
+    out_norm = e2e_session.ui.sanitize_text(f"ID {sample_uuid} mail dev@example.com")
+    assert sample_uuid in out_norm
+    assert "[EMAIL_1]" in out_norm
+
+    e2e_session.ui.set_sensitivity_mode("strict")
+    assert e2e_session.ui.get_sensitivity_mode() == "strict"
+    out_strict = e2e_session.ui.get_sanitize_output_text()
+    assert "[UUID_1]" in out_strict
+    assert sample_uuid not in out_strict
+
+    rows = e2e_session.ui.get_vault_rows()
+    assert len(rows) >= 2
+    reason_texts = [
+        r.row_locator.evaluate(
+            """el => {
+                const target = el.matches('[title], [data-reason], .vault-reason')
+                    ? el
+                    : el.querySelector('[title], [data-reason], .vault-reason');
+                if (!target) return '';
+                if (target.classList && target.classList.contains('vault-reason')) {
+                    return (target.getAttribute('title') || target.getAttribute('data-reason') || target.textContent || '').trim();
+                }
+                return (target.getAttribute('title') || target.getAttribute('data-reason') || '').trim();
+            }"""
+        )
+        for r in rows
+    ]
+    assert any(len(t) > 5 for t in reason_texts)
+    verify_russian_purity(e2e_session.page)
+
+
 # ---------------------------------------------------------------------------
 # F2: Reversible Vault & Re-Hydration (5 Tests)
 # ---------------------------------------------------------------------------
@@ -286,6 +406,26 @@ def test_T1_F3_05_per_entity_toggle_on(e2e_session: E2ESession) -> None:
     assert out.strip() == "Primary [EMAIL_1] and public [EMAIL_2]"
 
 
+def test_T1_F3_06_hide_values_aria_pressed_and_clear_cancels_copied_timer(
+    e2e_session: E2ESession,
+) -> None:
+    e2e_session.ui.sanitize_text("Contact copycheck@example.com")
+    assert e2e_session.ui.get_hide_values_pressed() == "false"
+    e2e_session.ui.toggle_hide_values()
+    assert e2e_session.ui.get_hide_values_pressed() == "true"
+    assert "copycheck@example.com" not in e2e_session.ui.get_vault_rows()[0].raw_text
+    e2e_session.ui.toggle_hide_values()
+    assert e2e_session.ui.get_hide_values_pressed() == "false"
+
+    copy_btn = e2e_session.page.locator("[data-testid='copy-sanitized-btn']").first
+    e2e_session.ui.click_copy_output()
+    assert copy_btn.get_attribute("data-copied") == "true"
+    e2e_session.ui.click_clear_input()
+    assert copy_btn.get_attribute("data-copied") is None
+    assert copy_btn.is_disabled()
+    assert "✓" not in copy_btn.inner_text()
+
+
 # ---------------------------------------------------------------------------
 # F4: Custom Rulebook (localStorage, EN + Cyrillic, Export/Import) (5 Tests)
 # ---------------------------------------------------------------------------
@@ -348,6 +488,44 @@ def test_T1_F4_05_export_and_import_rulebook_json(e2e_session: E2ESession) -> No
     out = e2e_session.ui.sanitize_text("Project Falcon and Иван Петров.")
     assert "[CUSTOM_1]" in out and "[CUSTOM_2]" in out
     assert "Project Falcon" not in out and "Иван Петров" not in out
+
+
+def test_T1_F4_06_industry_word_packs_apply_and_mask(e2e_session: E2ESession) -> None:
+    drawer = e2e_session.ui.open_rulebook_drawer()
+    pack_patterns = {
+        "legal": re.compile(r"юрид|правов|legal", re.I),
+        "hr": re.compile(r"\bhr\b|кадр", re.I),
+        "medical": re.compile(r"медиц|здрав|medical|clinic", re.I),
+        "accounting": re.compile(r"бухгалт|финанс|accounting|finance", re.I),
+    }
+    for pack_key, pat in pack_patterns.items():
+        pack_btn = drawer.locator(f"[data-testid='word-pack-{pack_key}'], [data-pack='{pack_key}']")
+        if pack_btn.count() == 0:
+            pack_btn = drawer.locator("button").filter(has_text=pat)
+        assert pack_btn.count() >= 1 and pack_btn.first.is_visible()
+
+    before_count = e2e_session.ui.get_rulebook_badge_count()
+    e2e_session.ui.apply_industry_word_pack("legal")
+    after_count = e2e_session.ui.get_rulebook_badge_count()
+    assert after_count > before_count
+
+    first_rule_term = (
+        drawer.locator(
+            "[data-testid='rules-list'] .rule-term-text, "
+            "[data-testid='rules-list'] [data-term], "
+            "[data-testid='rules-list'] .rule-term"
+        )
+        .first.inner_text()
+        .strip()
+    )
+    assert first_rule_term
+    e2e_session.ui.apply_industry_word_pack("legal")
+    assert e2e_session.ui.get_rulebook_badge_count() == after_count
+    e2e_session.ui.close_open_drawer()
+
+    out = e2e_session.ui.sanitize_text(f"Document clause mentions {first_rule_term}.")
+    assert "[CUSTOM_1]" in out
+    assert first_rule_term not in out
 
 
 # ---------------------------------------------------------------------------
@@ -484,14 +662,17 @@ def test_T1_F7_01_audit_receipt_created_on_sanitize(e2e_session: E2ESession) -> 
     e2e_session.ui.sanitize_text("Secret user alice@example.com card 4111 1111 1111 1111")
     hashes = e2e_session.ui.get_audit_hashes()
     assert len(hashes) >= 1
-    stored = e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1') || ''")
-    assert re.search(r"[0-9a-f]{64}", stored, re.I) is not None
+    stored = e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1')")
+    assert stored is None
 
 
 def test_T1_F7_02_zero_raw_pii_in_audit_store(e2e_session: E2ESession) -> None:
     secrets = ["alice.secret@example.com", "123-45-6789", "AKIAIOSFODNN7EXAMPLE"]
+    e2e_session.ui.set_audit_persistence(True)
+    e2e_session.ui.close_open_drawer()
     e2e_session.ui.sanitize_text("PII " + " ".join(secrets))
     stored = e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1') || ''")
+    assert re.search(r"[0-9a-f]{64}", stored, re.I) is not None
     drawer_text = e2e_session.ui.get_audit_drawer_text()
     for s in secrets:
         assert s not in stored
@@ -499,6 +680,16 @@ def test_T1_F7_02_zero_raw_pii_in_audit_store(e2e_session: E2ESession) -> None:
 
 
 def test_T1_F7_03_audit_persistence_across_reload(e2e_session: E2ESession) -> None:
+    # RAM-only default clears across reload
+    e2e_session.ui.sanitize_text("Secret user ram@example.com")
+    assert len(e2e_session.ui.get_audit_hashes()) >= 1
+    e2e_session.page.reload(wait_until="networkidle")
+    assert e2e_session.ui.get_audit_hashes() == []
+    e2e_session.ui.close_open_drawer()
+
+    # Opt-in persistence preserves receipts across reload
+    e2e_session.ui.set_audit_persistence(True)
+    e2e_session.ui.close_open_drawer()
     e2e_session.ui.sanitize_text("Secret user alice@example.com card 4111 1111 1111 1111")
     hashes_before = e2e_session.ui.get_audit_hashes()
     assert len(hashes_before) >= 1
@@ -521,6 +712,14 @@ def test_T1_F7_04_export_audit_json(e2e_session: E2ESession) -> None:
 def test_T1_F7_05_clear_audit_log(e2e_session: E2ESession) -> None:
     e2e_session.ui.sanitize_text("Email clearme@example.com")
     assert len(e2e_session.ui.get_audit_hashes()) >= 1
+    e2e_session.ui.clear_audit_log()
+    assert e2e_session.ui.get_audit_hashes() == []
+    assert e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None
+
+    e2e_session.ui.set_audit_persistence(True)
+    e2e_session.ui.close_open_drawer()
+    e2e_session.ui.sanitize_text("Email clearme2@example.com")
+    assert e2e_session.page.evaluate("() => Boolean(localStorage.getItem('promptveil_audit_v1'))")
     e2e_session.ui.clear_audit_log()
     assert e2e_session.ui.get_audit_hashes() == []
     stored = e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1') || '[]'")
@@ -575,3 +774,188 @@ def test_T1_F8_06_copy_masked_output(e2e_session: E2ESession) -> None:
         f"nor visible copy feedback ({feedback_text!r})"
     )
     e2e_session.console.assert_no_errors()
+
+
+def test_T1_F8_07_manifest_mime_coop_corp_proof_csp_and_github_links(
+    raw_session: E2ESession,
+) -> None:
+    status, manifest_headers, _ = fetch_http_response(f"{raw_session.base_url}/manifest.webmanifest")
+    assert status == 200
+    assert manifest_headers.get("content-type", "").lower().startswith("application/manifest+json")
+
+    headers = verify_csp_and_security_headers(raw_session.base_url)
+    assert headers.get("cross-origin-opener-policy", "").lower() == "same-origin"
+    assert headers.get("cross-origin-resource-policy", "").lower() == "same-origin"
+
+    page = raw_session.page
+    page.goto(f"{raw_session.base_url}/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    footer_repo = page.locator("[data-testid='site-footer'] a[href='https://github.com/Aquanti/promptveil']")
+    assert footer_repo.count() >= 1 and footer_repo.first.is_visible()
+
+    modal = raw_session.ui.open_privacy_proof_modal("header")
+    assert "нарушений CSP в документе приложения: 0" in modal.inner_text()
+    modal_repo = modal.locator("a[href='https://github.com/Aquanti/promptveil']")
+    assert modal_repo.count() >= 1 and modal_repo.first.is_visible()
+    raw_session.ui.close_active_modal()
+
+
+def test_T1_F8_08_plan_modal_reset_toast_layering_and_proof_pluralization(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    ui.open_plan_request_modal("pro")
+    page.locator("[data-testid='plan-req-name']").fill("Анна Тестова")
+    page.locator("[data-testid='plan-req-contact']").fill("anna@example.ru")
+    page.locator("[data-testid='plan-req-note']").fill("Нужен Pro")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    assert page.locator("[data-testid='plan-request-result']").is_visible()
+    ui.close_active_modal()
+
+    ui.open_plan_request_modal("team")
+    assert page.locator("[data-testid='plan-req-name']").input_value() == ""
+    assert page.locator("[data-testid='plan-req-contact']").input_value() == ""
+    assert page.locator("[data-testid='plan-req-note']").input_value() == ""
+    assert page.locator("[data-testid='plan-req-seats']").input_value() == "10"
+    assert not page.locator("[data-testid='plan-request-alert']").is_visible()
+    assert not page.locator("[data-testid='plan-request-result']").is_visible()
+
+    page.locator("[data-testid='plan-req-name']").fill("Анна Тестова")
+    page.locator("[data-testid='plan-req-contact']").fill("anna@example.ru")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    assert page.locator("[data-testid='plan-request-result']").is_visible()
+
+    # Invalid submit must hide stale result preview
+    page.locator("[data-testid='plan-req-seats']").fill("")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    assert page.locator("[data-testid='plan-request-alert']").is_visible()
+    assert not page.locator("[data-testid='plan-request-result']").is_visible()
+
+    page.locator("[data-testid='plan-req-seats']").fill("12")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    page.locator("[data-testid='plan-req-copy-btn']").click()
+    z_info = page.evaluate(
+        """() => {
+            const toast = document.querySelector("[data-testid='status-banner']");
+            const dialog = document.querySelector("[data-testid='modal-plan-request']");
+            return {
+                toastZ: toast ? Number(getComputedStyle(toast).zIndex || 0) : 0,
+                dialogZ: dialog ? Number(getComputedStyle(dialog).zIndex || 0) : 0,
+                toastVisible: Boolean(toast && !toast.hidden),
+            };
+        }"""
+    )
+    assert z_info["toastVisible"] is True
+    assert z_info["toastZ"] > z_info["dialogZ"]
+    ui.close_active_modal()
+
+    page.evaluate("() => { window.gtag = () => {}; }")
+    try:
+        modal = ui.open_privacy_proof_modal("header")
+        modal_txt = modal.inner_text()
+        assert "1 трекер" in modal_txt
+        assert "1 трекеров" not in modal_txt
+        assert "0 запросов" in modal_txt
+        assert "0 байт" in modal_txt
+        ui.close_active_modal()
+    finally:
+        page.evaluate("() => { delete window.gtag; }")
+
+
+def test_T1_F8_09_en_parity_hreflang_meta_free_tier_and_theme_aria_label(
+    raw_session: E2ESession,
+) -> None:
+    page = raw_session.page
+    ui = raw_session.ui
+    page.goto(f"{raw_session.base_url}/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    for hreflang in ("ru", "en", "x-default"):
+        assert page.locator(f"link[rel='alternate'][hreflang='{hreflang}']").count() >= 1
+
+    ru_meta = page.evaluate(
+        """() => ({
+            desc: document.querySelector("meta[name='description']")?.getAttribute('content') || '',
+            ogTitle: document.querySelector("meta[property='og:title']")?.getAttribute('content') || '',
+            ogLocale: document.querySelector("meta[property='og:locale']")?.getAttribute('content') || '',
+            themeLabel: document.querySelector("[data-testid='theme-toggle-btn']")?.getAttribute('aria-label') || '',
+        })"""
+    )
+    ui.switch_language("en")
+    en_meta = page.evaluate(
+        """() => ({
+            desc: document.querySelector("meta[name='description']")?.getAttribute('content') || '',
+            ogTitle: document.querySelector("meta[property='og:title']")?.getAttribute('content') || '',
+            ogLocale: document.querySelector("meta[property='og:locale']")?.getAttribute('content') || '',
+            themeLabel: document.querySelector("[data-testid='theme-toggle-btn']")?.getAttribute('aria-label') || '',
+        })"""
+    )
+    assert en_meta["desc"] != ru_meta["desc"]
+    assert en_meta["ogLocale"].lower().startswith("en")
+    assert en_meta["themeLabel"] != ru_meta["themeLabel"]
+
+    free_card_txt = page.locator("[data-testid='pricing-card-free']").inner_text()
+    assert "$0" in free_card_txt
+    for ru_only in ("ИНН", "СНИЛС", "INN", "SNILS"):
+        assert ru_only not in free_card_txt
+
+    raw_session.net.phase = "load"
+    page.goto(f"{raw_session.base_url}/en/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    assert ui.get_document_lang().lower() == "en"
+
+
+def test_T1_F8_10_stage_e_copy_open_ai_telegram_cta_and_how_limits_sections(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    how_sec = ui.get_how_it_works_section()
+    limits_sec = ui.get_honest_limits_section()
+    assert how_sec.is_visible() and limits_sec.is_visible()
+    verify_russian_purity(page)
+
+    drawer = ui.click_limits_rulebook_link()
+    assert drawer.is_visible()
+    ui.close_open_drawer()
+
+    masked = ui.sanitize_text("Contact stagee@example.com")
+    assert "[EMAIL_1]" in masked
+
+    def _block_ext(route: Any) -> None:
+        route.abort()
+
+    page.context.route("https://chatgpt.com/**", _block_ext)
+    page.context.route("https://t.me/**", _block_ext)
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("chatgpt")
+        pop_info.value.close()
+        assert ui.read_clipboard_text() == masked
+        assert ui.get_status_banner_text()
+
+        ui.open_plan_request_modal("pro")
+        page.locator("[data-testid='plan-req-name']").fill("Анна")
+        page.locator("[data-testid='plan-req-contact']").fill("@anna_test")
+        page.locator("[data-testid='plan-req-submit-btn']").click()
+        assert "kilkauciha@gmail.com" in page.locator("[data-testid='modal-plan-request']").inner_text()
+
+        tg_link = ui.get_plan_telegram_link()
+        assert "https://t.me/supv1rus" in (tg_link.get_attribute("href") or "")
+        with page.expect_popup(timeout=3000) as tg_pop:
+            ui.copy_plan_for_telegram()
+        tg_pop.value.close()
+        assert "Pro" in (ui.read_clipboard_text() or "")
+        assert ui.get_status_banner_text()
+        ui.close_active_modal()
+    finally:
+        page.context.unroute("https://chatgpt.com/**")
+        page.context.unroute("https://t.me/**")
+
+    e2e_session.net.assert_zero_egress(["stagee@example.com"])

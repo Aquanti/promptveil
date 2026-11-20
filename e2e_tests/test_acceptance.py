@@ -1,8 +1,9 @@
-"""Product Acceptance Gate Tests (R1/R2/R3: ACC-01..ACC-05)."""
+"""Product Acceptance Gate Tests (R1/R2/R3 + Stages A-E: ACC-01..ACC-13)."""
 
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import pytest
 from playwright.sync_api import Browser
@@ -100,7 +101,7 @@ def test_ACC_01_default_russian_ui_and_zero_jargon_purity(e2e_session: E2ESessio
 
 
 def test_ACC_02_language_switcher_ru_en_and_persistence(e2e_session: E2ESession) -> None:
-    """R1: Compact RU | EN toggle updates UI live without reload and persists in localStorage."""
+    """R1 & Stage B: RU | EN toggle, hreflang, meta/OG/Twitter & theme aria-label sync, /en/ route, and mobile toggle."""
     page = e2e_session.page
     ui = e2e_session.ui
 
@@ -109,6 +110,24 @@ def test_ACC_02_language_switcher_ru_en_and_persistence(e2e_session: E2ESession)
     assert page.locator("[data-testid='lang-en']").first.is_visible()
     assert ui.get_document_lang().lower() == "ru"
 
+    for hreflang in ("ru", "en", "x-default"):
+        assert page.locator(f"link[rel='alternate'][hreflang='{hreflang}']").count() >= 1
+
+    def _meta_snapshot() -> dict[str, str]:
+        return dict(
+            page.evaluate(
+                """() => ({
+                    desc: document.querySelector("meta[name='description']")?.getAttribute('content') || '',
+                    ogTitle: document.querySelector("meta[property='og:title']")?.getAttribute('content') || '',
+                    ogDesc: document.querySelector("meta[property='og:description']")?.getAttribute('content') || '',
+                    ogLocale: document.querySelector("meta[property='og:locale']")?.getAttribute('content') || '',
+                    twDesc: document.querySelector("meta[name='twitter:description']")?.getAttribute('content') || '',
+                    themeLabel: document.querySelector("[data-testid='theme-toggle-btn']")?.getAttribute('aria-label') || '',
+                })"""
+            )
+        )
+
+    ru_meta = _meta_snapshot()
     ru_tab_label = page.locator("[data-testid='mode-sanitize']").first.inner_text()
     page.evaluate("() => { window.__pvNoReloadMarker = 1; }")
 
@@ -120,6 +139,14 @@ def test_ACC_02_language_switcher_ru_en_and_persistence(e2e_session: E2ESession)
     assert en_tab_label != ru_tab_label
     assert re.search(r"[A-Za-z]", en_tab_label)
 
+    en_meta = _meta_snapshot()
+    assert en_meta["desc"] and en_meta["desc"] != ru_meta["desc"]
+    assert en_meta["ogTitle"] != ru_meta["ogTitle"]
+    assert en_meta["ogDesc"] != ru_meta["ogDesc"]
+    assert en_meta["ogLocale"].lower().startswith("en")
+    assert en_meta["twDesc"] != ru_meta["twDesc"]
+    assert en_meta["themeLabel"] != ru_meta["themeLabel"]
+
     page.reload(wait_until="networkidle")
     assert ui.get_document_lang().lower() == "en"
     assert ui.get_stored_language() == "en"
@@ -128,12 +155,32 @@ def test_ACC_02_language_switcher_ru_en_and_persistence(e2e_session: E2ESession)
     ui.switch_language("ru")
     assert ui.get_document_lang().lower() == "ru"
     assert ui.get_stored_language() == "ru"
+    assert _meta_snapshot()["themeLabel"] == ru_meta["themeLabel"]
     verify_russian_purity(page)
 
     page.reload(wait_until="networkidle")
     assert ui.get_document_lang().lower() == "ru"
     assert ui.get_stored_language() == "ru"
     verify_russian_purity(page)
+
+    # Mobile single toggle [data-testid='lang-mobile-toggle'] at 390x844
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.wait_for_timeout(120)
+    assert page.locator("[data-testid='lang-mobile-toggle']").is_visible()
+    ui.switch_language("en")
+    assert ui.get_document_lang().lower() == "en"
+    ui.switch_language("ru")
+    assert ui.get_document_lang().lower() == "ru"
+    page.set_viewport_size({"width": 1440, "height": 900})
+
+    # Static /en/ route check
+    en_status, _, en_body = fetch_http_response(f"{e2e_session.base_url}/en/")
+    assert en_status == 200
+    assert '<html lang="en"' in en_body.lower()
+    e2e_session.net.phase = "load"
+    page.goto(f"{e2e_session.base_url}/en/", wait_until="networkidle")
+    e2e_session.net.assert_clean_load()
+    assert ui.get_document_lang().lower() == "en"
     e2e_session.console.assert_no_errors()
 
 
@@ -243,6 +290,9 @@ def test_ACC_04_responsive_layout_no_overlap_clipping_and_screenshots(e2e_sessio
                 ui.add_custom_rule(term, label=tag)
         rulebook_drawer = ui.open_rulebook_drawer()
         assert rulebook_drawer.locator("[data-testid='rules-list'] > *").count() >= 3
+        if width <= 639:
+            rb_box = rulebook_drawer.bounding_box()
+            assert rb_box is not None and rb_box["x"] >= -0.5 and (rb_box["x"] + rb_box["width"]) <= 390.5
         verify_responsive_layout(page, width, height)
         page.wait_for_timeout(250)
         capture_viewport_screenshot(
@@ -258,6 +308,9 @@ def test_ACC_04_responsive_layout_no_overlap_clipping_and_screenshots(e2e_sessio
         audit_drawer = ui.open_audit_drawer()
         assert len(ui.get_audit_hashes()) >= 1
         assert audit_drawer.locator("[data-testid='audit-list'] > *").count() >= 1
+        if width <= 639:
+            ad_box = audit_drawer.bounding_box()
+            assert ad_box is not None and ad_box["x"] >= -0.5 and (ad_box["x"] + ad_box["width"]) <= 390.5
         verify_responsive_layout(page, width, height)
         page.wait_for_timeout(250)
         capture_viewport_screenshot(
@@ -270,10 +323,37 @@ def test_ACC_04_responsive_layout_no_overlap_clipping_and_screenshots(e2e_sessio
         )
         ui.close_open_drawer()
 
-        # Verify compact mobile header <= 64px
+        # Verify compact mobile header <= 64px & Stage C mobile UX contracts
         if width <= 639:
             top_rail_h = page.locator("header.top-rail").evaluate("el => el.getBoundingClientRect().height")
             assert top_rail_h <= 64.5, f"Mobile top-rail height exceeded 64px: {top_rail_h}"
+            proof_box = page.locator("[data-testid='brand-badge']").bounding_box()
+            assert proof_box is not None and proof_box["width"] >= 43.5 and proof_box["height"] >= 43.5
+            more_box = page.locator("[data-testid='mobile-more-btn']").bounding_box()
+            assert more_box is not None and more_box["width"] >= 43.5 and more_box["height"] >= 43.5
+            lang_m_box = page.locator("[data-testid='lang-mobile-toggle']").bounding_box()
+            assert lang_m_box is not None and lang_m_box["width"] >= 43.5 and lang_m_box["height"] >= 43.5
+            assert page.locator("[data-testid='mode-rehydrate'] [data-i18n='nav.step2']").inner_text().strip() == "2. Вернуть"
+
+            ui.ensure_vault_expanded()
+            h_expanded = page.evaluate("() => document.documentElement.scrollHeight")
+            if not ui.is_vault_collapsed():
+                ui.toggle_vault_collapse()
+            assert ui.is_vault_collapsed() is True
+            h_collapsed = page.evaluate("() => document.documentElement.scrollHeight")
+            assert h_collapsed < h_expanded
+            ui.ensure_vault_expanded()
+
+            assert ui.get_mobile_sticky_cta().is_visible()
+            for idx in range(page.locator(".ai-launcher-pill").count()):
+                p_box = page.locator(".ai-launcher-pill").nth(idx).bounding_box()
+                assert p_box is not None and p_box["height"] >= 43.5
+            footer_controls = page.locator("footer a, footer button")
+            for idx in range(footer_controls.count()):
+                fc = footer_controls.nth(idx)
+                if fc.is_visible():
+                    f_box = fc.bounding_box()
+                    assert f_box is not None and f_box["height"] >= 43.5
 
         # Pricing + Trust Footer viewport screenshot & layout check
         page.locator("[data-testid='pricing-section']").scroll_into_view_if_needed()
@@ -410,12 +490,28 @@ def test_ACC_06_zero_retention_proof_and_session_reset(e2e_session: E2ESession) 
     assert "connect-src 'self'" in modal_text
     assert "0 байт" in modal_text
     assert "0 трекеров" in modal_text
+    assert "нарушений CSP в документе приложения: 0" in modal_text
+    assert modal.locator("a[href='https://github.com/Aquanti/promptveil']").count() >= 1
+    assert page.locator("[data-testid='site-footer'] a[href='https://github.com/Aquanti/promptveil']").count() >= 1
     ram_note = page.locator("[data-testid='proof-ram-note']").inner_text()
     assert "активных замен — 2" in ram_note
 
-    # Instant reset session to 0 inside Proof modal
+    # Instant reset session to 0 inside Proof modal (toast must render above modal/backdrop)
     ui.click_reset_session_to_zero("modal")
     assert page.locator("[data-testid='proof-ram-note']").inner_text().endswith("активных замен — 0.")
+    z_layer = page.evaluate(
+        """() => {
+            const toast = document.querySelector("[data-testid='status-banner']");
+            const modalEl = document.querySelector("[data-testid='modal-privacy-proof']");
+            return {
+                toastVisible: Boolean(toast && !toast.hidden),
+                toastZ: toast ? Number(getComputedStyle(toast).zIndex || 0) : 0,
+                modalZ: modalEl ? Number(getComputedStyle(modalEl).zIndex || 0) : 0,
+            };
+        }"""
+    )
+    assert z_layer["toastVisible"] is True
+    assert z_layer["toastZ"] > z_layer["modalZ"]
     ui.close_active_modal()
 
     assert ui.get_prompt_input().input_value() == ""
@@ -459,20 +555,36 @@ def test_ACC_06_zero_retention_proof_and_session_reset(e2e_session: E2ESession) 
     assert ui.get_rulebook_badge_count() == 1
     assert page.evaluate("() => Boolean(localStorage.getItem('promptveil_rules_v1'))")
 
-    # Dynamic tracker badge count on anomaly (RU & EN)
+    # Dynamic tracker badge count on anomaly (RU pluralizeRu & EN singular/plural)
     page.evaluate("() => { window.gtag = () => {}; }")
     try:
         modal = ui.open_privacy_proof_modal("header")
-        assert "1 трекеров" in modal.inner_text()
+        ru_modal_txt = modal.inner_text()
+        assert "1 трекер" in ru_modal_txt
+        assert "1 трекеров" not in ru_modal_txt
         assert page.locator("#proof-summary-card.proof-summary-card--warn").count() == 1
+        ui.close_active_modal()
+
+        # Multi-count pluralizeRu check (2 -> "2 трекера", 5 -> "5 трекеров")
+        page.evaluate("() => { window.fbq = () => {}; }")
+        modal = ui.open_privacy_proof_modal("header")
+        assert "2 трекера" in modal.inner_text()
         ui.close_active_modal()
 
         ui.switch_language("en")
         modal = ui.open_privacy_proof_modal("header")
-        assert "1 trackers" in modal.inner_text()
+        en_modal_txt = modal.inner_text()
+        assert "2 trackers" in en_modal_txt
+        assert "CSP violations in app document: 0" in en_modal_txt
+        ui.close_active_modal()
+
+        page.evaluate("() => { delete window.fbq; }")
+        modal = ui.open_privacy_proof_modal("header")
+        assert "1 tracker" in modal.inner_text()
+        assert "1 trackers" not in modal.inner_text()
         ui.close_active_modal()
     finally:
-        page.evaluate("() => { delete window.gtag; }")
+        page.evaluate("() => { delete window.gtag; delete window.fbq; }")
         ui.switch_language("ru")
 
     e2e_session.net.assert_zero_egress([secret_email, "secret2@example.ru", "secret3@example.ru"])
@@ -621,10 +733,30 @@ def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2E
     assert mailto_href.startswith("mailto:kilkauciha@gmail.com?")
     page.locator("[data-testid='plan-req-copy-btn']").click()
     assert (ui.read_clipboard_text() or "").replace("\r\n", "\n") == preview_txt.replace("\r\n", "\n")
+    toast_over_modal = page.evaluate(
+        """() => {
+            const toast = document.querySelector("[data-testid='status-banner']");
+            const dialog = document.querySelector("[data-testid='modal-plan-request']");
+            return Boolean(toast && !toast.hidden) && Number(getComputedStyle(toast).zIndex || 0) > Number(getComputedStyle(dialog).zIndex || 0);
+        }"""
+    )
+    assert toast_over_modal is True
     ui.close_active_modal()
 
     ui.open_plan_request_modal("team")
+    assert page.locator("[data-testid='plan-req-name']").input_value() == ""
+    assert page.locator("[data-testid='plan-req-contact']").input_value() == ""
+    assert page.locator("[data-testid='plan-req-note']").input_value() == ""
+    assert page.locator("[data-testid='plan-req-seats']").input_value() == "10"
+    assert not page.locator("[data-testid='plan-request-alert']").is_visible()
+    assert not page.locator("[data-testid='plan-request-result']").is_visible()
     assert page.locator("[data-testid='plan-req-seats']").is_visible()
+
+    page.locator("[data-testid='plan-req-name']").fill("Иван Петров")
+    page.locator("[data-testid='plan-req-contact']").fill("ivan@company.ru")
+    page.locator("[data-testid='plan-req-submit-btn']").click()
+    assert page.locator("[data-testid='plan-request-result']").is_visible()
+
     page.locator("[data-testid='plan-req-seats']").fill("")
     page.locator("[data-testid='plan-req-submit-btn']").click()
     seats_alert = page.locator("[data-testid='plan-request-alert']")
@@ -681,8 +813,15 @@ def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2E
     assert "SupV1rus" in terms_txt
     ui.close_active_modal()
 
-    # 4. EN translation across waitlist pricing, footer, and Proof modal
+    # 4. EN translation across waitlist pricing, Free tier localization, theme aria-label, footer, and Proof modal
+    ru_theme_aria = page.locator("[data-testid='theme-toggle-btn']").get_attribute("aria-label") or ""
     ui.switch_language("en")
+    en_free_txt = page.locator("[data-testid='pricing-card-free']").inner_text()
+    assert "$0" in en_free_txt
+    for ru_only in ("ИНН", "СНИЛС", "INN", "SNILS"):
+        assert ru_only not in en_free_txt
+    en_theme_aria = page.locator("[data-testid='theme-toggle-btn']").get_attribute("aria-label") or ""
+    assert en_theme_aria and en_theme_aria != ru_theme_aria
     assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "Waitlist"
     assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "Waitlist"
     assert "0 Text Logs" in page.locator("[data-testid='site-footer']").inner_text()
@@ -766,7 +905,7 @@ def test_ACC_09_russian_id_detectors_valid_and_invalid_checksums(e2e_session: E2
 
 
 def test_ACC_10_p1_detectors_and_ru_requisites_preset(e2e_session: E2ESession) -> None:
-    """P1: Validate RU_FIO, RU_ADDRESS, RU_AUTO_PLATE, URL_TOKEN and ru_requisites preset."""
+    """P1 & Stage A: Validate RU_FIO (incl. 2-word), RU_ORG, RU_ADDRESS (incl. city), RU_AUTO_PLATE, URL_TOKEN, and ru_requisites preset."""
     ui = e2e_session.ui
 
     p1_payload = (
@@ -779,16 +918,22 @@ def test_ACC_10_p1_detectors_and_ru_requisites_preset(e2e_session: E2ESession) -
     )
     masked = ui.sanitize_text(p1_payload)
     assert "[FIO_1]" in masked and "[FIO_2]" in masked
+    assert "[FIO_3]" in masked and "[FIO_4]" in masked
     assert "[ADDRESS_1]" in masked
     assert "[PLATE_1]" in masked
     assert "[URL_TOKEN_1]" in masked
     assert "А123ВС 345" in masked
     assert "https://example.com:8443/v1/users/profile_overview_page" in masked
-    assert "Алексей Смирнов" in masked and "Иван Петров" in masked
+    assert "Алексей Смирнов" not in masked and "Иван Петров" not in masked
+    assert "г. Москва" not in masked
+    assert ui.rehydrate_text(masked).strip() == p1_payload.strip()
 
+    ui.switch_mode("sanitize")
     ui.select_preset("ru_requisites")
     preset_out = ui.get_sanitize_output_text()
     for token in (
+        "[ORG_1]",
+        "[ORG_2]",
         "[INN_1]",
         "[OGRN_1]",
         "[BIK_1]",
@@ -804,22 +949,42 @@ def test_ACC_10_p1_detectors_and_ru_requisites_preset(e2e_session: E2ESession) -
         assert token in preset_out, f"Preset ru_requisites missing {token}"
 
     restored = ui.rehydrate_text(preset_out)
-    for expected in ("7707083893", "112-233-445 95", "Соколов Алексей Петрович", "DemoUrlToken998877"):
+    for expected in (
+        "АО «ТехноСфера»",
+        "ПАО «ТестБанк»",
+        "7707083893",
+        "112-233-445 95",
+        "Соколов Алексей Петрович",
+        "DemoUrlToken998877",
+    ):
         assert expected in restored
 
-    e2e_session.net.assert_zero_egress(["UrlSecToken778899", "DemoUrlToken998877", "Соколов Алексей Петрович"])
+    e2e_session.net.assert_zero_egress(
+        [
+            "UrlSecToken778899",
+            "DemoUrlToken998877",
+            "Соколов Алексей Петрович",
+            "Алексей Смирнов",
+            "Иван Петров",
+            "АО «ТехноСфера»",
+        ]
+    )
     e2e_session.console.assert_no_errors()
 
 
 def test_ACC_11_pwa_offline_service_worker_and_seo_routes(raw_session: E2ESession) -> None:
-    """P1 & SEO: Verify SEO endpoints, active SW offline Proof card, and full offline masking/reload."""
+    """P1 & SEO: Verify SEO endpoints, manifest MIME, /en/, active SW offline Proof card, and offline masking/reload."""
     page = raw_session.page
     ui = raw_session.ui
     base_url = raw_session.base_url
 
-    for path in ("/robots.txt", "/sitemap.xml", "/404.html", "/manifest.webmanifest", "/og-image.png", "/sw.js"):
-        status, _, _ = fetch_http_response(f"{base_url}{path}")
+    for path in ("/robots.txt", "/sitemap.xml", "/404.html", "/manifest.webmanifest", "/og-image.png", "/sw.js", "/en/"):
+        status, hdrs, _ = fetch_http_response(f"{base_url}{path}")
         assert status == 200, f"GET {path} returned {status}"
+        if path == "/manifest.webmanifest":
+            assert hdrs.get("content-type", "").lower().startswith("application/manifest+json"), (
+                f"Unexpected /manifest.webmanifest Content-Type: {hdrs.get('content-type')!r}"
+            )
 
     page.goto(f"{base_url}/", wait_until="networkidle")
     raw_session.net.assert_clean_load()
@@ -911,4 +1076,125 @@ def test_ACC_12_ai_launchers_dark_theme_and_screenshots(e2e_session: E2ESession)
         )
 
     e2e_session.net.assert_zero_egress(["dev@example.ru"])
+    e2e_session.console.assert_no_errors()
+
+
+def test_ACC_13_stage_e_copy_open_ai_telegram_limits_sensitivity_and_packs(
+    e2e_session: E2ESession,
+) -> None:
+    """Stage E Acceptance: Copy & Open AI, Telegram plan CTA + email fallback, How It Works/Honest Limits, Sensitivity & tooltips, Industry Word Packs."""
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    # 1. How It Works & Honest Limits sections in RU and EN + responsive check
+    how_sec = ui.get_how_it_works_section()
+    limits_sec = ui.get_honest_limits_section()
+    assert how_sec.is_visible() and limits_sec.is_visible()
+    verify_russian_purity(page)
+    verify_responsive_layout(page, 1440, 900)
+    verify_responsive_layout(page, 390, 844)
+    page.set_viewport_size({"width": 1440, "height": 900})
+
+    ui.switch_language("en")
+    assert ui.get_how_it_works_section().is_visible()
+    assert ui.get_honest_limits_section().is_visible()
+    ui.switch_language("ru")
+
+    drawer = ui.click_limits_rulebook_link()
+    assert drawer.is_visible()
+
+    # 2. Industry Word Packs (Legal, HR, Medical, Accounting) + deduplication
+    pack_patterns = {
+        "legal": re.compile(r"юрид|правов|legal", re.I),
+        "hr": re.compile(r"\bhr\b|кадр", re.I),
+        "medical": re.compile(r"медиц|здрав|medical|clinic", re.I),
+        "accounting": re.compile(r"бухгалт|финанс|accounting|finance", re.I),
+    }
+    for pack_key, pat in pack_patterns.items():
+        pack_btn = drawer.locator(f"[data-testid='word-pack-{pack_key}'], [data-pack='{pack_key}']")
+        if pack_btn.count() == 0:
+            pack_btn = drawer.locator("button").filter(has_text=pat)
+        assert pack_btn.count() >= 1 and pack_btn.first.is_visible()
+    before_rules = ui.get_rulebook_badge_count()
+    ui.apply_industry_word_pack("legal")
+    after_rules = ui.get_rulebook_badge_count()
+    assert after_rules > before_rules
+    sample_term = (
+        drawer.locator(
+            "[data-testid='rules-list'] .rule-term-text, "
+            "[data-testid='rules-list'] [data-term], "
+            "[data-testid='rules-list'] .rule-term"
+        )
+        .first.inner_text()
+        .strip()
+    )
+    ui.apply_industry_word_pack("legal")
+    assert ui.get_rulebook_badge_count() == after_rules
+    ui.close_open_drawer()
+
+    # 3. Sensitivity mode (normal -> strict) + reason tooltips
+    sample_uuid = "550e8400-e29b-41d4-a716-446655440000"
+    assert ui.get_sensitivity_mode() == "normal"
+    out_normal = ui.sanitize_text(f"Условие {sample_term}, UUID {sample_uuid}, почта acc13@example.ru")
+    assert "[CUSTOM_1]" in out_normal and "[EMAIL_1]" in out_normal
+    assert sample_uuid in out_normal
+
+    ui.set_sensitivity_mode("strict")
+    out_strict = ui.get_sanitize_output_text()
+    assert "[UUID_1]" in out_strict
+    assert sample_uuid not in out_strict
+    verify_russian_purity(page)
+
+    rows = ui.get_vault_rows()
+    assert len(rows) >= 3
+    assert any(
+        r.row_locator.evaluate(
+            """el => {
+                const n = el.matches('[title], [data-reason], .vault-reason')
+                    ? el
+                    : el.querySelector('[title], [data-reason], .vault-reason');
+                if (!n) return false;
+                if (n.classList && n.classList.contains('vault-reason')) {
+                    return Boolean((n.getAttribute('title') || n.getAttribute('data-reason') || n.textContent || '').trim());
+                }
+                return Boolean((n.getAttribute('title') || n.getAttribute('data-reason') || '').trim());
+            }"""
+        )
+        for r in rows
+    )
+
+    # 4. One-click Copy & Open AI + Telegram plan CTA & email fallback
+    def _abort_ext(route: Any) -> None:
+        route.abort()
+
+    page.context.route("https://chatgpt.com/**", _abort_ext)
+    page.context.route("https://t.me/**", _abort_ext)
+    try:
+        with page.expect_popup(timeout=3000) as ai_pop:
+            ui.click_ai_launcher("chatgpt")
+        ai_pop.value.close()
+        assert ui.read_clipboard_text() == out_strict
+        assert ui.get_status_banner_text()
+
+        ui.open_plan_request_modal("pro")
+        page.locator("[data-testid='plan-req-name']").fill("Сергей")
+        page.locator("[data-testid='plan-req-contact']").fill("@sergey_test")
+        page.locator("[data-testid='plan-req-submit-btn']").click()
+        assert "kilkauciha@gmail.com" in page.locator("[data-testid='modal-plan-request']").inner_text()
+
+        tg_cta = ui.get_plan_telegram_link()
+        assert tg_cta.get_attribute("target") == "_blank"
+        assert "noopener" in (tg_cta.get_attribute("rel") or "")
+        assert "https://t.me/supv1rus" in (tg_cta.get_attribute("href") or "")
+        with page.expect_popup(timeout=3000) as tg_pop:
+            ui.copy_plan_for_telegram()
+        tg_pop.value.close()
+        assert "Pro" in (ui.read_clipboard_text() or "")
+        assert ui.get_status_banner_text()
+        ui.close_active_modal()
+    finally:
+        page.context.unroute("https://chatgpt.com/**")
+        page.context.unroute("https://t.me/**")
+
+    e2e_session.net.assert_zero_egress(["acc13@example.ru", sample_term])
     e2e_session.console.assert_no_errors()

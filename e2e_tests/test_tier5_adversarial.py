@@ -11,6 +11,7 @@ import pytest
 from playwright.sync_api import Locator, Page
 
 from conftest import E2ESession
+from monitors import fetch_http_response, verify_csp_and_security_headers, verify_russian_purity
 
 
 pytestmark = [pytest.mark.tier5]
@@ -176,6 +177,11 @@ def test_T5_05_vault_toggle_value_and_toggle_token_after_prealloc_disable(
 def test_T5_06_malformed_null_audit_log_recovery(raw_session: E2ESession) -> None:
     """F3: Seeding [null, 123, {}] in promptveil_audit_v1 does not crash init() or audit drawer."""
     raw_session.page.goto(f"{raw_session.base_url}/", wait_until="networkidle")
+    raw_session.ui.sanitize_text("Ram default ram@example.com")
+    assert raw_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None
+
+    raw_session.ui.set_audit_persistence(True)
+    raw_session.ui.close_open_drawer()
     raw_session.page.evaluate(
         """() => {
             localStorage.setItem('promptveil_audit_v1', '[null, 123, {}, []]');
@@ -253,7 +259,7 @@ def test_T5_07_concurrent_append_audit_order_and_clear_epoch(
 def test_T5_08_quota_exceeded_memory_fallback_consistency_and_alert(
     e2e_session: E2ESession,
 ) -> None:
-    """F5: QuotaExceededError keeps memoryFallbackStore consistent with loadAuditLog/loadRules and surfaces role='alert'."""
+    """F5: QuotaExceededError keeps memoryFallbackStore consistent across UI state and surfaces role='alert'."""
     e2e_session.page.evaluate(
         """() => {
             Storage.prototype.setItem = function() {
@@ -261,8 +267,8 @@ def test_T5_08_quota_exceeded_memory_fallback_consistency_and_alert(
             };
         }"""
     )
-    out = e2e_session.ui.sanitize_text("Quota user quota@example.com")
-    assert "[EMAIL_1]" in out
+    e2e_session.ui.add_custom_rule("QuotaRuleTerm")
+    e2e_session.ui.close_open_drawer()
 
     alert_el = _first_visible_locator(
         e2e_session.page,
@@ -276,18 +282,20 @@ def test_T5_08_quota_exceeded_memory_fallback_consistency_and_alert(
         re.I,
     )
 
-    audit_check = e2e_session.page.evaluate(
+    out = e2e_session.ui.sanitize_text("Quota user quota@example.com QuotaRuleTerm")
+    assert "[EMAIL_1]" in out and "[CUSTOM_1]" in out
+    assert len(e2e_session.ui.get_audit_hashes()) >= 1
+    e2e_session.ui.close_open_drawer()
+
+    # Self-consistent standalone /js/storage.js memory-fallback check
+    standalone_count = e2e_session.page.evaluate(
         """async () => {
-            const { loadAuditLog } = await import('/js/storage.js');
-            return loadAuditLog().length;
+            const { saveRules, loadRules } = await import('/js/storage.js');
+            saveRules([{ id: 'q1', term: 'StandaloneQuota', label: 'CUSTOM', enabled: true, caseSensitive: false }]);
+            return loadRules().filter(r => r.term === 'StandaloneQuota').length;
         }"""
     )
-    assert audit_check >= 1
-
-    e2e_session.ui.add_custom_rule("QuotaRuleTerm")
-    e2e_session.ui.close_open_drawer()
-    out2 = e2e_session.ui.sanitize_text("Test QuotaRuleTerm mask")
-    assert "[CUSTOM_1]" in out2
+    assert standalone_count == 1
 
 
 def test_T5_09_duplicate_rule_id_import_single_delete(
@@ -608,10 +616,13 @@ def test_T5_17_manual_sanitize_toggle_reveal_apply_preset_and_downloads(
     e2e_session.page.locator("[data-testid='sanitize-now-btn']").first.click()
     assert "[EMAIL_1]" in e2e_session.ui.get_sanitize_output_text()
 
-    # Hide / Show Values toggle
+    # Hide / Show Values toggle & aria-pressed contract
+    assert e2e_session.ui.get_hide_values_pressed() == "false"
     e2e_session.ui.toggle_hide_values()
+    assert e2e_session.ui.get_hide_values_pressed() == "true"
     assert "manual@example.com" not in e2e_session.ui.get_vault_rows()[0].raw_text
     e2e_session.ui.toggle_hide_values()
+    assert e2e_session.ui.get_hide_values_pressed() == "false"
     assert "manual@example.com" in e2e_session.ui.get_vault_rows()[0].raw_text
 
     # Download sanitized .txt
@@ -1500,8 +1511,8 @@ def test_T5_27_manual_clear_with_auto_sanitize_unchecked_resets_preset_and_banne
     assert not live_toggle.is_checked()
 
     # Populate input, output, vault, and activePresetId via preset, then add an inline input error banner
-    e2e_session.ui.select_preset("bilingual_cis_hr")
-    preset_btn = e2e_session.page.locator("[data-testid='preset-btn-bilingual_cis_hr']")
+    e2e_session.ui.select_preset("client_contract")
+    preset_btn = e2e_session.page.locator("[data-testid='preset-btn-client_contract']")
     apply_rules_btn = e2e_session.page.locator("[data-testid='apply-preset-rules-btn']")
     preset_hint = e2e_session.page.locator("#preset-rule-hint")
 
@@ -1758,5 +1769,190 @@ def test_T5_29_card_suffix_and_hyphen_ssn_edge_cases(
     assert "4000-0000-0000-0000-006" not in out_pan19
     assert e2e_session.ui.get_category_chip_count("CREDIT_CARD") == 1
     assert e2e_session.ui.rehydrate_text(out_pan19).strip() == "PAN19 4000-0000-0000-0000-006"
+
+
+def test_T5_30_stage_a_detectors_org_possible_card_uuid_city_and_audit_ram_default(
+    e2e_session: E2ESession,
+) -> None:
+    """Stage A adversarial: RU_ORG variants, POSSIBLE_CARD vs bare/valid PAN, RU_ADDRESS city, UUID toggle, RAM-only audit."""
+    ui = e2e_session.ui
+    page = e2e_session.page
+
+    payload = (
+        "Организации: ООО «Вектор», АО «ТехноСфера», ПАО «ТестБанк», ЗАО \"Альфа\", НКО \"Фонд\", ИП Иванов И.И.\n"
+        "Карты: карта 4276 3800 1234 5678, №карты 4111-2222-3333-4444, голый 4276 3800 1234 5678, валид 4111 1111 1111 1111.\n"
+        "Адрес: живу Москва, ул. Ленина, д. 5 и г. Казань, пр. Победы, д. 10.\n"
+        "UUID: 550e8400-e29b-41d4-a716-446655440000."
+    )
+    masked = ui.sanitize_text(payload)
+    for tok in ("[ORG_1]", "[ORG_2]", "[ORG_3]", "[POSSIBLE_CARD_1]", "[POSSIBLE_CARD_2]", "[CARD_1]", "[ADDRESS_1]", "[ADDRESS_2]"):
+        assert tok in masked, f"Expected {tok} in {masked!r}"
+    assert "голый 4276 3800 1234 5678" in masked
+    assert "Москва" not in masked and "г. Казань" not in masked
+    assert "550e8400-e29b-41d4-a716-446655440000" in masked
+
+    ui.set_detect_uuid(True)
+    masked_uuid = ui.get_sanitize_output_text()
+    assert "[UUID_1]" in masked_uuid
+    assert "550e8400-e29b-41d4-a716-446655440000" not in masked_uuid
+    assert ui.rehydrate_text(masked_uuid).strip() == payload.strip()
+
+    # RAM-only audit default vs opt-in persistence + uncheck cleanup + Proof unknownKeys == 0
+    assert page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None
+    assert len(ui.get_audit_hashes()) >= 1
+    ui.set_audit_persistence(True)
+    assert page.evaluate("() => Boolean(localStorage.getItem('promptveil_audit_v1'))")
+    ui.close_open_drawer()
+
+    modal = ui.open_privacy_proof_modal("header")
+    assert "неизвестные ключи: 0" in modal.inner_text()
+    ui.close_active_modal()
+
+    ui.set_audit_persistence(False)
+    assert page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None
+    ui.close_open_drawer()
+
+
+def test_T5_31_stage_b_counter_sync_rulebook_validation_and_copy_timer_clear(
+    e2e_session: E2ESession,
+) -> None:
+    """Stage B adversarial: metric/chip/badge counter lockstep, novalidate Rulebook alert clearing, copy-timer cancellation."""
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    ui.add_custom_rule("СекретноеСлово")
+    ui.close_open_drawer()
+    ui.sanitize_text("a@example.com a@example.com 192.0.2.1 СекретноеСлово")
+
+    def _counters() -> tuple[int, int, int]:
+        m = ui.get_telemetry_masked_count()
+        a = int(page.locator("[data-testid='category-chips'] [data-category='ALL']").get_attribute("data-count") or "0")
+        b_txt = page.locator("#rehydrate-ready-badge").inner_text()
+        b = int(re.findall(r"\d+", b_txt)[0])
+        return m, a, b
+
+    assert _counters() == (4, 4, 4)
+    ui.toggle_category_chip("EMAIL")
+    assert _counters() == (2, 2, 2)
+    ui.toggle_vault_entity("СекретноеСлово")
+    assert _counters() == (1, 1, 1)
+    ui.toggle_category_chip("EMAIL")
+    assert _counters() == (3, 3, 3)
+
+    # Copy timer cancellation on Clear & Reset to 0
+    copy_btn = page.locator("[data-testid='copy-sanitized-btn']").first
+    ui.click_copy_output()
+    assert copy_btn.get_attribute("data-copied") == "true"
+    ui.click_clear_input()
+    assert copy_btn.get_attribute("data-copied") is None
+    assert copy_btn.is_disabled()
+
+    ui.sanitize_text("b@example.com")
+    ui.click_copy_output()
+    assert copy_btn.get_attribute("data-copied") == "true"
+    ui.click_reset_session_to_zero("workbench")
+    assert copy_btn.get_attribute("data-copied") is None
+    assert copy_btn.is_disabled()
+
+    # Rulebook novalidate + focus + clearing stale duplicate alert
+    drawer = ui.open_rulebook_drawer()
+    assert drawer.locator("#add-rule-form").get_attribute("novalidate") is not None
+    drawer.locator("[data-testid='add-rule-btn']").click()
+    assert drawer.locator("#rulebook-alert").is_visible()
+    assert page.evaluate(
+        "() => document.activeElement === document.querySelector(\"[data-testid='rule-term-input']\")"
+    ) is True
+    ui.add_custom_rule("СекретноеСлово")
+    assert drawer.locator("#rulebook-alert").is_visible()
+    drawer.locator("[data-testid='rule-term-input']").fill("НовоеСлово")
+    drawer.locator("[data-testid='rule-term-input']").evaluate(
+        "el => el.dispatchEvent(new Event('input', { bubbles: true }))"
+    )
+    assert not drawer.locator("#rulebook-alert").is_visible()
+
+
+def test_T5_32_stage_d_headers_template_modals_and_sw_update_banner(
+    raw_session: E2ESession,
+) -> None:
+    """Stage D adversarial: COOP/CORP headers, /dist/* assets, <template> modal hydration, and SW update banner."""
+    base_url = raw_session.base_url
+    page = raw_session.page
+    ui = raw_session.ui
+
+    for route in ("/", "/en/"):
+        verify_csp_and_security_headers(f"{base_url}{route}")
+        st, hdrs, _ = fetch_http_response(f"{base_url}{route}")
+        assert st == 200
+        assert hdrs.get("cross-origin-opener-policy", "").lower() == "same-origin"
+        assert hdrs.get("cross-origin-resource-policy", "").lower() == "same-origin"
+
+    page.goto(f"{base_url}/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+
+    # Verify /dist/* bundles loaded with 200 (and immutable cache on static-only)
+    dist_hrefs = page.evaluate(
+        """() => Array.from(document.querySelectorAll('link[href*="/dist/"], script[src*="/dist/"]'))
+            .map(el => el.getAttribute('href') || el.getAttribute('src'))
+            .filter(Boolean)"""
+    )
+    assert len(dist_hrefs) >= 1, "Expected /dist/* bundled assets referenced in index.html"
+    for href in dist_hrefs:
+        st, _, _ = fetch_http_response(f"{base_url}{href}")
+        assert st == 200, f"Bundled asset {href} returned {st}"
+
+    # Verify <template> modal hydration, reopen, and RU/EN translation
+    assert page.locator("template").count() >= 4
+    for opener in (
+        lambda: ui.open_privacy_proof_modal("header"),
+        lambda: ui.open_plan_request_modal("pro"),
+        ui.open_privacy_policy_modal,
+        ui.open_terms_modal,
+    ):
+        modal = opener()
+        assert modal.is_visible()
+        ui.close_active_modal()
+        assert not modal.is_visible()
+
+    ui.switch_language("en")
+    en_modal = ui.open_privacy_proof_modal("header")
+    assert "CSP violations in app document: 0" in en_modal.inner_text()
+    ui.close_active_modal()
+    ui.switch_language("ru")
+
+    # Service Worker registration + update banner
+    sw_ready = page.evaluate(
+        """async () => {
+            if (!('serviceWorker' in navigator)) return false;
+            const reg = await navigator.serviceWorker.ready;
+            return Boolean(reg && reg.active);
+        }"""
+    )
+    assert sw_ready is True
+
+    # Simulate an incoming updated Service Worker script so updatefound -> installed -> #sw-update-banner
+    _, _, orig_sw = fetch_http_response(f"{base_url}/sw.js")
+    updated_sw = orig_sw + "\n// e2e-sw-update-probe\n"
+    page.context.route(
+        "**/sw.js",
+        lambda route: route.fulfill(
+            status=200,
+            headers={"Content-Type": "application/javascript; charset=utf-8", "Cache-Control": "no-cache"},
+            body=updated_sw,
+        ),
+    )
+    try:
+        page.evaluate("async () => { const r = await navigator.serviceWorker.getRegistration(); if (r) await r.update(); }")
+        page.locator("[data-testid='sw-update-banner'], #sw-update-banner").first.wait_for(
+            state="visible", timeout=5000
+        )
+        banner = ui.get_sw_update_banner()
+        assert banner.is_visible()
+        verify_russian_purity(page)
+        ui.click_sw_update()
+        page.wait_for_load_state("networkidle")
+    finally:
+        page.context.unroute("**/sw.js")
+
+    raw_session.console.assert_no_errors()
 
 

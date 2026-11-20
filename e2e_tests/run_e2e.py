@@ -1,9 +1,9 @@
 """Dual-mode CLI runner for PromptVeil Opaque-Box E2E Suite.
 
 Modes:
-- --mode self-test: Runs py_compile, verifies pytest collects all 150 tests
-  (109 Tiers 1-4 + 29 Tier 5 + 12 Acceptance), launches an in-process contract-mock
-  HTTP server (e2e_tests/fixtures/), and runs real Playwright + headless Chrome/Edge
+- --mode self-test: Runs py_compile, verifies pytest collects all 172 tests
+  (127 Tiers 1-4 + 32 Tier 5 + 13 Acceptance), launches an in-process contract-mock
+  HTTP server (e2e_tests/fixtures/), and runs real Playwright + headless Chrome/Edge/Chromium
   self-tests including positive Russian-first contract checks and negative monitor checks.
 - --mode live: Runs the pytest suite against --base-url (default http://127.0.0.1:8000)
   or --static-only (app/static/ without /health), with optional --start-server,
@@ -59,6 +59,8 @@ class _SmokeRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         super().end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
@@ -95,6 +97,8 @@ class _ThreadingServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 def _launch_browser(pw: Playwright, preference: str, headed: bool) -> Browser:
+    if preference == "chromium":
+        return pw.chromium.launch(headless=not headed)
     channels = ["chrome", "msedge"] if preference == "auto" else [preference]
     errors: list[str] = []
     for channel in channels:
@@ -102,7 +106,12 @@ def _launch_browser(pw: Playwright, preference: str, headed: bool) -> Browser:
             return pw.chromium.launch(channel=channel, headless=not headed)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{channel}: {exc}")
-    raise RuntimeError("Could not launch Chrome/Edge: " + " | ".join(errors))
+    if preference == "auto":
+        try:
+            return pw.chromium.launch(headless=not headed)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"chromium: {exc}")
+    raise RuntimeError("Could not launch Chrome/Edge/Chromium: " + " | ".join(errors))
 
 
 def _step_py_compile() -> None:
@@ -124,19 +133,19 @@ def _collect_marker_ids(marker_expr: str | None = None) -> list[str]:
 
 def _step_collect_only() -> None:
     t1_4_lines = _collect_marker_ids("tier1 or tier2 or tier3 or tier4")
-    if len(t1_4_lines) != 109 or len(set(t1_4_lines)) != 109:
+    if len(t1_4_lines) != 127 or len(set(t1_4_lines)) != 127:
         raise RuntimeError(
-            f"Expected 109 unique Tiers 1-4 tests, got {len(t1_4_lines)} (unique={len(set(t1_4_lines))})."
+            f"Expected 127 unique Tiers 1-4 tests, got {len(t1_4_lines)} (unique={len(set(t1_4_lines))})."
         )
     t5_lines = _collect_marker_ids("tier5")
-    if len(t5_lines) != 29 or len(set(t5_lines)) != 29:
+    if len(t5_lines) != 32 or len(set(t5_lines)) != 32:
         raise RuntimeError(
-            f"Expected 29 unique Tier 5 tests, got {len(t5_lines)} (unique={len(set(t5_lines))})."
+            f"Expected 32 unique Tier 5 tests, got {len(t5_lines)} (unique={len(set(t5_lines))})."
         )
     acc_lines = _collect_marker_ids("acceptance")
-    if len(acc_lines) != 12 or len(set(acc_lines)) != 12:
+    if len(acc_lines) != 13 or len(set(acc_lines)) != 13:
         raise RuntimeError(
-            f"Expected 12 unique Acceptance tests, got {len(acc_lines)} (unique={len(set(acc_lines))})."
+            f"Expected 13 unique Acceptance tests, got {len(acc_lines)} (unique={len(set(acc_lines))})."
         )
     all_lines = _collect_marker_ids()
     expected_total = len(t1_4_lines) + len(t5_lines) + len(acc_lines)
@@ -671,12 +680,93 @@ def _run_negative_monitor_checks(browser: Browser, base_url: str) -> None:
         assert caught_trunc_after_sr_check, (
             "Negative monitor check failed: truncated <span> inside <button> was not caught"
         )
+
+        # (c7) Fixed overlay layer exemption (#global-status-banner / #mobile-sticky-cta) vs intra-layer overlap
+        page.evaluate(
+            """() => {
+                const bg = document.createElement('button');
+                bg.id = 'probe-underlying-btn';
+                bg.type = 'button';
+                bg.textContent = 'Подложка';
+                bg.style.cssText = 'display:block;margin:16px 20px;width:120px;height:44px;';
+                document.body.prepend(bg);
+                window.scrollTo(0, 0);
+                const bgRect = bg.getBoundingClientRect();
+
+                const sticky = document.createElement('div');
+                sticky.id = 'mobile-sticky-cta';
+                sticky.setAttribute('data-testid', 'mobile-sticky-cta');
+                sticky.style.cssText = `position:fixed;left:0;right:0;top:${Math.round(bgRect.top)}px;height:60px;z-index:50;display:flex;gap:8px;padding:8px;`;
+                const sbtn = document.createElement('button');
+                sbtn.id = 'probe-sticky-btn-1';
+                sbtn.type = 'button';
+                sbtn.textContent = 'Копировать';
+                sbtn.style.cssText = 'position:absolute;left:20px;top:8px;width:120px;height:44px;';
+                sticky.appendChild(sbtn);
+
+                const toast = document.createElement('div');
+                toast.id = 'global-status-banner';
+                toast.setAttribute('data-testid', 'status-banner');
+                toast.setAttribute('role', 'status');
+                toast.textContent = 'Готово';
+                toast.style.cssText = `position:fixed;left:20px;top:${Math.round(bgRect.top) + 4}px;width:120px;height:36px;z-index:80;`;
+                document.body.append(sticky, toast);
+            }"""
+        )
+        try:
+            verify_no_overlap_or_clipping(page)
+            page.evaluate(
+                """() => {
+                    const sticky = document.getElementById('mobile-sticky-cta');
+                    const sbtn2 = document.createElement('button');
+                    sbtn2.id = 'probe-sticky-btn-2';
+                    sbtn2.type = 'button';
+                    sbtn2.textContent = 'ИИ';
+                    sbtn2.style.cssText = 'position:absolute;left:40px;top:10px;width:120px;height:44px;';
+                    sticky.appendChild(sbtn2);
+                }"""
+            )
+            caught_sticky_intra = False
+            try:
+                verify_no_overlap_or_clipping(page)
+            except AssertionError:
+                caught_sticky_intra = True
+            assert caught_sticky_intra, (
+                "Negative monitor check failed: intra-layer overlap inside #mobile-sticky-cta was missed"
+            )
+        finally:
+            page.evaluate(
+                "() => ['probe-underlying-btn', 'mobile-sticky-cta', 'global-status-banner'].forEach(id => document.getElementById(id)?.remove())"
+            )
+
+        # (c8) Vertical off-screen clipping on position: fixed overlay (#global-status-banner at top: -80px)
+        page.evaluate(
+            """() => {
+                const toast = document.createElement('div');
+                toast.id = 'global-status-banner';
+                toast.setAttribute('data-testid', 'status-banner');
+                toast.setAttribute('role', 'status');
+                toast.textContent = 'Скрытый сверху тост';
+                toast.style.cssText = 'position:fixed;left:20px;top:-80px;width:160px;height:36px;z-index:80;';
+                document.body.appendChild(toast);
+            }"""
+        )
+        caught_fixed_vert_clip = False
+        try:
+            verify_no_overlap_or_clipping(page)
+        except AssertionError:
+            caught_fixed_vert_clip = True
+        finally:
+            page.evaluate("() => document.getElementById('global-status-banner')?.remove()")
+        assert caught_fixed_vert_clip, (
+            "Negative monitor check failed: verify_no_overlap_or_clipping missed vertical off-screen fixed overlay"
+        )
     finally:
         console.detach()
         net.detach()
         ctx.close()
 
-    # (d) Exact CSP directive rejection check
+    # (d) Exact CSP, COOP, and CORP rejection checks
     class _PermissiveCspHandler(http.server.BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
             body = b"ok"
@@ -694,20 +784,41 @@ def _run_negative_monitor_checks(browser: Browser, base_url: str) -> None:
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002
             _ = (format, args)
 
-    bad_srv = _ThreadingServer(("127.0.0.1", 0), _PermissiveCspHandler)
-    bad_port = int(bad_srv.server_address[1])
-    bad_thread = threading.Thread(target=bad_srv.serve_forever, daemon=True)
-    bad_thread.start()
-    try:
-        rejected_permissive_csp = False
+    class _MissingCoopCorpHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            body = b"ok"
+            self.send_response(200)
+            self.send_header("Content-Security-Policy", _CSP_HEADER)
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+            self.send_header("Cross-Origin-Opener-Policy", "unsafe-none")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            _ = (format, args)
+
+    for handler_cls, label in (
+        (_PermissiveCspHandler, "permissive connect-src"),
+        (_MissingCoopCorpHandler, "invalid/missing COOP & CORP"),
+    ):
+        bad_srv = _ThreadingServer(("127.0.0.1", 0), handler_cls)
+        bad_port = int(bad_srv.server_address[1])
+        bad_thread = threading.Thread(target=bad_srv.serve_forever, daemon=True)
+        bad_thread.start()
         try:
-            verify_csp_and_security_headers(f"http://127.0.0.1:{bad_port}")
-        except AssertionError:
-            rejected_permissive_csp = True
-        assert rejected_permissive_csp, "Negative check failed: verify_csp_and_security_headers accepted permissive connect-src"
-    finally:
-        bad_srv.shutdown()
-        bad_srv.server_close()
+            rejected = False
+            try:
+                verify_csp_and_security_headers(f"http://127.0.0.1:{bad_port}")
+            except AssertionError:
+                rejected = True
+            assert rejected, f"Negative check failed: verify_csp_and_security_headers accepted {label}"
+        finally:
+            bad_srv.shutdown()
+            bad_srv.server_close()
 
     # (e) Chip disambiguation (HIGH_ENTROPY vs ENV_SECRET), category-chips header scoping, vault row collision, telemetry, and <aside> file input exclusion
     ctx_dom = browser.new_context()
@@ -778,7 +889,7 @@ def _run_negative_monitor_checks(browser: Browser, base_url: str) -> None:
 
     print(
         "[self-test] Negative & edge monitor checks OK "
-        "(http/ws egress, console/pageerror, 390x844 overflow, overlap/clipping, RU purity, exact CSP, chip disambiguation)"
+        "(http/ws egress, console/pageerror, 390x844 overflow, overlap/clipping/overlay-layer, RU purity, exact CSP/COOP/CORP, chip disambiguation)"
     )
 
 
@@ -876,7 +987,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="all",
     )
     parser.add_argument("--filter", default="", help="Substring/test-ID filter (e.g. T1-F1-01)")
-    parser.add_argument("--browser", choices=["auto", "chrome", "msedge"], default="auto")
+    parser.add_argument("--browser", choices=["auto", "chrome", "msedge", "chromium"], default="auto")
     parser.add_argument("--headed", action="store_true", help="Launch visible browser window")
     parser.add_argument("--start-server", action="store_true", help="Auto-start local uvicorn")
     parser.add_argument(

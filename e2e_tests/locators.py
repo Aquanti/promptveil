@@ -45,7 +45,9 @@ _CATEGORY_ALIASES: dict[str, list[str]] = {
     "URL_TOKEN": ["URL_TOKEN", "URL TOKEN", "ТОКЕНЫ В URL", "ССЫЛКИ С ТОКЕНОМ"],
     "JWT": ["JWT", "JWTS", "ТОКЕНЫ ВХОДА", "JWT-ТОКЕНЫ"],
     "CREDIT_CARD": ["CREDIT_CARD", "CREDIT CARD", "CARD", "CARDS", "БАНК. КАРТЫ", "КАРТЫ"],
+    "POSSIBLE_CARD": ["POSSIBLE_CARD", "POSSIBLE CARD", "ВОЗМОЖНАЯ КАРТА", "ВОЗМОЖНЫЕ КАРТЫ"],
     "IBAN": ["IBAN", "IBANS", "СЧЕТА (IBAN)", "СЧЕТА IBAN"],
+    "RU_ORG": ["RU_ORG", "RU ORG", "RU ORGANIZATIONS", "ORGANIZATIONS", "ORG", "ОРГАНИЗАЦИИ", "ОРГАНИЗАЦИЯ"],
     "RU_INN": ["RU_INN", "RU INN", "INN", "ИНН"],
     "RU_SNILS": ["RU_SNILS", "RU SNILS", "SNILS", "СНИЛС"],
     "RU_PASSPORT": ["RU_PASSPORT", "RU PASSPORT", "PASSPORT", "ПАСПОРТ РФ"],
@@ -56,6 +58,7 @@ _CATEGORY_ALIASES: dict[str, list[str]] = {
     "RU_AUTO_PLATE": ["RU_AUTO_PLATE", "RU AUTO PLATE", "PLATE", "ГОСНОМЕРА АВТО"],
     "RU_FIO": ["RU_FIO", "RU FULL NAME", "FIO", "ФИО"],
     "RU_ADDRESS": ["RU_ADDRESS", "RU ADDRESS", "ADDRESS", "АДРЕСА РФ"],
+    "UUID": ["UUID", "UUIDS"],
     "SSN": ["SSN", "SSNS", "SSN (США)", "US SSN (SECONDARY)"],
     "ENV_SECRET": ["ENV_SECRET", "ENV SECRET", "ENV", ".ENV", "ПАРОЛИ (.ENV)", "СЕКРЕТЫ .ENV"],
     "CUSTOM": ["CUSTOM", "CUSTOM RULE", "CUSTOM RULES", "СВОИ СЛОВА"],
@@ -244,8 +247,106 @@ class PromptVeilUI:
         ]
         return self._first_visible(candidates, "Zero-Retention badge ([data-testid='brand-badge'])")
 
+    def _first_visible_or_none(self, candidates: list[Locator]) -> Locator | None:
+        """Return first visible candidate locator or None if none is visible."""
+        for loc in candidates:
+            try:
+                count = loc.count()
+            except Exception:  # noqa: BLE001
+                continue
+            for idx in range(count):
+                item = loc.nth(idx)
+                try:
+                    if item.is_visible():
+                        return item
+                except Exception:  # noqa: BLE001
+                    continue
+        return None
+
+    def open_mobile_more_menu(self) -> Locator:
+        """Open the mobile '⋯' overflow menu (#mobile-more-menu) if not already visible."""
+        menu_candidates = [
+            self.page.locator("[data-testid='mobile-more-menu']"),
+            self.page.locator("#mobile-more-menu"),
+        ]
+        visible_menu = self._first_visible_or_none(menu_candidates)
+        if visible_menu is not None:
+            return visible_menu
+        btn = self._first_visible(
+            [
+                self.page.locator("[data-testid='mobile-more-btn']"),
+                self.page.locator("#mobile-more-btn"),
+            ],
+            "Mobile overflow menu button ([data-testid='mobile-more-btn'])",
+        )
+        btn.click()
+        self.page.wait_for_timeout(120)
+        return self._first_visible(
+            menu_candidates,
+            "Mobile overflow menu ([data-testid='mobile-more-menu'])",
+        )
+
+    def close_mobile_more_menu(self) -> None:
+        """Close the mobile '⋯' overflow menu if currently visible."""
+        menu = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='mobile-more-menu']"),
+                self.page.locator("#mobile-more-menu"),
+            ]
+        )
+        if menu is None:
+            return
+        btn = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='mobile-more-btn']"),
+                self.page.locator("#mobile-more-btn"),
+            ]
+        )
+        if btn is not None:
+            btn.click()
+            self.page.wait_for_timeout(100)
+            return
+        self.page.keyboard.press("Escape")
+        self.page.wait_for_timeout(100)
+
+    def open_pricing(self) -> None:
+        """Navigate to pricing section via desktop link or mobile '⋯' overflow menu."""
+        desktop_link = self._first_visible_or_none(
+            [
+                self.page.locator("header [data-testid='nav-pricing-link'], nav [data-testid='nav-pricing-link']"),
+                self.page.locator("header a[href='#pricing'], nav a[href='#pricing']"),
+            ]
+        )
+        if desktop_link is not None:
+            desktop_link.click()
+            self.page.wait_for_timeout(120)
+            return
+        more_btn = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='mobile-more-btn']"),
+                self.page.locator("#mobile-more-btn"),
+            ]
+        )
+        if more_btn is not None:
+            menu = self.open_mobile_more_menu()
+            item = self._first_visible(
+                [
+                    menu.locator("[data-testid='nav-pricing-link'], [data-testid='mobile-pricing-btn']"),
+                    menu.locator("a[href='#pricing']"),
+                    menu.locator("a, button").filter(has_text=re.compile(r"тариф|pricing", re.I)),
+                ],
+                "Pricing item in mobile overflow menu",
+            )
+            item.click()
+            self.page.wait_for_timeout(120)
+            return
+        self.page.locator("[data-testid='pricing-section']").scroll_into_view_if_needed()
+        self.page.wait_for_timeout(120)
+
     def switch_language(self, lang: LangType) -> None:
-        """Switch UI language via [data-testid='lang-ru'] or [data-testid='lang-en']."""
+        """Switch UI language via desktop [data-testid='lang-{lang}'] or mobile [data-testid='lang-mobile-toggle']."""
+        if self.get_document_lang().lower() == lang.lower():
+            return
         testid = f"lang-{lang}"
         label_pat = re.compile(r"^\s*RU\s*$|рус", re.I) if lang == "ru" else re.compile(r"^\s*EN\s*$|eng", re.I)
         candidates = [
@@ -253,8 +354,20 @@ class PromptVeilUI:
             self.page.locator("[data-testid='lang-switch']").get_by_role("button", name=label_pat),
             self.page.locator("header, nav").get_by_role("button", name=label_pat),
         ]
-        btn = self._first_visible(candidates, f"Language toggle '{lang}'")
-        btn.click()
+        btn = self._first_visible_or_none(candidates)
+        if btn is not None:
+            btn.click()
+            self.page.wait_for_timeout(120)
+            return
+
+        mobile_toggle = self._first_visible(
+            [
+                self.page.locator("[data-testid='lang-mobile-toggle']"),
+                self.page.locator("#lang-mobile-toggle"),
+            ],
+            f"Language toggle '{lang}' or [data-testid='lang-mobile-toggle']",
+        )
+        mobile_toggle.click()
         self.page.wait_for_timeout(120)
 
     def get_document_lang(self) -> str:
@@ -1085,6 +1198,35 @@ class PromptVeilUI:
         chip.click()
         self.page.wait_for_timeout(120)
 
+    def is_vault_collapsed(self) -> bool:
+        """Return True iff the mobile collapsible vault toggle (#vault-collapse-btn) is visible and collapsed."""
+        btn = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='vault-collapse-btn']"),
+                self.page.locator("#vault-collapse-btn"),
+            ]
+        )
+        if btn is None:
+            return False
+        return (btn.get_attribute("aria-expanded") or "").strip().lower() == "false"
+
+    def toggle_vault_collapse(self) -> None:
+        """Toggle the mobile collapsible vault section (#vault-collapse-btn)."""
+        btn = self._first_visible(
+            [
+                self.page.locator("[data-testid='vault-collapse-btn']"),
+                self.page.locator("#vault-collapse-btn"),
+            ],
+            "Vault collapse button ([data-testid='vault-collapse-btn'])",
+        )
+        btn.click()
+        self.page.wait_for_timeout(120)
+
+    def ensure_vault_expanded(self) -> None:
+        """Expand the vault section if #vault-collapse-btn is visible and collapsed."""
+        if self.is_vault_collapsed():
+            self.toggle_vault_collapse()
+
     def get_vault_rows(self) -> list[VaultRowInfo]:
         """Read all visible rows in [data-testid='entity-vault-list'] (with <table> fallback)."""
         rows: list[VaultRowInfo] = []
@@ -1092,7 +1234,14 @@ class PromptVeilUI:
         vault_list = self.page.locator("[data-testid='entity-vault-list']")
         if vault_list.count() > 0:
             items = vault_list.first.locator("[data-testid='vault-item']")
-            for idx in range(items.count()):
+            item_count = items.count()
+            if item_count > 0 and self.is_vault_collapsed():
+                any_visible = any(items.nth(i).is_visible() for i in range(item_count))
+                if not any_visible:
+                    self.ensure_vault_expanded()
+                    items = vault_list.first.locator("[data-testid='vault-item']")
+                    item_count = items.count()
+            for idx in range(item_count):
                 item = items.nth(idx)
                 try:
                     if not item.is_visible():
@@ -1275,6 +1424,17 @@ class PromptVeilUI:
         btn.click()
         self.page.wait_for_timeout(100)
 
+    def get_hide_values_pressed(self) -> str | None:
+        """Return the aria-pressed attribute on [data-testid='toggle-hide-values-btn']."""
+        btn = self._first_visible(
+            [
+                self.page.locator("[data-testid='toggle-hide-values-btn']"),
+                self.page.locator("#toggle-reveal-btn"),
+            ],
+            "Hide/Show values button ([data-testid='toggle-hide-values-btn'])",
+        )
+        return btn.get_attribute("aria-pressed")
+
     def get_telemetry_masked_count(self) -> int:
         """Read integer masked count from [data-testid='telemetry-masked-count'] (or #stat-vault fallback)."""
         loc = self._first_visible(
@@ -1375,14 +1535,38 @@ class PromptVeilUI:
         existing = self._get_open_drawer(pat, testid="drawer-rulebook")
         if existing is not None:
             return existing
-        trigger = self._first_visible(
+        trigger = self._first_visible_or_none(
             [
                 self.page.locator("[data-testid='open-rulebook-btn']"),
-                self.page.get_by_role("button", name=pat),
-                self.page.locator("header button, nav button, button").filter(has_text=pat),
-            ],
-            "Rulebook drawer trigger ([data-testid='open-rulebook-btn'])",
+                self.page.locator("header, nav").get_by_role("button", name=pat),
+                self.page.locator("header button, nav button").filter(has_text=pat),
+            ]
         )
+        if trigger is None:
+            more_btn = self._first_visible_or_none(
+                [
+                    self.page.locator("[data-testid='mobile-more-btn']"),
+                    self.page.locator("#mobile-more-btn"),
+                ]
+            )
+            if more_btn is not None:
+                menu = self.open_mobile_more_menu()
+                trigger = self._first_visible(
+                    [
+                        menu.locator(
+                            "[data-testid='open-rulebook-btn'], "
+                            "[data-testid='mobile-open-rulebook-btn'], "
+                            "[data-testid='mobile-rulebook-btn']"
+                        ),
+                        menu.get_by_role("button", name=pat),
+                        menu.locator("button, a").filter(has_text=pat),
+                    ],
+                    "Rulebook drawer trigger inside mobile overflow menu",
+                )
+        if trigger is None:
+            raise LocatorLookupError(
+                self.dump_diagnostics("Could not find visible element: Rulebook drawer trigger ([data-testid='open-rulebook-btn'])")
+            )
         trigger.click()
         self.page.wait_for_timeout(150)
         drawer = self._get_open_drawer(pat, testid="drawer-rulebook")
@@ -1592,14 +1776,38 @@ class PromptVeilUI:
         existing = self._get_open_drawer(pat, testid="drawer-audit")
         if existing is not None:
             return existing
-        trigger = self._first_visible(
+        trigger = self._first_visible_or_none(
             [
                 self.page.locator("[data-testid='open-audit-btn']"),
-                self.page.get_by_role("button", name=pat),
-                self.page.locator("header button, nav button, button").filter(has_text=pat),
-            ],
-            "Audit drawer trigger ([data-testid='open-audit-btn'])",
+                self.page.locator("header, nav").get_by_role("button", name=pat),
+                self.page.locator("header button, nav button").filter(has_text=pat),
+            ]
         )
+        if trigger is None:
+            more_btn = self._first_visible_or_none(
+                [
+                    self.page.locator("[data-testid='mobile-more-btn']"),
+                    self.page.locator("#mobile-more-btn"),
+                ]
+            )
+            if more_btn is not None:
+                menu = self.open_mobile_more_menu()
+                trigger = self._first_visible(
+                    [
+                        menu.locator(
+                            "[data-testid='open-audit-btn'], "
+                            "[data-testid='mobile-open-audit-btn'], "
+                            "[data-testid='mobile-audit-btn']"
+                        ),
+                        menu.get_by_role("button", name=pat),
+                        menu.locator("button, a").filter(has_text=pat),
+                    ],
+                    "Audit drawer trigger inside mobile overflow menu",
+                )
+        if trigger is None:
+            raise LocatorLookupError(
+                self.dump_diagnostics("Could not find visible element: Audit drawer trigger ([data-testid='open-audit-btn'])")
+            )
         trigger.click()
         self.page.wait_for_timeout(150)
         drawer = self._get_open_drawer(pat, testid="drawer-audit")
@@ -1813,18 +2021,28 @@ class PromptVeilUI:
         return ""
 
     def get_rulebook_badge_count(self) -> int:
-        """Read numeric rule count badge from [data-testid='open-rulebook-btn'] (0 if no digits)."""
+        """Read numeric rule count badge from [data-testid='open-rulebook-btn'] or attached mobile count."""
         pat = re.compile(r"свои\s+слова|мои\s+правила|правила|rulebook|custom\s*rules", re.I)
-        trigger = self._first_visible(
+        trigger = self._first_visible_or_none(
             [
                 self.page.locator("[data-testid='open-rulebook-btn']"),
                 self.page.locator("header, nav").get_by_role("button", name=pat),
-                self.page.get_by_role("button", name=pat),
-                self.page.locator("header button, nav button, button").filter(has_text=pat),
-            ],
-            "Rulebook badge trigger ([data-testid='open-rulebook-btn'])",
+                self.page.locator("header button, nav button").filter(has_text=pat),
+            ]
         )
-        txt = (trigger.inner_text() or "").strip()
+        if trigger is not None:
+            txt = (trigger.inner_text() or "").strip()
+        else:
+            attached = self._first_attached(
+                [
+                    self.page.locator("#rulebook-count"),
+                    self.page.locator("#mobile-rulebook-count"),
+                    self.page.locator("[data-testid='mobile-open-rulebook-btn'], [data-testid='mobile-rulebook-btn']"),
+                    self.page.locator("[data-testid='open-rulebook-btn']"),
+                ],
+                "Rulebook badge trigger ([data-testid='open-rulebook-btn'])",
+            )
+            txt = str(attached.evaluate("el => el.textContent || ''")).strip()
         matches = re.findall(r"\d+", txt)
         if not matches:
             return 0
@@ -2015,3 +2233,256 @@ class PromptVeilUI:
         """Close whichever centered modal or drawer is currently visible via Escape."""
         self.page.keyboard.press("Escape")
         self.page.wait_for_timeout(120)
+
+    # -----------------------------------------------------------------------
+    # Stage A–E Helpers (UUID toggle, Audit persistence, Mobile CTA, SW, Stage E)
+    # -----------------------------------------------------------------------
+
+    def set_detect_uuid(self, enabled: bool) -> None:
+        """Check or uncheck Step 1 UUID detection toggle (#detect-uuid-toggle)."""
+        cb = self._first_visible(
+            [
+                self.page.locator("[data-testid='detect-uuid-toggle']"),
+                self.page.locator("#detect-uuid-toggle"),
+                self.page.locator("main").get_by_label(re.compile(r"uuid", re.I)),
+            ],
+            "Detect UUID toggle ([data-testid='detect-uuid-toggle'])",
+        )
+        if enabled:
+            cb.check()
+        else:
+            cb.uncheck()
+        self.page.wait_for_timeout(120)
+
+    def is_detect_uuid_enabled(self) -> bool:
+        """Return checked state of Step 1 UUID detection toggle."""
+        cb = self._first_visible(
+            [
+                self.page.locator("[data-testid='detect-uuid-toggle']"),
+                self.page.locator("#detect-uuid-toggle"),
+            ],
+            "Detect UUID toggle ([data-testid='detect-uuid-toggle'])",
+        )
+        return bool(cb.is_checked())
+
+    def set_audit_persistence(self, enabled: bool) -> None:
+        """Open Audit drawer and check/uncheck device persistence (#audit-persist-toggle)."""
+        drawer = self.open_audit_drawer()
+        cb = self._first_visible(
+            [
+                drawer.locator("[data-testid='audit-persist-toggle']"),
+                drawer.locator("#audit-persist-toggle"),
+                drawer.get_by_label(re.compile(r"сохранять\s+журнал|save\s+history|persist", re.I)),
+            ],
+            "Audit persistence toggle ([data-testid='audit-persist-toggle'])",
+        )
+        if enabled:
+            cb.check()
+        else:
+            cb.uncheck()
+        self.page.wait_for_timeout(120)
+
+    def is_audit_persistence_enabled(self) -> bool:
+        """Open Audit drawer and return checked state of #audit-persist-toggle."""
+        drawer = self.open_audit_drawer()
+        cb = self._first_visible(
+            [
+                drawer.locator("[data-testid='audit-persist-toggle']"),
+                drawer.locator("#audit-persist-toggle"),
+            ],
+            "Audit persistence toggle ([data-testid='audit-persist-toggle'])",
+        )
+        return bool(cb.is_checked())
+
+    def get_mobile_sticky_cta(self) -> Locator:
+        """Locate visible mobile sticky bottom CTA bar (#mobile-sticky-cta)."""
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='mobile-sticky-cta']"),
+                self.page.locator("#mobile-sticky-cta"),
+            ],
+            "Mobile sticky CTA bar ([data-testid='mobile-sticky-cta'])",
+        )
+
+    def click_mobile_sticky_copy_ai(self) -> None:
+        """Click the Copy & Go / Copy action inside the mobile sticky CTA bar."""
+        bar = self.get_mobile_sticky_cta()
+        btn = self._first_visible(
+            [
+                bar.locator("[data-testid='mobile-sticky-copy-btn']"),
+                bar.locator("button"),
+            ],
+            "Mobile sticky CTA action button",
+        )
+        btn.click()
+        self.page.wait_for_timeout(150)
+
+    def get_sw_update_banner(self, timeout_ms: int = 0) -> Locator:
+        """Locate visible Service Worker update banner (#sw-update-banner), optionally waiting up to timeout_ms."""
+        if timeout_ms > 0:
+            self.page.locator("[data-testid='sw-update-banner'], #sw-update-banner").first.wait_for(
+                state="visible", timeout=timeout_ms
+            )
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='sw-update-banner']"),
+                self.page.locator("#sw-update-banner"),
+            ],
+            "Service Worker update banner ([data-testid='sw-update-banner'])",
+        )
+
+    def click_sw_update(self) -> None:
+        """Click the Refresh / Update button inside #sw-update-banner and wait for reload settle."""
+        banner = self.get_sw_update_banner()
+        btn = self._first_visible(
+            [
+                banner.locator("[data-testid='sw-update-btn']"),
+                banner.locator("#sw-update-btn"),
+                banner.locator("button"),
+            ],
+            "Service Worker update button ([data-testid='sw-update-btn'])",
+        )
+        btn.click()
+        self.page.wait_for_timeout(250)
+        self.page.wait_for_load_state("networkidle")
+
+    def set_sensitivity_mode(self, mode: Literal["normal", "strict"]) -> None:
+        """Switch Step 1 sensitivity mode between 'normal' and 'strict'."""
+        btn = self._first_visible_or_none(
+            [
+                self.page.locator(f"[data-testid='sensitivity-{mode}-btn']"),
+                self.page.locator(f"[data-sensitivity='{mode}']"),
+            ]
+        )
+        if btn is not None:
+            btn.click()
+            self.page.wait_for_timeout(120)
+            return
+
+        sel = self._first_visible(
+            [
+                self.page.locator("[data-testid='sensitivity-mode-select']"),
+                self.page.locator("#sensitivity-mode-select"),
+                self.page.locator("main").get_by_label(re.compile(r"чувствительност|режим|sensitivity", re.I)),
+            ],
+            "Sensitivity mode control (#sensitivity-mode-select or sensitivity buttons)",
+        )
+        sel.select_option(mode)
+        sel.evaluate("el => el.dispatchEvent(new Event('change', { bubbles: true }))")
+        self.page.wait_for_timeout(120)
+
+    def get_sensitivity_mode(self) -> str:
+        """Read active sensitivity mode ('normal' or 'strict')."""
+        strict_btn = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='sensitivity-strict-btn']"),
+                self.page.locator("[data-sensitivity='strict']"),
+            ]
+        )
+        if strict_btn is not None:
+            is_strict = (
+                strict_btn.get_attribute("aria-pressed") == "true"
+                or "is-active" in (strict_btn.get_attribute("class") or "")
+            )
+            return "strict" if is_strict else "normal"
+
+        sel = self._first_visible(
+            [
+                self.page.locator("[data-testid='sensitivity-mode-select']"),
+                self.page.locator("#sensitivity-mode-select"),
+            ],
+            "Sensitivity mode select (#sensitivity-mode-select)",
+        )
+        return str(sel.input_value() or "normal").strip().lower()
+
+    def apply_industry_word_pack(self, pack_key: str) -> None:
+        """Open Rulebook drawer and apply one of the starter industry word packs."""
+        pack_aliases: dict[str, re.Pattern[str]] = {
+            "legal": re.compile(r"юрид|правов|legal", re.I),
+            "hr": re.compile(r"\bhr\b|кадр", re.I),
+            "medical": re.compile(r"медиц|здрав|medical|clinic", re.I),
+            "accounting": re.compile(r"бухгалт|финанс|accounting|finance", re.I),
+        }
+        drawer = self.open_rulebook_drawer()
+        candidates = [
+            drawer.locator(f"[data-testid='word-pack-{pack_key}']"),
+            drawer.locator(f"[data-pack='{pack_key}']"),
+        ]
+        pat = pack_aliases.get(pack_key.lower())
+        if pat is not None:
+            candidates.append(drawer.locator("button").filter(has_text=pat))
+        btn = self._first_visible(candidates, f"Industry word pack '{pack_key}'")
+        btn.click()
+        self.page.wait_for_timeout(150)
+
+    def get_ai_launcher(self, provider: str) -> Locator:
+        """Locate and return the AI launcher pill for provider (e.g. 'chatgpt', 'claude')."""
+        return self._first_visible(
+            [self.page.locator(f"[data-testid='ai-launcher-{provider}']")],
+            f"AI launcher pill ([data-testid='ai-launcher-{provider}'])",
+        )
+
+    def click_ai_launcher(self, provider: str) -> None:
+        """Click the AI launcher pill for provider (e.g. 'chatgpt', 'claude')."""
+        self.get_ai_launcher(provider).click()
+
+    def get_plan_telegram_link(self) -> Locator:
+        """Locate Telegram copy/open CTA inside #modal-plan-request."""
+        modal = self._first_visible(
+            [self.page.locator("[data-testid='modal-plan-request']")],
+            "Plan request modal",
+        )
+        return self._first_visible(
+            [
+                modal.locator("[data-testid='plan-req-telegram-btn']"),
+                modal.locator("[data-testid='plan-req-telegram-link']"),
+                modal.locator("a[href*='t.me/supv1rus']"),
+            ],
+            "Plan request Telegram link/button",
+        )
+
+    def copy_plan_for_telegram(self) -> None:
+        """Click Telegram copy/open CTA inside #modal-plan-request."""
+        btn = self.get_plan_telegram_link()
+        btn.click()
+        self.page.wait_for_timeout(120)
+
+    def get_how_it_works_section(self) -> Locator:
+        """Locate the static 'Как это работает' / 'How it works' section."""
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='how-it-works-section']"),
+                self.page.locator("#how-it-works"),
+                self.page.locator("main section").filter(
+                    has_text=re.compile(r"как\s+это\s+работает|how\s+it\s+works", re.I)
+                ),
+            ],
+            "How It Works section ([data-testid='how-it-works-section'])",
+        )
+
+    def get_honest_limits_section(self) -> Locator:
+        """Locate the 'Что мы пока НЕ ловим' / 'What we do not catch yet' section."""
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='honest-limits-section']"),
+                self.page.locator("#honest-limits"),
+                self.page.locator("main section").filter(
+                    has_text=re.compile(r"что\s+мы\s+пока\s+не\s+ловим|what\s+we\s+don'?t\s+catch", re.I)
+                ),
+            ],
+            "Honest Limits section ([data-testid='honest-limits-section'])",
+        )
+
+    def click_limits_rulebook_link(self) -> Locator:
+        """Click the Custom Words link/button inside the Honest Limits section and return Rulebook drawer."""
+        section = self.get_honest_limits_section()
+        btn = self._first_visible(
+            [
+                section.locator("[data-testid='limits-open-rulebook-btn']"),
+                section.locator("button, a").filter(has_text=re.compile(r"свои\s+слова|custom\s+words|rulebook", re.I)),
+            ],
+            "Custom Words link inside Honest Limits section",
+        )
+        btn.click()
+        self.page.wait_for_timeout(150)
+        return self.open_rulebook_drawer()

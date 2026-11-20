@@ -1,4 +1,4 @@
-"""Tier 4: Real-World Application Scenarios (5 Tests: T4-01..T4-05)."""
+"""Tier 4: Real-World Application Scenarios (6 Tests: T4-01..T4-06)."""
 
 from __future__ import annotations
 
@@ -58,9 +58,10 @@ def test_T4_02_production_incident_env_and_stacktrace(
     assert "AKIAIOSFODNN7EXAMPLE" in restored
     assert "v2.4.1.0" in restored
     assert "203.0.113.77" in restored
-    stored = e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1') || ''")
-    assert re.search(r"[0-9a-f]{64}", stored, re.I) is not None
-    assert "AKIAIOSFODNN7EXAMPLE" not in stored
+    hashes = e2e_session.ui.get_audit_hashes()
+    assert len(hashes) >= 1
+    assert "AKIAIOSFODNN7EXAMPLE" not in e2e_session.ui.get_audit_drawer_text()
+    assert e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None
 
 
 def test_T4_03_bilingual_ru_cis_hr_candidate_screening(
@@ -144,12 +145,79 @@ def test_T4_05_desktop_and_mobile_responsive_and_console_hygiene(e2e_session: E2
         e2e_session.ui.switch_mode("sanitize")
 
         e2e_session.ui.open_rulebook_drawer()
+        verify_responsive_layout(e2e_session.page, width, height)
         e2e_session.ui.close_open_drawer()
         e2e_session.ui.open_audit_drawer()
+        verify_responsive_layout(e2e_session.page, width, height)
         e2e_session.ui.close_open_drawer()
 
         verify_responsive_layout(e2e_session.page, width, height)
 
     e2e_session.net.assert_clean_load()
     e2e_session.net.assert_zero_egress()
+    e2e_session.console.assert_no_errors()
+
+
+def test_T4_06_mobile_390x844_compact_header_collapsible_vault_sticky_cta_and_tap_targets(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    verify_responsive_layout(page, 390, 844)
+
+    top_rail_h = page.locator("header.top-rail").evaluate("el => el.getBoundingClientRect().height")
+    assert top_rail_h <= 64.5, f"Compact mobile header exceeded 64.5px: {top_rail_h}"
+
+    proof_box = page.locator("[data-testid='brand-badge']").bounding_box()
+    assert proof_box is not None and proof_box["width"] >= 43.5 and proof_box["height"] >= 43.5
+
+    mobile_lang = page.locator("[data-testid='lang-mobile-toggle']")
+    assert mobile_lang.is_visible()
+    lang_box = mobile_lang.bounding_box()
+    assert lang_box is not None and lang_box["width"] >= 43.5 and lang_box["height"] >= 43.5
+    assert not page.locator("[data-testid='lang-ru']").is_visible()
+    assert not page.locator("[data-testid='lang-en']").is_visible()
+
+    more_btn = page.locator("[data-testid='mobile-more-btn']")
+    assert more_btn.is_visible()
+    more_box = more_btn.bounding_box()
+    assert more_box is not None and more_box["width"] >= 43.5 and more_box["height"] >= 43.5
+
+    assert page.locator("[data-testid='mode-rehydrate'] [data-i18n='nav.step2']").inner_text().strip() == "2. Вернуть"
+    ui.switch_language("en")
+    assert page.locator("[data-testid='mode-rehydrate'] [data-i18n='nav.step2']").inner_text().strip() == "2. Restore"
+    ui.switch_language("ru")
+
+    ui.select_preset("bilingual_cis_hr")
+    ui.ensure_vault_expanded()
+    expanded_scroll_h = page.evaluate("() => document.documentElement.scrollHeight")
+    if not ui.is_vault_collapsed():
+        ui.toggle_vault_collapse()
+    assert ui.is_vault_collapsed() is True
+    collapsed_scroll_h = page.evaluate("() => document.documentElement.scrollHeight")
+    assert collapsed_scroll_h < expanded_scroll_h
+    ui.ensure_vault_expanded()
+
+    sticky = ui.get_mobile_sticky_cta()
+    assert sticky.is_visible()
+
+    for pill_idx in range(page.locator(".ai-launcher-pill").count()):
+        pill_box = page.locator(".ai-launcher-pill").nth(pill_idx).bounding_box()
+        assert pill_box is not None and pill_box["height"] >= 43.5
+    footer_targets = page.locator("footer a, footer button")
+    for idx in range(footer_targets.count()):
+        item = footer_targets.nth(idx)
+        if item.is_visible():
+            f_box = item.bounding_box()
+            assert f_box is not None and f_box["height"] >= 43.5
+
+    for opener in (ui.open_rulebook_drawer, ui.open_audit_drawer):
+        drawer = opener()
+        box = drawer.bounding_box()
+        assert box is not None
+        assert box["x"] >= -0.5 and (box["x"] + box["width"]) <= 390.5
+        verify_responsive_layout(page, 390, 844)
+        ui.close_open_drawer()
+
     e2e_session.console.assert_no_errors()

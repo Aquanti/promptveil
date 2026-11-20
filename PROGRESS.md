@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T19:08+03:00  
-**Session Status:** v2 Audit Remediation — Stage A (Milestone M1: Privacy Detection & Zero-Retention Trust, Items 1–5) COMPLETE  
-**Exact Stop Point:** Stage A (M1, Items 1–5) implemented, gate-verified (Gate Iteration 2 PASS), and committed locally (`checkpoint: stage A privacy detection and zero-retention trust`). Previous v2 release history (Stages 0–3, `0bae4d5`) preserved below. Ready for Stage B (`M2`).
+**Checkpoint Date:** 2026-11-20T16:25Z (`19:25+03:00`)  
+**Session Status:** E2E Testing Track Checkpoint COMPLETE; Stage A / M1 (`master @ 5636cd9`) COMPLETE; Stage B / M2 In-Progress (5-agent verification wave)  
+**Exact Stop Point:** E2E suite in `e2e_tests/` (`172` unique tests: `127` Tier 1–4 + `32` Tier 5 + `13` Acceptance) aligned to Stages A–E contracts with Linux CI `conftest.py` portability and `--mode self-test` PASS (`ALL CHECKS PASSED`). Stage A / M1 (`master @ 5636cd9`, Items 1–5) is committed; Stage B / M2 (Items 6–13) is implemented in working tree and currently undergoing its 5-agent verification wave (`app/` and `tests/` intentionally left unstaged in this checkpoint).
 
 ---
 
@@ -71,11 +71,25 @@
 5. **Item 5 — Audit Journal RAM-Only Default (`app/static/js/storage.js`, `app.js`, `index.html`, `i18n.js`):**
    - Switched audit journal (`auditLog`) to tab-memory-only by default (no `localStorage` write to `promptveil_audit_v1` unless explicitly enabled via `#audit-persist-toggle` / `data-testid="audit-persist-toggle"` in `#drawer-audit`; unchecking clears `promptveil_audit_v1`).
 
-### Stage A Verification Results
+### Stage A Verification Results (`master @ 5636cd9`)
 - **Gate Iteration 2 Result:** **PASS** (Forensic Auditor CLEAN, 2/2 Reviewers APPROVE, 2/2 Challengers CONFIRM).
 - **`pytest tests\test_server.py -v`:** **`22 passed`** (`0` failures).
 - **`node --test tests\js\detector.test.mjs`:** **`11 passed, 0 failed`** (`2` suites).
 - **`node --check` (`app/static/js/*.js`):** **`14/14` JS files OK** (`0` syntax errors).
+
+---
+
+## 5a. E2E Testing Track & Stage B (`M2`) Status (`2026-11-20T16:25Z` / `19:25+03:00`)
+
+### Completed (`Stage A / M1` + `E2E_TRACK`)
+- **Stage A / M1 (`master @ 5636cd9`):** Items 1–5 complete (`22/22` `pytest`, `11/11` JS unit tests).
+- **E2E Testing Track (`e2e_tests/`):**
+  - `172` unique Playwright E2E tests (`127` Tier 1–4 + `32` Tier 5 + `13` Acceptance) aligned to Stages A–E audit remediation contracts (`e2e_tests/{conftest,locators,monitors,run_e2e,test_acceptance,test_tier1_features,test_tier2_boundaries,test_tier3_combinations,test_tier4_scenarios,test_tier5_adversarial}.py` and `test_cases.json`).
+  - Added Linux CI portability in `e2e_tests/conftest.py`.
+  - **`.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (exit `0`; `py_compile OK` 10 files, `pytest --collect-only OK` 172 unique tests, smoke/isolation/negative monitor checks OK).
+
+### In-Progress (`Stage B / M2`)
+- **Stage B / M2 (Items 6–13):** Implemented in working tree (`app/` and `tests/`, not staged in this E2E checkpoint); `23/23` `node:test` and `23/23` `pytest` passing; currently in 5-agent verification wave.
 
 ---
 
@@ -93,10 +107,9 @@ git push -u origin master
 ---
 
 ## 7. Next Steps
-1. **Stage B (`M2`):** State, Validation & i18n Parity (Items 6–13) — counter sync, plan modal reset & toast z-index, `aria-pressed`, custom words validation, immediate copy-state reset, `pluralizeRu`, EN `/en/index.html` + `hreflang` + pricing parity.
-2. **Stage C (`M3`):** Mobile UX (`390×844`, Items 14–18) — compact header, shortened Step 2 tab label, `>= 44px` tap targets, collapsible vault + sticky CTA bar, drawer `100%` width fix.
-3. **Stage D (`M4`):** Performance, Security Headers, Hygiene & CI (Items 19–26) — `esbuild` CSS/JS bundling, immutable cache headers, lazy i18n & `<template>` modals, SW update banner, COOP/CORP headers, dead code removal, modularization, CI workflow.
-4. **Stage E (`M5`):** Safe Growth Features (Items 28, 31–34, 36 + out-of-scope roadmap notes for 29, 30, 35, 37).
-5. **`E2E_TRACK`:** Finalize Playwright E2E suite updates and new coverage across `e2e_tests/`.
-6. **`M6`:** Final Verification Gate (`pytest`, `node --test`, `run_e2e.py --mode self-test`, `run_e2e.py --mode live --tier all` with `0` failures).
-7. **`M7`:** Production Netlify deploy + `netlify-open-deployments`, live browser verification, Desktop & Mobile Lighthouse audits (outside repo), final `PROGRESS.md` update + commit, and completion email to `kilkauciha@gmail.com`.
+1. **Complete `M2` (Stage B) gate & commit:** Finalize 5-agent verification wave for Items 6–13 and commit `app/` + `tests/`.
+2. **`M3` — Mobile UX (`390×844`, Items 14–18):** Compact header, shortened Step 2 tab label, `>= 44px` tap targets, collapsible vault + sticky CTA bar, drawer `min(100%, ...)` width fix.
+3. **`M4` — Bundling / SW / COOP-CORP / CI (Items 19–27):** `esbuild` CSS/JS bundling, immutable cache headers, lazy i18n & `<template>` modals, SW update banner, COOP/CORP headers, dead code removal, modularization, GitHub Actions CI workflow.
+4. **`M5` — Stage E Growth Features:** Safe static client-side growth items (Items 28, 31–34, 36 + out-of-scope roadmap notes).
+5. **`M6` — Full Live E2E (`172` tests):** Run `pytest`, `node --test`, `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all` (`172/172` with `0` failures).
+6. **`M7` — Production Netlify Deploy & Delivery:** Deploy to production Netlify + confirm via `netlify-open-deployments`, verify live `https://promptveil.netlify.app` in browser, run Desktop & Mobile Lighthouse outside repo, update `PROGRESS.md` + commit, and send completion email to `kilkauciha@gmail.com`.

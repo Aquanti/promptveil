@@ -1,4 +1,4 @@
-"""Tier 2: Boundary & Corner Cases (45 Tests: T2-F1-01..T2-F8-07)."""
+"""Tier 2: Boundary & Corner Cases (49 Tests: T2-F1-01..T2-F8-07)."""
 
 from __future__ import annotations
 
@@ -189,6 +189,25 @@ def test_T2_F1_15_longest_first_custom_rule_priority(e2e_session: E2ESession) ->
     assert len(custom_rows) == 1
 
 
+def test_T2_F1_16_ru_fio_stopwords_card_priority_and_custom_over_org(
+    e2e_session: E2ESession,
+) -> None:
+    e2e_session.ui.add_custom_rule("ООО «Вектор»")
+    e2e_session.ui.close_open_drawer()
+    prompt = (
+        "Добрый день! Карта 4111 1111 1111 1111, карта 4276 3800 1234 5678, "
+        "номер 4276 3800 1234 5678 и компания ООО «Вектор»."
+    )
+    out = e2e_session.ui.sanitize_text(prompt)
+    assert "Добрый день" in out
+    assert "[CARD_1]" in out
+    assert "[POSSIBLE_CARD_1]" in out
+    assert "номер 4276 3800 1234 5678" in out
+    assert "[CUSTOM_1]" in out
+    assert e2e_session.ui.get_category_chip_count("RU_ORG") == 0
+    assert e2e_session.ui.get_category_chip_count("RU_FIO") == 0
+
+
 # ---------------------------------------------------------------------------
 # F2 Boundaries (5 Tests)
 # ---------------------------------------------------------------------------
@@ -292,6 +311,36 @@ def test_T2_F3_05_rehydrate_behavior_with_disabled_entity(e2e_session: E2ESessio
     assert restored.strip() == "Sent to a@example.com and b@example.com."
 
 
+def test_T2_F3_06_counter_sync_across_repeats_and_toggles(e2e_session: E2ESession) -> None:
+    page = e2e_session.page
+    e2e_session.ui.add_custom_rule("Секрет")
+    e2e_session.ui.close_open_drawer()
+    e2e_session.ui.sanitize_text("a@example.com a@example.com 192.0.2.5 Секрет")
+
+    def _read_counters() -> tuple[int, int, int]:
+        metrics = e2e_session.ui.get_telemetry_masked_count()
+        all_chip = page.locator("[data-testid='category-chips'] [data-category='ALL']")
+        all_cnt = int(all_chip.get_attribute("data-count") or "0")
+        badge_txt = (page.locator("#rehydrate-ready-badge").inner_text() or "").strip()
+        badge_matches = re.findall(r"\d+", badge_txt)
+        badge_cnt = int(badge_matches[0]) if badge_matches else 0
+        return metrics, all_cnt, badge_cnt
+
+    assert _read_counters() == (4, 4, 4)
+
+    e2e_session.ui.toggle_category_chip("IPV4")
+    assert _read_counters() == (3, 3, 3)
+
+    e2e_session.ui.toggle_vault_entity("a@example.com")
+    assert _read_counters() == (1, 1, 1)
+
+    e2e_session.ui.toggle_vault_entity("Секрет")
+    assert _read_counters() == (0, 0, 0)
+
+    e2e_session.ui.toggle_category_chip("IPV4")
+    assert _read_counters() == (1, 1, 1)
+
+
 # ---------------------------------------------------------------------------
 # F4 Boundaries (5 Tests)
 # ---------------------------------------------------------------------------
@@ -299,7 +348,13 @@ def test_T2_F3_05_rehydrate_behavior_with_disabled_entity(e2e_session: E2ESessio
 
 def test_T2_F4_01_empty_whitespace_custom_rule_rejected(e2e_session: E2ESession) -> None:
     e2e_session.ui.add_custom_rule("")
+    drawer = e2e_session.ui.open_rulebook_drawer()
+    assert drawer.locator("#rulebook-alert").is_visible()
+    assert e2e_session.page.evaluate(
+        "() => document.activeElement === document.querySelector(\"[data-testid='rule-term-input']\")"
+    ) is True
     e2e_session.ui.add_custom_rule("   ")
+    assert drawer.locator("#rulebook-alert").is_visible()
     stored = e2e_session.page.evaluate("() => localStorage.getItem('promptveil_rules_v1') || '[]'")
     parsed = json.loads(stored)
     if isinstance(parsed, dict):
@@ -356,6 +411,34 @@ def test_T2_F4_05_import_json_duplicate_merge(e2e_session: E2ESession) -> None:
     assert drawer_txt.count("RuleB") == 1
 
 
+def test_T2_F4_06_rulebook_novalidate_empty_focus_and_stale_duplicate_clear(
+    e2e_session: E2ESession,
+) -> None:
+    drawer = e2e_session.ui.open_rulebook_drawer()
+    assert drawer.locator("#add-rule-form").get_attribute("novalidate") is not None
+
+    drawer.locator("[data-testid='add-rule-btn']").click()
+    assert drawer.locator("#rulebook-alert").is_visible()
+    assert e2e_session.page.evaluate(
+        "() => document.activeElement === document.querySelector(\"[data-testid='rule-term-input']\")"
+    ) is True
+
+    e2e_session.ui.add_custom_rule("AcmeDup")
+    assert not drawer.locator("#rulebook-alert").is_visible()
+    e2e_session.ui.add_custom_rule("AcmeDup")
+    assert drawer.locator("#rulebook-alert").is_visible()
+
+    term_input = drawer.locator("[data-testid='rule-term-input']")
+    term_input.fill("AcmeNext")
+    term_input.evaluate("el => el.dispatchEvent(new Event('input', { bubbles: true }))")
+    assert not drawer.locator("#rulebook-alert").is_visible()
+
+    e2e_session.ui.add_custom_rule("AcmeDup")
+    assert drawer.locator("#rulebook-alert").is_visible()
+    drawer.locator("#rule-case-input").click()
+    assert not drawer.locator("#rulebook-alert").is_visible()
+
+
 # ---------------------------------------------------------------------------
 # F5 & F6 Boundaries (5 Tests)
 # ---------------------------------------------------------------------------
@@ -383,7 +466,9 @@ def test_T2_F6_03_utf8_cyrillic_non_ascii_filename_csv(e2e_session: E2ESession) 
     csv_file.write_text("ФИО,Телефон\nМария Соколова,+7 903 555 12 34", encoding="utf-8-sig")
     e2e_session.ui.upload_file(csv_file)
     out = e2e_session.ui.get_sanitize_output_text()
-    assert "Мария Соколова,[PHONE_1]" in out
+    assert "ФИО,Телефон" in out
+    assert "[FIO_1],[PHONE_1]" in out
+    assert "Мария Соколова" not in out
     assert "\ufffd" not in out
 
 
@@ -464,6 +549,7 @@ def test_T2_F8_05_corrupted_localstorage_recovery(raw_session: E2ESession) -> No
     raw_session.page.goto(f"{raw_session.base_url}/", wait_until="networkidle")
     raw_session.page.evaluate(
         """() => {
+            localStorage.setItem('promptveil_audit_persist_v1', 'true');
             localStorage.setItem('promptveil_rules_v1', '{broken');
             localStorage.setItem('promptveil_audit_v1', '{also_broken');
         }"""
@@ -495,15 +581,37 @@ def test_T2_F7_01_audit_hash_determinism_and_distinctness(e2e_session: E2ESessio
 def test_T2_F7_02_audit_receipt_after_rehydrate_zero_raw_pii(e2e_session: E2ESession) -> None:
     e2e_session.ui.sanitize_text("SSN 123-45-6789")
     e2e_session.ui.rehydrate_text("OK [SSN_1]")
-    stored = e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1') || ''")
-    assert "123-45-6789" not in stored
-    assert re.search(r"[0-9a-f]{64}", stored, re.I) is not None
+    hashes = e2e_session.ui.get_audit_hashes()
+    assert len(hashes) >= 2
+    assert "123-45-6789" not in e2e_session.ui.get_audit_drawer_text()
+    assert e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None
 
 
 def test_T2_F7_03_clear_audit_log_idempotency(e2e_session: E2ESession) -> None:
     e2e_session.ui.clear_audit_log()
     e2e_session.ui.clear_audit_log()
     assert e2e_session.ui.get_audit_hashes() == []
+
+
+def test_T2_F7_04_audit_ram_default_opt_in_persist_and_uncheck_clears_storage(
+    e2e_session: E2ESession,
+) -> None:
+    e2e_session.ui.sanitize_text("RAM default a@example.com")
+    assert e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None
+    assert len(e2e_session.ui.get_audit_hashes()) >= 1
+    e2e_session.page.reload(wait_until="networkidle")
+    assert e2e_session.ui.get_audit_hashes() == []
+    e2e_session.ui.close_open_drawer()
+
+    e2e_session.ui.sanitize_text("Opt in b@example.com")
+    e2e_session.ui.set_audit_persistence(True)
+    stored = e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1') || ''")
+    assert re.search(r"[0-9a-f]{64}", stored, re.I) is not None
+    e2e_session.page.reload(wait_until="networkidle")
+    assert len(e2e_session.ui.get_audit_hashes()) >= 1
+
+    e2e_session.ui.set_audit_persistence(False)
+    assert e2e_session.page.evaluate("() => localStorage.getItem('promptveil_audit_v1')") is None
 
 
 def test_T2_F8_06_404_on_non_existent_static_path(raw_session: E2ESession) -> None:

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import functools
 import http.server
+import importlib.util
 import json
 import mimetypes
 import os
 import socketserver
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -82,14 +84,26 @@ class _StaticAppRequestHandler(http.server.SimpleHTTPRequestHandler):
         ".html": "text/html; charset=utf-8",
     }
 
+    def guess_type(self, path: str) -> str:
+        clean_path = urllib.parse.urlsplit(path).path.lower()
+        if clean_path.endswith(".webmanifest"):
+            return "application/manifest+json; charset=utf-8"
+        return super().guess_type(path)
+
     def end_headers(self) -> None:
         self.send_header("Content-Security-Policy", NETLIFY_CSP_POLICY)
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         req_path = urllib.parse.urlsplit(self.path).path
-        if (
+        if req_path.startswith("/dist/"):
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+        elif req_path == "/sw.js":
+            self.send_header("Cache-Control", "no-cache")
+        elif (
             req_path == "/styles.css"
             or req_path.startswith("/js/")
             or req_path.startswith("/css/")
@@ -99,7 +113,8 @@ class _StaticAppRequestHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
-        req_path = urllib.parse.urlsplit(self.path).path
+        parsed = urllib.parse.urlsplit(self.path)
+        req_path = parsed.path
         if req_path == "/health":
             payload = b"Not Found"
             self.send_response(404)
@@ -108,6 +123,8 @@ class _StaticAppRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
+        if req_path == "/en" and (Path(self.directory) / "en" / "index.html").is_file():
+            self.path = "/en/index.html" + (f"?{parsed.query}" if parsed.query else "")
         super().do_GET()
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
@@ -161,8 +178,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         "--browser",
         action="store",
         default="auto",
-        choices=["auto", "chrome", "msedge"],
-        help="System Chromium channel to launch (auto tries chrome then msedge)",
+        choices=["auto", "chrome", "msedge", "chromium"],
+        help="Chromium channel or bundled chromium to launch (auto tries chrome, msedge, then chromium)",
     )
     parser.addoption(
         "--headed",
@@ -224,6 +241,35 @@ def _kill_process_tree(proc: subprocess.Popen[bytes]) -> None:
         proc.kill()
 
 
+def _resolve_server_python() -> Path:
+    """Resolve Python interpreter for --start-server across Windows and POSIX CI."""
+    candidates: list[Path] = []
+    if os.name == "nt":
+        candidates.extend(
+            [
+                WORKSPACE_ROOT / ".venv" / "Scripts" / "python.exe",
+                WORKSPACE_ROOT / ".venv" / "bin" / "python",
+            ]
+        )
+    else:
+        candidates.extend(
+            [
+                WORKSPACE_ROOT / ".venv" / "bin" / "python",
+                WORKSPACE_ROOT / ".venv" / "bin" / "python3",
+                WORKSPACE_ROOT / ".venv" / "Scripts" / "python.exe",
+            ]
+        )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    if importlib.util.find_spec("uvicorn") is not None:
+        return Path(sys.executable)
+    raise RuntimeError(
+        "--start-server requested, but neither workspace .venv interpreter "
+        f"(checked {', '.join(str(c) for c in candidates)}) nor uvicorn in {sys.executable} was found"
+    )
+
+
 @pytest.fixture(scope="session")
 def base_url(request: pytest.FixtureRequest) -> Iterator[str]:
     """Return active base URL, optionally managing FastAPI uvicorn or static-only server."""
@@ -242,11 +288,7 @@ def base_url(request: pytest.FixtureRequest) -> Iterator[str]:
     parsed = urllib.parse.urlparse(url)
     host = parsed.hostname or "127.0.0.1"
     port = parsed.port or 8000
-    venv_python = WORKSPACE_ROOT / ".venv" / "Scripts" / "python.exe"
-    if not venv_python.exists():
-        raise RuntimeError(
-            f"--start-server requested, but root venv interpreter not found at {venv_python}"
-        )
+    venv_python = _resolve_server_python()
 
     stderr_log = tempfile.NamedTemporaryFile(
         mode="w+b",
@@ -313,7 +355,9 @@ def base_url(request: pytest.FixtureRequest) -> Iterator[str]:
 
 
 def _launch_browser(pw: Playwright, preference: str, headed: bool) -> Browser:
-    """Launch system Chrome with automatic Edge fallback (zero 150 MB download)."""
+    """Launch Chrome/Edge or bundled Playwright Chromium (CI fallback)."""
+    if preference == "chromium":
+        return pw.chromium.launch(headless=not headed)
     channels = ["chrome", "msedge"] if preference == "auto" else [preference]
     errors: list[str] = []
     for channel in channels:
@@ -321,7 +365,12 @@ def _launch_browser(pw: Playwright, preference: str, headed: bool) -> Browser:
             return pw.chromium.launch(channel=channel, headless=not headed)
         except Exception as exc:  # noqa: BLE001
             errors.append(f"{channel}: {exc}")
-    raise RuntimeError("Failed to launch system Chrome/Edge via Playwright: " + " | ".join(errors))
+    if preference == "auto":
+        try:
+            return pw.chromium.launch(headless=not headed)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"chromium: {exc}")
+    raise RuntimeError("Failed to launch browser via Playwright: " + " | ".join(errors))
 
 
 @pytest.fixture(scope="session")
