@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T14:26+03:00  
-**Session Status:** Milestone M3 `final-verification` complete — ready for local user preview  
-**Exact Stop Point:** Round 2 Overhaul — **Milestone M3 (`final-verification`), Phase 2 Complete** (All M3 Phase 2 regression tests added, mixed-separator `resolveCardSpan` bug in `app/static/js/detector.js` fixed and re-verified, `17/17` server tests + `142/142` live Playwright E2E tests + `10/10` desktop/mobile screenshots verified clean; awaiting local user preview sign-off before any public Netlify deployment).
+**Checkpoint Date:** 2026-11-20T14:47+03:00  
+**Session Status:** Milestone M3 `final-verification` (Phase 2 Iteration 2) complete — ready for local user preview  
+**Exact Stop Point:** Round 2 Overhaul — **Milestone M3 (`final-verification`), Phase 2 Iteration 2 Complete** (Fixed Challenger 1's 3 `detector.js` card/suffix/SSN edge-case bugs via structural card-grouping validation `isValidCardFormat()`, suffix-first stripping in `resolveCardSpan()`, and `(?![.]\d)` boundary in `cardRegex`; cleared `state.activePresetId` on divergent edits in `app/static/js/app.js`; added non-skipping `test_T5_29_card_suffix_and_hyphen_ssn_edge_cases`; `17/17` server tests + `143/143` live Playwright E2E tests + `10/10` desktop/mobile screenshots verified clean; awaiting local user preview sign-off before any public Netlify deployment).
 
 ---
 
@@ -29,10 +29,11 @@
    - Updated `e2e_tests/{locators,monitors,conftest,run_e2e}.py`, `e2e_tests/fixtures/smoke_contract.{html,css,js}`, `e2e_tests/test_tier2_boundaries.py`, `test_tier4_scenarios.py`, `test_tier5_adversarial.py`, and added `e2e_tests/test_acceptance.py` (RU purity, `RU | EN` persistence, full PII cycle + zero-egress monitor, `1440×900` & `390×844` layout/overlap checks, FastAPI vs static parity).
 4. **M3 Phase 1 — Baseline Verification (`DONE`, `APPROVE`):**
    - Verified `12/12` server tests, `run_e2e.py --mode self-test`, `114/114` live Tiers 1–4 + Acceptance tests on `http://127.0.0.1:8000`, and `5/5` static-only acceptance tests.
-5. **M3 Phase 2 — Regression Tests, Bug Fix & Final Verification (`DONE`, `17/17` server + `142/142` live E2E):**
-   - `app/static/js/detector.js`: Added `hasMixedCardSeparators()` guard in `resolveCardSpan()` so adjacent hyphenated SSNs (`900-45-6789 123-00-6789`) cannot be falsely merged as a mixed space+hyphen Luhn card (`900-45-6789 123-00`) while preserving trailing-dash suffix stripping on space-delimited cards (`4111 1111 1111 1111-99`).
+5. **M3 Phase 2 — Regression Tests, Bug Fixes & Final Verification (`DONE`, `17/17` server + `143/143` live E2E):**
+   - `app/static/js/detector.js`: Added `hasMixedCardSeparators()` + structural PAN grouping validator `isValidCardFormat()` (`4-4-4-4`, `4-6-5`, `4-6-4`, `4-4-4-1`/`5`/`6`/`7`, `4-4-4-4-3`, and continuous `13..19`-digit PANs), updated `resolveCardSpan()` to strip trailing hyphen/space numeric suffixes (`-NN`, `-NN-MM`, ` NN`) before accepting 17–19 digit spans when stripping yields a valid 13–16 digit card (preventing 10% Luhn-collision `-00`/`-18` absorption and fixing continuous cards + `-NN` suffixes while rejecting hyphen-joined adjacent invalid SSNs like `900-45-6789-123-00-6789`), and relaxed trailing `cardRegex` lookahead from `(?![.-]\d)` to `(?![.]\d)` so cards followed by `-12-34` or `-9999` still detect cleanly without regressing 20-digit continuous numbers, zeros, decimals, IPs, dates, phones, or SSNs.
+   - `app/static/js/app.js`: Updated `rawInput` `input` handler to clear `state.activePresetId = ""` and call `refreshPresetsUi()` whenever non-empty user input no longer matches the active preset's text (preventing stale active preset pills and `#apply-preset-rules-btn` on divergent edits even with auto-sanitize unchecked).
    - `tests/test_server.py`: Added 5 security & parity regression tests (`test_path_traversal_probes_client_and_raw_asgi`, `test_disallowed_http_methods_and_options_head_matrix`, `test_all_routes_security_headers_and_strict_mime_types`, `test_unknown_routes_404_no_stack_trace_leakage`, `test_cache_control_and_netlify_parity`) plus shared `_assert_security_headers`, `EXPECTED_SECURITY_HEADERS`, and `FORBIDDEN_LEAK_SUBSTRINGS`.
-   - `e2e_tests/test_tier5_adversarial.py` & `e2e_tests/run_e2e.py`: Added `test_T5_26_live_banner_and_inline_alert_retranslation_on_lang_toggle`, `test_T5_27_manual_clear_with_auto_sanitize_unchecked_resets_preset_and_banners`, and `test_T5_28_vault_unmasked_row_wcag_aa_contrast_opacity_and_strikethrough` (non-skipping), and updated `run_e2e.py` collection expectation from `25` Tier 5 (`139` total) to `28` Tier 5 (`142` total).
+   - `e2e_tests/test_tier5_adversarial.py` & `e2e_tests/run_e2e.py`: Added `test_T5_26_live_banner_and_inline_alert_retranslation_on_lang_toggle`, `test_T5_27_manual_clear_with_auto_sanitize_unchecked_resets_preset_and_banners`, `test_T5_28_vault_unmasked_row_wcag_aa_contrast_opacity_and_strikethrough`, and `test_T5_29_card_suffix_and_hyphen_ssn_edge_cases` (non-skipping), and updated `run_e2e.py` collection expectation to `29` Tier 5 (`143` total).
    - `e2e_tests/test_acceptance.py`: Extended `test_ACC_04` to capture `acc_{desktop,mobile}_rulebook_drawer` and `acc_{desktop,mobile}_audit_drawer` PNGs (`full_page=False`, `250ms` settle) into `e2e_tests/artifacts/acceptance/` (10 PNGs total).
 
 ---
@@ -40,9 +41,9 @@
 ## 3. Final M3 Verification Status
 - **Active background processes / local servers / subagents:** `0` (listening ports on `8000..8099` = `0`, port `8000` free; no public Netlify deployment executed).
 - **`py_compile` across `app/`, `tests/`, `e2e_tests/`:** Exit `0` (`16` files, `0` syntax errors).
-- **`pytest tests/test_server.py -v`:** **`17 passed`** (`1.14s`, exit `0`).
-- **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`109` Tier 1–4 + `28` Tier 5 + `5` Acceptance = `142` unique tests, exit `0`).
-- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`142 passed`** (`284.96s`, exit `0`, `0` skipped, `0` console/page errors).
+- **`pytest tests/test_server.py -v`:** **`17 passed`** (`1.16s`, exit `0`).
+- **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`109` Tier 1–4 + `29` Tier 5 + `5` Acceptance = `143` unique tests, exit `0`).
+- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`143 passed`** (`286.18s`, exit `0`, `0` skipped, `0` console/page errors).
 - **Visual Inspection (`e2e_tests/artifacts/acceptance/*.png`):** Inspected all 10 desktop (`1440×900`) and mobile (`390×844`) screenshots (`empty`, `step1_masked`, `step2_restored`, `rulebook_drawer`, `audit_drawer`) — zero overlap/clipping, zero horizontal overflow, WCAG AA contrast, proper header/banner/drawer z-index layering, and Spark Admin styling confirmed.
 
 ---

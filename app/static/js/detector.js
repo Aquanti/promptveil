@@ -155,22 +155,44 @@ function hasMixedCardSeparators(value) {
   return value.includes(" ") && value.includes("-");
 }
 
-function resolveCardSpan(text, matchIndex, raw) {
-  if (!hasMixedCardSeparators(raw) && luhnCheck(raw)) {
-    return { value: raw, end: matchIndex + raw.length };
+function isValidCardFormat(value) {
+  if (!value || hasMixedCardSeparators(value)) {
+    return false;
   }
+  if (!value.includes(" ") && !value.includes("-")) {
+    return /^\d{13,19}$/.test(value);
+  }
+  const sig = value
+    .split(/[ -]/)
+    .map((group) => group.length)
+    .join("-");
+  return (
+    sig === "4-4-4-4" ||
+    sig === "4-6-5" ||
+    sig === "4-6-4" ||
+    sig === "4-4-4-1" ||
+    sig === "4-4-4-5" ||
+    sig === "4-4-4-6" ||
+    sig === "4-4-4-7" ||
+    sig === "4-4-4-4-3"
+  );
+}
+
+function resolveCardSpan(text, matchIndex, raw) {
+  // 1. Prefer stripping trailing hyphen/space numeric suffixes (e.g. -99, -00, -12-34)
+  //    when doing so yields a valid 13-16 digit standard card grouping, preventing
+  //    10% Luhn-collision absorption of trailing tags into 17-19 digit spans.
   let candidate = raw;
   while (true) {
-    if (/^\d+(?:[ -]\d+)+(?:-\d+)+$/.test(candidate)) {
-      let stripped = candidate;
-      while (/-\d+$/.test(stripped)) {
-        stripped = stripped.replace(/-\d+$/, "");
-        if (stripped.replace(/[ -]/g, "").length < 13) {
-          break;
-        }
-        if (!hasMixedCardSeparators(stripped) && luhnCheck(stripped)) {
-          return { value: stripped, end: matchIndex + stripped.length };
-        }
+    let stripped = candidate;
+    while (/-\d+$/.test(stripped)) {
+      stripped = stripped.replace(/-\d+$/, "");
+      const digitsLen = stripped.replace(/[ -]/g, "").length;
+      if (digitsLen < 13) {
+        break;
+      }
+      if (digitsLen <= 16 && isValidCardFormat(stripped) && luhnCheck(stripped)) {
+        return { value: stripped, end: matchIndex + stripped.length };
       }
     }
     const lastSpace = candidate.lastIndexOf(" ");
@@ -178,12 +200,26 @@ function resolveCardSpan(text, matchIndex, raw) {
       break;
     }
     candidate = candidate.slice(0, lastSpace);
-    if (candidate.replace(/[ -]/g, "").length < 13) {
+    const digitsLen = candidate.replace(/[ -]/g, "").length;
+    if (digitsLen < 13) {
       break;
     }
-    if (!hasMixedCardSeparators(candidate) && luhnCheck(candidate)) {
+    if (digitsLen <= 16 && isValidCardFormat(candidate) && luhnCheck(candidate)) {
       return { value: candidate, end: matchIndex + candidate.length };
     }
+  }
+
+  // 2. Otherwise accept the full match (or space-trimmed 17-19 digit card) if structurally valid.
+  candidate = raw;
+  while (candidate.replace(/[ -]/g, "").length >= 13) {
+    if (isValidCardFormat(candidate) && luhnCheck(candidate)) {
+      return { value: candidate, end: matchIndex + candidate.length };
+    }
+    const lastSpace = candidate.lastIndexOf(" ");
+    if (lastSpace <= 0) {
+      break;
+    }
+    candidate = candidate.slice(0, lastSpace);
   }
   return null;
 }
@@ -310,7 +346,7 @@ export function detectEntities(text, customRules = []) {
 
   // 3. CREDIT_CARD (priority 90, Luhn validated)
   const cardRegex =
-    /(?<![A-Za-z\d+])(?<!\d[.-])(?:\d[ -]?){12,18}\d(?![A-Za-z\d])(?![.-]\d)/g;
+    /(?<![A-Za-z\d+])(?<!\d[.-])(?:\d[ -]?){12,18}\d(?![A-Za-z\d])(?![.]\d)/g;
   let cardMatch;
   while ((cardMatch = cardRegex.exec(text)) !== null) {
     const resolved = resolveCardSpan(text, cardMatch.index, cardMatch[0]);

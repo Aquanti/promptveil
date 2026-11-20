@@ -596,6 +596,14 @@ function bindEvents() {
       return;
     }
 
+    if (state.activePresetId) {
+      const activePreset = getPresetById(state.activePresetId);
+      if (!activePreset || state.rawText !== activePreset.text) {
+        state.activePresetId = "";
+        refreshPresetsUi();
+      }
+    }
+
     if (liveToggle && liveToggle.checked) {
       cancelPendingLiveSanitize();
       cancelPendingLiveAudit();

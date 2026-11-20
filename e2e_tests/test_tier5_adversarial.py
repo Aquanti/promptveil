@@ -1649,3 +1649,73 @@ def test_T5_28_vault_unmasked_row_wcag_aa_contrast_opacity_and_strikethrough(
     assert "line-through" in str(metrics_hidden["valTextDecorationLine"])
     assert float(metrics_hidden["valueContrast"]) >= 4.5
 
+
+def test_T5_29_card_suffix_and_hyphen_ssn_edge_cases(
+    e2e_session: E2ESession,
+) -> None:
+    """Continuous/grouped cards with -NN/-NN-MM/-NNNN/-00 suffixes mask only the PAN; hyphen-joined invalid SSNs and 20-digit numbers stay unmasked."""
+    # 1. Continuous cards with -NN suffixes (-99, -08)
+    out_cont_suffix = e2e_session.ui.sanitize_text(
+        "Visa 4111111111111111-99 Amex 378282246310005-99 Alt 4111111111111111-08"
+    )
+    assert out_cont_suffix.strip() == "Visa [CARD_1]-99 Amex [CARD_2]-99 Alt [CARD_1]-08"
+    assert "4111111111111111" not in out_cont_suffix
+    assert "378282246310005" not in out_cont_suffix
+    assert e2e_session.ui.get_category_chip_count("CREDIT_CARD") == 3
+    assert len(e2e_session.ui.get_vault_rows()) == 2
+
+    e2e_session.ui.click_clear_input()
+
+    # 2. Spaced, hyphenated, and continuous cards followed by -12-34 or -9999
+    out_multi_suffix = e2e_session.ui.sanitize_text(
+        "A 4111 1111 1111 1111-12-34 | "
+        "B 4111-1111-1111-1111-12-34 | "
+        "C 4111111111111111-12-34 | "
+        "D 4111-1111-1111-1111-9999"
+    )
+    assert out_multi_suffix.strip() == (
+        "A [CARD_1]-12-34 | B [CARD_2]-12-34 | C [CARD_3]-12-34 | D [CARD_2]-9999"
+    )
+    assert "4111 1111 1111 1111" not in out_multi_suffix
+    assert "4111-1111-1111-1111" not in out_multi_suffix
+    assert "4111111111111111" not in out_multi_suffix
+    assert e2e_session.ui.get_category_chip_count("CREDIT_CARD") == 4
+    assert len(e2e_session.ui.get_vault_rows()) == 3
+
+    e2e_session.ui.click_clear_input()
+
+    # 3. Luhn-collision -00 / -18 suffixes must NOT be absorbed into 18-digit card spans
+    out_luhn_collision = e2e_session.ui.sanitize_text(
+        "H 4111-1111-1111-1111-00 C 4111111111111111-00 S 4111-1111-1111-1111-18"
+    )
+    assert out_luhn_collision.strip() == "H [CARD_1]-00 C [CARD_2]-00 S [CARD_1]-18"
+    assert "4111-1111-1111-1111" not in out_luhn_collision
+    assert "4111111111111111" not in out_luhn_collision
+    assert e2e_session.ui.get_category_chip_count("CREDIT_CARD") == 3
+    assert len(e2e_session.ui.get_vault_rows()) == 2
+
+    e2e_session.ui.click_clear_input()
+
+    # 4. Hyphen-joined adjacent invalid SSNs and 20-digit continuous non-cards stay unmasked;
+    #    valid card + SSN still detect cleanly side by side.
+    out_mixed = e2e_session.ui.sanitize_text(
+        "BadSSN 900-45-6789-123-00-6789 "
+        "Long20 41111111111111110000 "
+        "Zeros 0000 0000 0000 0000 "
+        "Dates 2026-11-19-2026-11-20 "
+        "Valid 4111-1111-1111-1111 123-45-6789"
+    )
+    assert "900-45-6789-123-00-6789" in out_mixed
+    assert "41111111111111110000" in out_mixed
+    assert "0000 0000 0000 0000" in out_mixed
+    assert "2026-11-19-2026-11-20" in out_mixed
+    assert "Valid [CARD_1] [SSN_1]" in out_mixed
+    assert e2e_session.ui.get_category_chip_count("CREDIT_CARD") == 1
+    assert e2e_session.ui.get_category_chip_count("SSN") == 1
+
+    restored = e2e_session.ui.rehydrate_text(out_mixed)
+    assert "Valid 4111-1111-1111-1111 123-45-6789" in restored
+    assert "900-45-6789-123-00-6789" in restored
+    assert "41111111111111110000" in restored
+
+

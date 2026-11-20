@@ -1,8 +1,8 @@
 """Dual-mode CLI runner for PromptVeil Opaque-Box E2E Suite.
 
 Modes:
-- --mode self-test: Runs py_compile, verifies pytest collects all 142 tests
-  (109 Tiers 1-4 + 28 Tier 5 + 5 Acceptance), launches an in-process contract-mock
+- --mode self-test: Runs py_compile, verifies pytest collects all 143 tests
+  (109 Tiers 1-4 + 29 Tier 5 + 5 Acceptance), launches an in-process contract-mock
   HTTP server (e2e_tests/fixtures/), and runs real Playwright + headless Chrome/Edge
   self-tests including positive Russian-first contract checks and negative monitor checks.
 - --mode live: Runs the pytest suite against --base-url (default http://127.0.0.1:8000)
@@ -129,9 +129,9 @@ def _step_collect_only() -> None:
             f"Expected 109 unique Tiers 1-4 tests, got {len(t1_4_lines)} (unique={len(set(t1_4_lines))})."
         )
     t5_lines = _collect_marker_ids("tier5")
-    if len(t5_lines) != 28 or len(set(t5_lines)) != 28:
+    if len(t5_lines) != 29 or len(set(t5_lines)) != 29:
         raise RuntimeError(
-            f"Expected 28 unique Tier 5 tests, got {len(t5_lines)} (unique={len(set(t5_lines))})."
+            f"Expected 29 unique Tier 5 tests, got {len(t5_lines)} (unique={len(set(t5_lines))})."
         )
     acc_lines = _collect_marker_ids("acceptance")
     if len(acc_lines) != 5 or len(set(acc_lines)) != 5:
