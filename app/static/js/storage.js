@@ -6,6 +6,7 @@
 
 export const RULES_STORAGE_KEY = "promptveil_rules_v1";
 export const AUDIT_STORAGE_KEY = "promptveil_audit_v1";
+export const AUDIT_PERSIST_STORAGE_KEY = "promptveil_audit_persist_v1";
 export const LANG_STORAGE_KEY = "promptveil_lang_v1";
 export const THEME_STORAGE_KEY = "promptveil_theme_v1";
 export const MAX_AUDIT_ENTRIES = 200;
@@ -385,9 +386,9 @@ export async function sha256Hex(text) {
 
 let auditEpoch = 0;
 let auditWriteQueue = Promise.resolve();
+let auditMemoryLog = [];
 
-export function loadAuditLog() {
-  const raw = readStorageItem(AUDIT_STORAGE_KEY);
+function parseStoredAuditLog(raw) {
   if (!raw) {
     return [];
   }
@@ -396,16 +397,56 @@ export function loadAuditLog() {
     if (!Array.isArray(parsed)) {
       return [];
     }
-    return parsed.filter(
-      (item) =>
-        item &&
-        typeof item === "object" &&
-        !Array.isArray(item) &&
-        typeof item.action === "string"
-    );
+    return parsed
+      .filter(
+        (item) =>
+          item &&
+          typeof item === "object" &&
+          !Array.isArray(item) &&
+          typeof item.action === "string"
+      )
+      .slice(0, MAX_AUDIT_ENTRIES);
   } catch {
     return [];
   }
+}
+
+export function isAuditPersistenceEnabled() {
+  return readStorageItem(AUDIT_PERSIST_STORAGE_KEY) === "1";
+}
+
+export function purgeUnoptedAuditStorage() {
+  if (!isAuditPersistenceEnabled()) {
+    removeStorageItem(AUDIT_STORAGE_KEY);
+  }
+}
+
+export function setAuditPersistenceEnabled(enabled, currentLog = null) {
+  if (enabled) {
+    writeStorageItem(AUDIT_PERSIST_STORAGE_KEY, "1");
+    const source = Array.isArray(currentLog) ? currentLog : auditMemoryLog;
+    auditMemoryLog = source
+      .filter(
+        (item) =>
+          item &&
+          typeof item === "object" &&
+          !Array.isArray(item) &&
+          typeof item.action === "string"
+      )
+      .slice(0, MAX_AUDIT_ENTRIES);
+    writeStorageItem(AUDIT_STORAGE_KEY, JSON.stringify(auditMemoryLog));
+    return true;
+  }
+  removeStorageItem(AUDIT_PERSIST_STORAGE_KEY);
+  removeStorageItem(AUDIT_STORAGE_KEY);
+  return false;
+}
+
+export function loadAuditLog() {
+  if (isAuditPersistenceEnabled()) {
+    auditMemoryLog = parseStoredAuditLog(readStorageItem(AUDIT_STORAGE_KEY));
+  }
+  return [...auditMemoryLog];
 }
 
 export function appendAuditReceipt({
@@ -419,13 +460,13 @@ export function appendAuditReceipt({
   const startEpoch = auditEpoch;
   const run = async () => {
     if (startEpoch !== auditEpoch) {
-      return { receipt: null, auditLog: loadAuditLog(), aborted: true, storagePersisted: true };
+      return { receipt: null, auditLog: loadAuditLog(), aborted: true, storagePersisted: false };
     }
 
     const inputSha256 = await sha256Hex(inputText);
     const outputSha256 = await sha256Hex(outputText);
     if (startEpoch !== auditEpoch) {
-      return { receipt: null, auditLog: loadAuditLog(), aborted: true, storagePersisted: true };
+      return { receipt: null, auditLog: loadAuditLog(), aborted: true, storagePersisted: false };
     }
 
     const uniqueKeys = new Set();
@@ -441,7 +482,7 @@ export function appendAuditReceipt({
       uniqueKeys.add(key);
       const hash = await sha256Hex(key);
       if (startEpoch !== auditEpoch) {
-        return { receipt: null, auditLog: loadAuditLog(), aborted: true, storagePersisted: true };
+        return { receipt: null, auditLog: loadAuditLog(), aborted: true, storagePersisted: false };
       }
       entityDigestPrefixes.push({
         category: entity.category,
@@ -467,13 +508,18 @@ export function appendAuditReceipt({
     };
 
     if (startEpoch !== auditEpoch) {
-      return { receipt: null, auditLog: loadAuditLog(), aborted: true, storagePersisted: true };
+      return { receipt: null, auditLog: loadAuditLog(), aborted: true, storagePersisted: false };
     }
 
-    const current = loadAuditLog();
-    const updated = [receipt, ...current].slice(0, MAX_AUDIT_ENTRIES);
-    const storagePersisted = writeStorageItem(AUDIT_STORAGE_KEY, JSON.stringify(updated));
-    return { receipt, auditLog: updated, aborted: false, storagePersisted };
+    const persist = isAuditPersistenceEnabled();
+    const base = persist
+      ? parseStoredAuditLog(readStorageItem(AUDIT_STORAGE_KEY))
+      : auditMemoryLog;
+    auditMemoryLog = [receipt, ...base].slice(0, MAX_AUDIT_ENTRIES);
+    const storagePersisted = persist
+      ? writeStorageItem(AUDIT_STORAGE_KEY, JSON.stringify(auditMemoryLog))
+      : false;
+    return { receipt, auditLog: [...auditMemoryLog], aborted: false, storagePersisted };
   };
 
   const next = auditWriteQueue.then(run, run);
@@ -497,6 +543,7 @@ export function exportAuditJson(log) {
 
 export function clearAuditLog() {
   auditEpoch += 1;
+  auditMemoryLog = [];
   removeStorageItem(AUDIT_STORAGE_KEY);
   return [];
 }

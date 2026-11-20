@@ -8,6 +8,7 @@ export const SITE_CONTACTS = Object.freeze({
   email: "kilkauciha@gmail.com",
   githubHandle: "@Aquanti",
   githubDisplay: "github.com/Aquanti",
+  githubRepoDisplay: "github.com/Aquanti/promptveil",
   authorSignature: "SupV1rus",
 });
 

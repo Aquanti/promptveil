@@ -16,14 +16,17 @@ export const CATEGORIES = Object.freeze([
   { category: "RU_OGRN", tokenPrefix: "OGRN", priority: 88, label: "RU OGRN" },
   { category: "RU_PASSPORT", tokenPrefix: "PASSPORT", priority: 87, label: "RU Passport" },
   { category: "RU_BIK", tokenPrefix: "BIK", priority: 86, label: "RU BIK" },
+  { category: "POSSIBLE_CARD", tokenPrefix: "POSSIBLE_CARD", priority: 84, label: "Possible card" },
   { category: "ENV_SECRET", tokenPrefix: "ENV_SECRET", priority: 82, label: ".env Secret" },
   { category: "CUSTOM", tokenPrefix: "CUSTOM", priority: 80, label: "Custom Rule" },
   { category: "EMAIL", tokenPrefix: "EMAIL", priority: 75, label: "Email" },
   { category: "PHONE", tokenPrefix: "PHONE", priority: 70, label: "Phone" },
+  { category: "RU_ORG", tokenPrefix: "ORG", priority: 68, label: "RU Organizations" },
   { category: "RU_AUTO_PLATE", tokenPrefix: "PLATE", priority: 65, label: "RU Auto Plate" },
   { category: "RU_FIO", tokenPrefix: "FIO", priority: 64, label: "RU Full Name" },
   { category: "RU_ADDRESS", tokenPrefix: "ADDRESS", priority: 63, label: "RU Address" },
   { category: "IPV4", tokenPrefix: "IP", priority: 60, label: "IPv4" },
+  { category: "UUID", tokenPrefix: "UUID", priority: 58, label: "UUID", secondary: true },
   { category: "HIGH_ENTROPY", tokenPrefix: "SECRET", priority: 50, label: "High Entropy" },
   { category: "SSN", tokenPrefix: "SSN", priority: 85, label: "US SSN", secondary: true },
 ]);
@@ -334,18 +337,47 @@ const RU_FIO_STOPWORDS = new Set([
   "договор", "контакт", "клиент", "директор", "кандидат", "менеджер",
   "руководитель", "специалист", "заказчик", "исполнитель", "подрядчик",
   "сотрудник", "представитель", "ответственный", "генеральный", "ооо",
-  "пао", "зао", "оао", "ао", "ип", "республика", "область", "край",
+  "пао", "зао", "оао", "нко", "ао", "ип", "республика", "область", "край",
   "район", "город", "улица", "проспект", "переулок", "бульвар", "шоссе",
   "площадь", "квартира", "корпус", "строение", "дом", "статья", "пункт",
-  "раздел", "пример", "организация", "банк", "адрес", "реквизиты",
+  "раздел", "пример", "организация", "компания", "банк", "адрес", "реквизиты",
   "сторона", "полис", "паспорт", "снилс", "инн", "огрн", "бик",
   "подписант", "получатель", "отправитель", "куратор", "автор", "уважаемый",
   "уважаемая", "господин", "госпожа", "гр", "гр-н",
+  "клиентов", "сотрудников", "партнеров", "договоров", "проектов",
+  "документов", "товаров", "услуг", "заказов", "серверов", "вопросов",
+  "ответов", "отчетов", "городов", "банков", "счетов", "платежей",
+  "офисов", "регионов", "разделов", "пунктов", "листов", "файлов",
+  "ключей", "токенов", "запросов", "инженеров", "юристов", "бухгалтеров",
+  "директоров", "менеджеров", "руководителей", "специалистов", "заказчиков",
+  "исполнителей", "подрядчиков", "представителей", "кандидатов", "авторов",
+  "героев", "народов", "участников", "пользователей", "владельцев",
+  "других", "новых", "первых", "вторых", "третьих", "многих", "всяких",
+  "таких", "каких", "некоторых", "остальных", "данных", "наших", "ваших",
+  "своих", "твоих", "моих", "этих", "больших", "малых", "старых",
+  "добрых", "плохих", "хороших", "разных", "важных", "главных", "общих",
+  "личных", "частных", "советский", "российский", "московский", "городской",
+  "областной", "районный", "федеральный", "государственный", "технический",
+  "коммерческий", "юридический", "финансовый", "медицинский", "банковский",
+  "только", "однако", "сколько", "несколько", "далеко", "близко", "высоко",
+  "низко", "глубоко", "широко", "легко", "редко", "яблоко", "молоко",
+  "облако", "машина", "машины", "картина", "картины", "причина", "причины",
+  "половина", "середина", "вершина", "глубина", "ширина", "мужчина",
+  "женщина", "господина", "гражданина", "магазин", "термин", "бензин",
+  "витамин", "киев", "ростов", "саратов", "тамбов", "псков", "харьков",
+  "чернигов", "работает", "столица",
+  "пациентов", "студентов", "инвесторов", "работников", "экспертов",
+  "акционеров", "близких", "родных", "молодых", "больных", "живых",
+  "святых", "взрослых", "знакомых", "слов", "снов", "отцов", "домов",
+  "годов", "веков", "часов", "шагов", "дней", "друзей",
 ]);
 
 function isRuPatronymic(word) {
   const norm = normalizeRuWord(word);
-  return norm.length >= 6 && /(?:ович|евич|ич|овна|евна|ична|инична)(?:а|у|ом|е|ой|ы)?$/.test(norm);
+  return (
+    norm.length >= 6 &&
+    /(?:(?:ович|евич|ич)(?:а|у|ем|ом|е)?|(?:овн|евн|ичн|иничн)(?:а|у|е|ой|ою|ею|ы))$/.test(norm)
+  );
 }
 
 function isCapitalizedRuSurnameCandidate(word) {
@@ -354,6 +386,43 @@ function isCapitalizedRuSurnameCandidate(word) {
     return false;
   }
   return /^[А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?$/.test(word);
+}
+
+function hasSingleRuSurnameSuffix(normPart) {
+  if (!normPart || normPart.length < 4 || RU_FIO_STOPWORDS.has(normPart)) {
+    return false;
+  }
+  if (/(?:ов|ев)(?:а|у|ым|ом|е|ой|ою|ы|ых|ыми)?$/.test(normPart)) {
+    return true;
+  }
+  if (normPart.length >= 5 && /(?:ин|ын)(?:а|у|ым|ом|е|ой|ою|ы|ых|ыми)?$/.test(normPart)) {
+    return true;
+  }
+  if (normPart.length >= 6 && /(?:ск|цк)(?:ий|ого|ому|им|ом|ая|ой|ую|ою|ие|их|ими)$/.test(normPart)) {
+    return true;
+  }
+  if (normPart.length >= 5 && /енко$/.test(normPart)) {
+    return true;
+  }
+  if (normPart.length >= 5 && /(?:чук|юк)(?:а|у|ом|е|ой)?$/.test(normPart)) {
+    return true;
+  }
+  if (normPart.length >= 5 && /ко$/.test(normPart)) {
+    return true;
+  }
+  if (normPart.length >= 5 && /(?:их|ых)$/.test(normPart)) {
+    return true;
+  }
+  return false;
+}
+
+function hasRuSurnameSuffix(word) {
+  const norm = normalizeRuWord(word);
+  if (!norm || RU_FIO_STOPWORDS.has(norm)) {
+    return false;
+  }
+  const parts = norm.split("-");
+  return parts.some((part) => hasSingleRuSurnameSuffix(part));
 }
 
 export function isValidRuAutoPlate(raw) {
@@ -440,7 +509,15 @@ function isValidCardFormat(value) {
   );
 }
 
-function resolveCardSpan(text, matchIndex, raw) {
+function isValidCardDigits(value, skipLuhn = false) {
+  if (!skipLuhn) {
+    return luhnCheck(value);
+  }
+  const digits = String(value).replace(/[ -]/g, "");
+  return /^\d{13,19}$/.test(digits) && !/^0+$/.test(digits);
+}
+
+function resolveCardSpan(text, matchIndex, raw, { skipLuhn = false } = {}) {
   // 1. Prefer stripping trailing hyphen/space numeric suffixes (e.g. -99, -00, -12-34)
   //    when doing so yields a valid 13-16 digit standard card grouping, preventing
   //    10% Luhn-collision absorption of trailing tags into 17-19 digit spans.
@@ -453,7 +530,7 @@ function resolveCardSpan(text, matchIndex, raw) {
       if (digitsLen < 13) {
         break;
       }
-      if (digitsLen <= 16 && isValidCardFormat(stripped) && luhnCheck(stripped)) {
+      if (digitsLen <= 16 && isValidCardFormat(stripped) && isValidCardDigits(stripped, skipLuhn)) {
         return { value: stripped, end: matchIndex + stripped.length };
       }
     }
@@ -466,7 +543,7 @@ function resolveCardSpan(text, matchIndex, raw) {
     if (digitsLen < 13) {
       break;
     }
-    if (digitsLen <= 16 && isValidCardFormat(candidate) && luhnCheck(candidate)) {
+    if (digitsLen <= 16 && isValidCardFormat(candidate) && isValidCardDigits(candidate, skipLuhn)) {
       return { value: candidate, end: matchIndex + candidate.length };
     }
   }
@@ -474,7 +551,7 @@ function resolveCardSpan(text, matchIndex, raw) {
   // 2a. Otherwise accept the full match (or space-trimmed 17-19 digit card) if structurally valid.
   candidate = raw;
   while (candidate.replace(/[ -]/g, "").length >= 13) {
-    if (isValidCardFormat(candidate) && luhnCheck(candidate)) {
+    if (isValidCardFormat(candidate) && isValidCardDigits(candidate, skipLuhn)) {
       return { value: candidate, end: matchIndex + candidate.length };
     }
     const lastSpace = candidate.lastIndexOf(" ");
@@ -495,7 +572,7 @@ function resolveCardSpan(text, matchIndex, raw) {
       if (digitsLen < 17) {
         break;
       }
-      if (digitsLen <= 18 && isValidCardFormat(stripped) && luhnCheck(stripped)) {
+      if (digitsLen <= 18 && isValidCardFormat(stripped) && isValidCardDigits(stripped, skipLuhn)) {
         return { value: stripped, end: matchIndex + stripped.length };
       }
     }
@@ -590,14 +667,15 @@ function isHighEntropySecret(token) {
 }
 
 /**
- * Detect all 11 deterministic PII, credential, custom-rule, and high-entropy spans.
+ * Detect all 25 deterministic PII, credential, custom-rule, and high-entropy spans.
  * Returns non-overlapping entities sorted by start offset ascending.
  */
-export function detectEntities(text, customRules = []) {
+export function detectEntities(text, customRules = [], options = {}) {
   if (typeof text !== "string" || text.length === 0) {
     return [];
   }
 
+  const detectUuid = Boolean(options?.detectUuid) || options?.sensitivity === "strict";
   const candidates = [];
 
   // 1. API_KEY (priority 100)
@@ -875,6 +953,45 @@ export function detectEntities(text, customRules = []) {
     });
   }
 
+  // 5b. POSSIBLE_CARD (priority 84 < CREDIT_CARD: 90, context-gated, skips Luhn)
+  const possibleCardRegex =
+    /(?<![\p{L}\p{N}_])(?:номер[ \t]+карт[ыа]?|№[ \t]*карт[ыа]?|карт(?:ой|ою|[аыуе])?|карточк(?:ой|ою|[аиуе])?|card(?:[ \t]+(?:number|no\.?|#))?)[ \t:№#=-]+((?:\d[ -]?){12,18}\d)(?![A-Za-z\d])(?![.]\d)/giu;
+  const possibleCardSpans = [];
+  for (const m of text.matchAll(possibleCardRegex)) {
+    const rawDigits = m[1];
+    const digitStart = m.index + m[0].length - rawDigits.length;
+    const prefixLookback = text.slice(Math.max(0, m.index - 40), m.index);
+    const digitLookback = text.slice(Math.max(0, digitStart - 40), digitStart);
+    if (nonCardRuLabelRe.test(prefixLookback) || nonCardRuLabelRe.test(digitLookback)) {
+      continue;
+    }
+    const resolved = resolveCardSpan(text, digitStart, rawDigits, { skipLuhn: true });
+    if (!resolved) {
+      continue;
+    }
+    const span = {
+      category: "POSSIBLE_CARD",
+      tokenPrefix: "POSSIBLE_CARD",
+      value: resolved.value,
+      start: digitStart,
+      end: resolved.end,
+      priority: 84,
+    };
+    possibleCardSpans.push(span);
+    candidates.push(span);
+  }
+  if (possibleCardSpans.length > 0) {
+    for (let i = candidates.length - 1; i >= 0; i -= 1) {
+      const c = candidates[i];
+      if (
+        c.category === "CREDIT_CARD" &&
+        possibleCardSpans.some((p) => c.start > p.start && c.start < p.end)
+      ) {
+        candidates.splice(i, 1);
+      }
+    }
+  }
+
   // 6. ENV_SECRET (priority 82, RHS value only, single-line whitespace)
   const envSecretRegex =
     /^([ \t]*(?:export[ \t]+)?[A-Z0-9_]*(?:SECRET|PASSWORD|PASSWD|TOKEN|API_KEY|PRIVATE_KEY|ACCESS_KEY|AUTH|DSN|CONNECTION_STRING)[A-Z0-9_]*[ \t]*[:=][ \t]*)(?:"((?:[^"\\\r\n]|\\.)*)"|'((?:[^'\\\r\n]|\\.)*)'|([^\s'"#\r\n][^\s\r\n]{5,}))/gim;
@@ -983,6 +1100,95 @@ export function detectEntities(text, customRules = []) {
     });
   }
 
+  // 9a. RU_ORG (priority 68 < CUSTOM: 80, > RU_FIO: 64)
+  const ruOrgQuotedRegex =
+    /(?<![\p{L}\p{N}_])(?:ООО|ПАО|ЗАО|ОАО|НКО|АО|ИП)[ \t]*(?:«[^«»\r\n]{1,120}»|"[^"\r\n]{1,120}"|„[^„“”"\r\n]{1,120}[“”"]|“[^“”\r\n]{1,120}”|'[^'\r\n]{1,120}')/gu;
+  for (const m of text.matchAll(ruOrgQuotedRegex)) {
+    candidates.push({
+      category: "RU_ORG",
+      tokenPrefix: "ORG",
+      value: m[0],
+      start: m.index,
+      end: m.index + m[0].length,
+      priority: 68,
+    });
+  }
+
+  const ruIpInitialAfterRe =
+    /(?<![\p{L}\p{N}_])(ИП[ \t]+([А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?)[ \t]+[А-ЯЁ]\.[ \t]?[А-ЯЁ]\.)(?![\p{L}\p{N}_])/gu;
+  for (const m of text.matchAll(ruIpInitialAfterRe)) {
+    if (!isCapitalizedRuSurnameCandidate(m[2])) continue;
+    candidates.push({
+      category: "RU_ORG",
+      tokenPrefix: "ORG",
+      value: m[1],
+      start: m.index,
+      end: m.index + m[1].length,
+      priority: 68,
+    });
+  }
+
+  const ruIpInitialBeforeRe =
+    /(?<![\p{L}\p{N}_])(ИП[ \t]+[А-ЯЁ]\.[ \t]?[А-ЯЁ]\.[ \t]+([А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?))(?![\p{L}\p{N}_-])/gu;
+  for (const m of text.matchAll(ruIpInitialBeforeRe)) {
+    if (!isCapitalizedRuSurnameCandidate(m[2])) continue;
+    candidates.push({
+      category: "RU_ORG",
+      tokenPrefix: "ORG",
+      value: m[1],
+      start: m.index,
+      end: m.index + m[1].length,
+      priority: 68,
+    });
+  }
+
+  const ruIpFioRe =
+    /(?<![\p{L}\p{N}_])(ИП[ \t]+([А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?)[ \t]+([А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?)(?:[ \t]+([А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?))?)(?![\p{L}\p{N}_-])/gu;
+  for (const m of text.matchAll(ruIpFioRe)) {
+    const [, , w1, w2, w3] = m;
+    const n1 = normalizeRuWord(w1);
+    const n2 = normalizeRuWord(w2);
+    if (w3) {
+      const n3 = normalizeRuWord(w3);
+      const valid3 =
+        !RU_FIO_STOPWORDS.has(n1) &&
+        !RU_FIO_STOPWORDS.has(n2) &&
+        !RU_FIO_STOPWORDS.has(n3) &&
+        ((isCapitalizedRuSurnameCandidate(w1) && RU_FIRST_NAME_FORMS.has(n2) && isRuPatronymic(w3)) ||
+          (RU_FIRST_NAME_FORMS.has(n1) && isRuPatronymic(w2) && isCapitalizedRuSurnameCandidate(w3)));
+      if (valid3) {
+        candidates.push({
+          category: "RU_ORG",
+          tokenPrefix: "ORG",
+          value: m[1],
+          start: m.index,
+          end: m.index + m[1].length,
+          priority: 68,
+        });
+        continue;
+      }
+    }
+    const w1Start = m[0].indexOf(w1, 2);
+    const twoEnd = m.index + m[0].indexOf(w2, w1Start + w1.length) + w2.length;
+    const valid2 =
+      !RU_FIO_STOPWORDS.has(n1) &&
+      !RU_FIO_STOPWORDS.has(n2) &&
+      ((isCapitalizedRuSurnameCandidate(w1) && hasRuSurnameSuffix(w1) && RU_FIRST_NAME_FORMS.has(n2)) ||
+        (RU_FIRST_NAME_FORMS.has(n1) &&
+          (isRuPatronymic(w2) || (isCapitalizedRuSurnameCandidate(w2) && hasRuSurnameSuffix(w2)))));
+    if (valid2) {
+      const val2 = text.slice(m.index, twoEnd);
+      candidates.push({
+        category: "RU_ORG",
+        tokenPrefix: "ORG",
+        value: val2,
+        start: m.index,
+        end: twoEnd,
+        priority: 68,
+      });
+    }
+  }
+
   // 9b. RU_AUTO_PLATE (priority 65, GOST letters + official GIBDD region codes)
   const ruPlateRegex =
     /(?<![\p{L}\p{N}_-])([АВЕКМНОРСТУХABEKMHOPCTYX]\s?\d{3}\s?[АВЕКМНОРСТУХABEKMHOPCTYX]{2}\s?(?:0[1-9]|[1-9]\d|[1279]\d{2})(?:\s?(?:RUS|РУС))?)(?![\p{L}\p{N}_-])/giu;
@@ -1029,6 +1235,8 @@ export function detectEntities(text, customRules = []) {
       priority: 64,
     });
   }
+  const STREET_PREFIX_BEFORE_FIO_RE =
+    /(?:^|[\s,(])(?:ул\.|улица|пр-т|пр\.|проспект|пер\.|переулок|б-р|бульвар|ш\.|шоссе|наб\.|набережная|пл\.|площадь)[ \t]+$/iu;
   const ruCapRunRe =
     /(?<![\p{L}\p{N}_-])([А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?(?:[ \t]+[А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?)+)(?![\p{L}\p{N}_-])/gu;
   const wordTokenRe = /[А-ЯЁ][а-яё]{1,}(?:-[А-ЯЁ][а-яё]{1,})?/gu;
@@ -1043,6 +1251,14 @@ export function detectEntities(text, customRules = []) {
         start: runBase + wm.index,
         end: runBase + wm.index + wm[0].length,
       });
+    }
+    const precededByStreet =
+      tokens.length > 0 &&
+      STREET_PREFIX_BEFORE_FIO_RE.test(
+        text.slice(Math.max(0, tokens[0].start - 20), tokens[0].start)
+      );
+    if (precededByStreet) {
+      continue;
     }
     for (let i = 0; i < tokens.length; i += 1) {
       if (i + 2 < tokens.length) {
@@ -1074,36 +1290,79 @@ export function detectEntities(text, customRules = []) {
       }
       if (i + 1 < tokens.length) {
         const [t1, t2] = [tokens[i], tokens[i + 1]];
-        if (
-          !RU_FIO_STOPWORDS.has(t1.norm) &&
-          !RU_FIO_STOPWORDS.has(t2.norm) &&
-          RU_FIRST_NAME_FORMS.has(t1.norm) &&
-          isRuPatronymic(t2.word)
-        ) {
-          candidates.push({
-            category: "RU_FIO",
-            tokenPrefix: "FIO",
-            value: text.slice(t1.start, t2.end),
-            start: t1.start,
-            end: t2.end,
-            priority: 64,
-          });
+        if (!RU_FIO_STOPWORDS.has(t1.norm) && !RU_FIO_STOPWORDS.has(t2.norm)) {
+          const isNamePat = RU_FIRST_NAME_FORMS.has(t1.norm) && isRuPatronymic(t2.word);
+          const isFirstSur =
+            RU_FIRST_NAME_FORMS.has(t1.norm) &&
+            isCapitalizedRuSurnameCandidate(t2.word) &&
+            hasRuSurnameSuffix(t2.word);
+          const isSurFirst =
+            isCapitalizedRuSurnameCandidate(t1.word) &&
+            hasRuSurnameSuffix(t1.word) &&
+            RU_FIRST_NAME_FORMS.has(t2.norm);
+          if (isNamePat || isFirstSur || isSurFirst) {
+            candidates.push({
+              category: "RU_FIO",
+              tokenPrefix: "FIO",
+              value: text.slice(t1.start, t2.end),
+              start: t1.start,
+              end: t2.end,
+              priority: 64,
+            });
+          }
         }
       }
     }
   }
 
-  // 9d. RU_ADDRESS (priority 63, street + house required, single-line)
-  const ruAddressRegex =
-    /(?<![\p{L}\p{N}_])((?:[1-6]\d{5},\s*)?(?:(?:[Гг]\.|[Гг]ород|[Пп]ос\.|[Пп]гт\.|[Сс]\.)\s*[А-ЯЁ][а-яёА-ЯЁ-]+,\s*)?(?:[Уу]л\.|[Уу]лица|[Пп]р-т|[Пп]р\.|[Пп]роспект|[Пп]ер\.|[Пп]ереулок|[Бб]-р|[Бб]ульвар|[Шш]\.|[Шш]оссе|[Нн]аб\.|[Нн]абережная|[Пп]л\.|[Пп]лощадь)\s+[А-ЯЁ0-9][А-ЯЁа-яё0-9.\-"«» ]{1,40},?\s*(?:[Дд]\.|[Дд]ом)\s*\d+[А-ЯЁа-яё0-9/-]*(?:,?\s*(?:корп\.|корпус|к\.|стр\.|строение|лит\.|кв\.|оф\.|офис|пом\.)\s*[А-ЯЁа-яё0-9-]+){0,3})(?![\p{L}\p{N}_-])/gu;
+  // 9d. RU_ADDRESS (priority 63, street + house required, single-line, optional city capture)
+  const MAJOR_RU_CITIES_RE_PART =
+    "(?:Москва|Санкт-Петербург|Новосибирск|Екатеринбург|Казань|Нижний[ \\t]+Новгород|Челябинск|Самара|Омск|Ростов-на-Дону|Уфа|Красноярск|Воронеж|Пермь|Волгоград|Краснодар|Саратов|Тюмень|Тольятти|Ижевск|Барнаул|Ульяновск|Иркутск|Хабаровск|Ярославль|Владивосток|Махачкала|Томск|Оренбург|Кемерово|Новокузнецк|Рязань|Астрахань|Набережные[ \\t]+Челны|Пенза|Липецк|Киров|Чебоксары|Калининград|Тула|Курск|Ставрополь|Улан-Удэ|Тверь|Магнитогорск|Сочи|Иваново|Брянск|Белгород|Сургут|Владимир|Чита|Архангельск|Калуга|Смоленск|Волжский|Якутск|Саранск|Череповец|Вологда|Ор[её]л|Подольск|Мурманск|Грозный|Тамбов|Петрозаводск|Кострома|Нижневартовск|Новороссийск|Йошкар-Ола|Химки|Мытищи|Балашиха|Корол[её]в|Зеленоград|Минск|Алматы|Астана)";
+  const ADDRESS_NON_CITY_WORDS = new Set([
+    "привет", "здравствуйте", "офис", "адрес", "доставка", "компания",
+    "организация", "филиал", "отдел", "склад", "россия", "беларусь",
+    "казахстан", "срочно", "важно", "итого", "улица", "проспект",
+    "переулок", "бульвар", "шоссе", "площадь", "набережная",
+  ]);
+  const STREET_TYPE_PART =
+    "(?:[Уу]л\\.|[Уу]лица|[Пп]р-т|[Пп]р\\.|[Пп]роспект|[Пп]ер\\.|[Пп]ереулок|[Бб]-р|[Бб]ульвар|[Шш]\\.|[Шш]оссе|[Нн]аб\\.|[Нн]абережная|[Пп]л\\.|[Пп]лощадь)";
+  const STREET_TYPE_WORD_GUARD =
+    "(?!(?:Ул|Улица|Пр-т|Пр|Проспект|Пер|Переулок|Б-р|Бульвар|Ш|Шоссе|Наб|Набережная|Пл|Площадь)(?:$|[^\\p{L}\\p{N}_]))";
+  const HOUSE_AND_UNIT_PART =
+    ",?[ \\t]*(?:[Дд]\\.|[Дд]ом)[ \\t]*\\d+[А-ЯЁа-яё0-9/-]*(?:,?[ \\t]*(?:корп\\.|корпус|к\\.|стр\\.|строение|лит\\.|кв\\.|оф\\.|офис|пом\\.)[ \\t]*[А-ЯЁа-яё0-9-]+){0,3}";
+  const ruAddressRegex = new RegExp(
+    `(?<![\\p{L}\\p{N}_])` +
+      `([1-6]\\d{5},[ \\t]*)?` +
+      `((?:(?:[Гг]\\.?|[Гг]ород|[Пп]ос\\.|[Пп]гт\\.?|[Сс]\\.)[ \\t]*${STREET_TYPE_WORD_GUARD}[А-ЯЁ][а-яёА-ЯЁ-]+(?:[ \\t-]+(?:на|им\\.?|${STREET_TYPE_WORD_GUARD}[А-ЯЁ][а-яёА-ЯЁ-]+)){0,2}|${MAJOR_RU_CITIES_RE_PART})(?:,[ \\t]*|[ \\t]+))?` +
+      `([А-ЯЁ][а-яё]{2,}(?:-[А-ЯЁа-яё]{2,})*,[ \\t]*)?` +
+      `((?:${STREET_TYPE_PART}[ \\t]+[А-ЯЁ0-9][А-ЯЁа-яё0-9.\\-"«» ]{1,40}|[А-ЯЁ][А-ЯЁа-яё0-9.\\-"«»]+(?:[ \\t]+[А-ЯЁа-яё0-9.\\-"«»]+){0,2}[ \\t]+${STREET_TYPE_PART})${HOUSE_AND_UNIT_PART})` +
+      `(?![\\p{L}\\p{N}_-])`,
+    "gu"
+  );
   for (const m of text.matchAll(ruAddressRegex)) {
-    const val = m[1];
+    let startOffset = 0;
+    if (m[3] && !m[2]) {
+      const cityWord = m[3].replace(/,[ \t]*$/, "");
+      const cityNorm = normalizeRuWord(cityWord);
+      const beforeBareCity = text.slice(Math.max(0, m.index - 40), m.index);
+      const precededByCapWord = /[А-ЯЁ][а-яё]+[ \t]+$/.test(beforeBareCity);
+      if (
+        precededByCapWord ||
+        ADDRESS_NON_CITY_WORDS.has(cityNorm) ||
+        RU_FIO_STOPWORDS.has(cityNorm) ||
+        RU_FIRST_NAME_FORMS.has(cityNorm)
+      ) {
+        startOffset = m[0].length - m[4].length;
+      }
+    }
+    const val = m[0].slice(startOffset);
+    const start = m.index + startOffset;
     candidates.push({
       category: "RU_ADDRESS",
       tokenPrefix: "ADDRESS",
       value: val,
-      start: m.index,
-      end: m.index + val.length,
+      start,
+      end: start + val.length,
       priority: 63,
     });
   }
@@ -1120,6 +1379,22 @@ export function detectEntities(text, customRules = []) {
       end: m.index + m[0].length,
       priority: 60,
     });
+  }
+
+  // 10b. UUID (priority 58, secondary, gated by detectUuid / sensitivity=strict)
+  if (detectUuid) {
+    const uuidRegex =
+      /(?<![A-Za-z0-9_-])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![A-Za-z0-9_-])/gi;
+    for (const m of text.matchAll(uuidRegex)) {
+      candidates.push({
+        category: "UUID",
+        tokenPrefix: "UUID",
+        value: m[0],
+        start: m.index,
+        end: m.index + m[0].length,
+        priority: 58,
+      });
+    }
   }
 
   // 11. HIGH_ENTROPY (priority 50)

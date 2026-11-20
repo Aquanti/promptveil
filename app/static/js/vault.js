@@ -199,7 +199,10 @@ export class SessionVault {
       };
     }
 
-    const spans = detectEntities(source, customRules);
+    const spans = detectEntities(source, customRules, {
+      detectUuid: Boolean(options?.detectUuid),
+      sensitivity: options?.sensitivity === "strict" ? "strict" : "normal",
+    });
     const activeKeys = evolveTransient
       ? new Set(spans.map((s) => makeEntityKey(s.category, s.value)))
       : null;

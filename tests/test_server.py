@@ -318,6 +318,7 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
     allowlisted_external_links = {
         "https://t.me/supv1rus",
         "https://github.com/Aquanti",
+        "https://github.com/Aquanti/promptveil",
         "https://chatgpt.com/",
         "https://chat.deepseek.com/",
         "https://giga.chat/",
@@ -625,10 +626,15 @@ def test_cache_control_and_netlify_parity() -> None:
         "/css/*",
         "/fonts/*",
         "/sw.js",
+        "/manifest.webmanifest",
     }
 
     sw_block = next(block for block in header_blocks if block["for"] == "/sw.js")
     assert sw_block["values"]["Cache-Control"] == "no-cache"
+
+    manifest_block = next(block for block in header_blocks if block["for"] == "/manifest.webmanifest")
+    assert manifest_block["values"]["Content-Type"] == "application/manifest+json; charset=utf-8"
+    assert manifest_block["values"]["Cache-Control"] == "public, max-age=300"
 
     root_block = next(block for block in header_blocks if block["for"] == "/*")
     assert "Cache-Control" not in root_block["values"]
@@ -712,6 +718,10 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
         'id="modal-privacy-policy"',
         'id="open-terms-btn"',
         'id="modal-terms"',
+        'id="footer-repo-link"',
+        'id="proof-repo-link"',
+        'id="detect-uuid-toggle"',
+        'id="audit-persist-toggle"',
     ):
         assert hook in index_html, f"Missing required R2-R5 hook {hook} in index.html"
 

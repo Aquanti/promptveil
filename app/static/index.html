@@ -335,15 +335,25 @@
           <div id="input-error-banner" class="inline-alert inline-alert--error" role="alert" hidden></div>
 
           <div class="pane-footer">
-            <label class="checkbox-label">
-              <input
-                type="checkbox"
-                id="live-sanitize-toggle"
-                checked
-                data-testid="auto-sanitize-toggle"
-              />
-              <span data-i18n="step1.autoToggle">Скрывать автоматически</span>
-            </label>
+            <div class="pane-footer-actions">
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  id="live-sanitize-toggle"
+                  checked
+                  data-testid="auto-sanitize-toggle"
+                />
+                <span data-i18n="step1.autoToggle">Скрывать автоматически</span>
+              </label>
+              <label class="checkbox-label">
+                <input
+                  type="checkbox"
+                  id="detect-uuid-toggle"
+                  data-testid="detect-uuid-toggle"
+                />
+                <span data-i18n="step1.detectUuidToggle">Скрывать UUID</span>
+              </label>
+            </div>
             <button
               type="button"
               id="sanitize-now-btn"
@@ -728,6 +738,15 @@
             data-testid="open-terms-btn"
             data-i18n="footer.termsBtn"
           >Пользовательское соглашение</button>
+          <a
+            id="footer-repo-link"
+            class="footer-nav-link"
+            href="https://github.com/Aquanti/promptveil"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="footer-repo-link"
+            data-i18n="footer.sourceLink"
+          >Исходный код (MIT)</a>
         </div>
       </div>
 
@@ -949,8 +968,17 @@
 
     <div class="drawer-body">
       <div class="zero-pii-notice" data-i18n="audit.notice">
-        Контрольные отпечатки (SHA-256) вычисляются на вашем устройстве. Исходные тексты, секреты и таблица замен не сохраняются.
+        По умолчанию записи хранятся только в памяти вкладки (SHA-256 без исходных текстов). Включите опцию ниже, чтобы сохранять отпечатки на устройстве.
       </div>
+
+      <label class="checkbox-label">
+        <input
+          type="checkbox"
+          id="audit-persist-toggle"
+          data-testid="audit-persist-toggle"
+        />
+        <span data-i18n="audit.persistToggle">Сохранять журнал на этом устройстве</span>
+      </label>
 
       <div id="audit-empty" class="drawer-empty" data-i18n="audit.empty">
         Журнал пуст. Записи появятся после первой проверки текста.
@@ -1020,6 +1048,18 @@
       </div>
 
       <div id="proof-ram-note" class="proof-ram-note tabular-nums" data-testid="proof-ram-note"></div>
+
+      <div class="proof-repo-row">
+        <a
+          id="proof-repo-link"
+          class="footer-nav-link"
+          href="https://github.com/Aquanti/promptveil"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="proof-repo-link"
+          data-i18n="proof.repoLink"
+        >Открытый исходный код (MIT) на GitHub</a>
+      </div>
     </div>
 
     <div class="modal-footer">

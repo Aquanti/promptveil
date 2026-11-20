@@ -36,6 +36,9 @@ import {
   appendAuditReceipt,
   exportAuditJson,
   clearAuditLog,
+  isAuditPersistenceEnabled,
+  purgeUnoptedAuditStorage,
+  setAuditPersistenceEnabled,
   loadLanguage,
   saveLanguage,
   onStorageWarning,
@@ -70,6 +73,8 @@ const state = {
   pinnedToken: "",
   rules: [],
   auditLog: [],
+  auditPersist: false,
+  detectUuid: false,
   vault: new SessionVault(),
   lastFocusedTrigger: null,
   billingCycle: "month",
@@ -416,6 +421,10 @@ function refreshDrawersUi() {
     state.auditLog,
     lang
   );
+  const persistToggle = getEl("audit-persist-toggle");
+  if (persistToggle) {
+    persistToggle.checked = Boolean(state.auditPersist);
+  }
 }
 
 function resetSessionToZero({ silent = false, wipeDomOnly = false } = {}) {
@@ -501,7 +510,10 @@ async function recordAuditEntry(
 }
 
 function runSanitizePipeline(recordAudit = false, { evolveTransient = false } = {}) {
-  const result = state.vault.sanitize(state.rawText, state.rules, { evolveTransient });
+  const result = state.vault.sanitize(state.rawText, state.rules, {
+    evolveTransient,
+    detectUuid: Boolean(state.detectUuid),
+  });
   state.lastSanitizeResult = result;
   state.lastSanitizedInput = state.rawText;
   refreshWorkbenchUi();
@@ -642,6 +654,12 @@ function bindEvents() {
       cancelPendingLiveSanitize();
       cancelPendingLiveAudit();
     }
+  });
+
+  const detectUuidToggle = getEl("detect-uuid-toggle");
+  detectUuidToggle?.addEventListener("change", () => {
+    state.detectUuid = Boolean(detectUuidToggle.checked);
+    runSanitizePipeline(false);
   });
 
   const rawInput = getEl("raw-prompt-input");
@@ -894,6 +912,11 @@ function bindEvents() {
     showStatusBanner("audit.cleared");
   });
 
+  getEl("audit-persist-toggle")?.addEventListener("change", (event) => {
+    const nextEnabled = Boolean(event.currentTarget?.checked);
+    state.auditPersist = setAuditPersistenceEnabled(nextEnabled, state.auditLog);
+  });
+
   fileController.bindFileAndRuleImportEvents();
 
   bindPricingEvents({
@@ -951,7 +974,17 @@ export function init() {
   state.lang = loadLanguage();
   applyTheme(resolveInitialTheme(), state, { persist: false });
   state.rules = loadRules();
+  purgeUnoptedAuditStorage();
+  state.auditPersist = isAuditPersistenceEnabled();
   state.auditLog = loadAuditLog();
+  const detectUuidToggle = getEl("detect-uuid-toggle");
+  if (detectUuidToggle) {
+    detectUuidToggle.checked = Boolean(state.detectUuid);
+  }
+  const persistToggle = getEl("audit-persist-toggle");
+  if (persistToggle) {
+    persistToggle.checked = Boolean(state.auditPersist);
+  }
   bindEvents();
   applyLanguage(state.lang, {
     onAfterApply: () => {

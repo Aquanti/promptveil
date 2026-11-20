@@ -43,6 +43,7 @@ export const TRANSLATIONS = Object.freeze({
     "step1.fileLoading": "Читаем файл...",
     "step1.clearBtn": "Очистить",
     "step1.autoToggle": "Скрывать автоматически",
+    "step1.detectUuidToggle": "Скрывать UUID",
     "step1.sanitizeNowBtn": "Скрыть данные",
     "step1.outputHeading": "Безопасный текст для ИИ",
     "step1.outputEmpty":
@@ -124,7 +125,8 @@ export const TRANSLATIONS = Object.freeze({
     "audit.subtitle":
       "Хранятся только цифровые отпечатки (SHA-256) и счётчики — исходные тексты и пароли не записываются.",
     "audit.notice":
-      "Контрольные отпечатки (SHA-256) вычисляются на вашем устройстве. Исходные тексты, секреты и таблица замен не сохраняются.",
+      "По умолчанию записи хранятся только в памяти вкладки (SHA-256 без исходных текстов). Включите опцию ниже, чтобы сохранять отпечатки на устройстве.",
+    "audit.persistToggle": "Сохранять журнал на этом устройстве",
     "audit.exportBtn": "Скачать отчёт (.json)",
     "audit.clearBtn": "Очистить журнал",
     "audit.empty": "Журнал пуст. Записи появятся после первой проверки текста.",
@@ -161,6 +163,7 @@ export const TRANSLATIONS = Object.freeze({
     "cat.URL_TOKEN": "Токены в URL",
     "cat.JWT": "Токены входа",
     "cat.CREDIT_CARD": "Банк. карты",
+    "cat.POSSIBLE_CARD": "Возможная карта",
     "cat.IBAN": "Счета (IBAN)",
     "cat.RU_INN": "ИНН",
     "cat.RU_SNILS": "СНИЛС",
@@ -174,10 +177,12 @@ export const TRANSLATIONS = Object.freeze({
     "cat.CUSTOM": "Свои слова",
     "cat.EMAIL": "Почта",
     "cat.PHONE": "Телефоны",
+    "cat.RU_ORG": "Организации",
     "cat.RU_AUTO_PLATE": "Госномера авто",
     "cat.RU_FIO": "ФИО",
     "cat.RU_ADDRESS": "Адреса РФ",
     "cat.IPV4": "IP-адреса",
+    "cat.UUID": "UUID",
     "cat.HIGH_ENTROPY": "Секретные строки",
     "theme.toDark": "Включить тёмную тему",
     "theme.toLight": "Включить светлую тему",
@@ -200,7 +205,7 @@ export const TRANSLATIONS = Object.freeze({
     "proof.netTitle": "Передача текста на сервер и политика CSP",
     "proof.netMetric": "{count} запросов",
     "proof.netDetail":
-      "Внешних сетевых запросов: {ext}, запросов текста к серверу: {count}, нарушений CSP: {cspViolations}. Активна политика {policy}.",
+      "Внешних сетевых запросов: {ext}, запросов текста к серверу: {count}, нарушений CSP в документе приложения: {cspViolations}. Активна политика {policy}.",
     "proof.storageTitle": "Сохранённые тексты и реквизиты на сайте",
     "proof.storageMetric": "{bytes} байт",
     "proof.storageDetail":
@@ -216,6 +221,7 @@ export const TRANSLATIONS = Object.freeze({
     "proof.transportHttp": "незащищённый HTTP (для публичного запуска включите HTTPS)",
     "proof.ramNote":
       "Оперативная память текущей вкладки (очищается при закрытии/перезагрузке или кнопкой «Сбросить сессию в 0»): символов текста — {chars}, активных замен — {entities}.",
+    "proof.repoLink": "Открытый исходный код (MIT) на GitHub",
     "pricing.title": "Тарифы и развитие сервиса",
     "pricing.subtitle":
       "Все текущие функции защиты текстов, файлов и российских реквизитов полностью бесплатны.",
@@ -282,6 +288,7 @@ export const TRANSLATIONS = Object.freeze({
     "footer.navPricing": "Тарифы",
     "footer.privacyPolicyBtn": "Политика конфиденциальности",
     "footer.termsBtn": "Пользовательское соглашение",
+    "footer.sourceLink": "Исходный код (MIT)",
     "footer.trustHeading": "Архитектура доверия",
     "footer.badgeTls": "HTTPS / TLS",
     "footer.badgeZero": "0 логов ваших текстов",
@@ -361,6 +368,7 @@ export const TRANSLATIONS = Object.freeze({
     "step1.fileLoading": "Reading file...",
     "step1.clearBtn": "Clear",
     "step1.autoToggle": "Hide automatically",
+    "step1.detectUuidToggle": "Hide UUIDs",
     "step1.sanitizeNowBtn": "Hide data",
     "step1.outputHeading": "Safe text for AI",
     "step1.outputEmpty":
@@ -442,7 +450,8 @@ export const TRANSLATIONS = Object.freeze({
     "audit.subtitle":
       "Stores only cryptographic SHA-256 digests and counts — zero raw text or secrets.",
     "audit.notice":
-      "SHA-256 digests are computed on your device. Raw text, secrets, and mappings are never stored.",
+      "By default, entries stay in volatile tab RAM only (SHA-256 digests, zero raw text). Enable the option below to persist digests on this device.",
+    "audit.persistToggle": "Save history on this device",
     "audit.exportBtn": "Export (.json)",
     "audit.clearBtn": "Clear history",
     "audit.empty": "No history entries yet.",
@@ -479,6 +488,7 @@ export const TRANSLATIONS = Object.freeze({
     "cat.URL_TOKEN": "URL Tokens",
     "cat.JWT": "JWT Tokens",
     "cat.CREDIT_CARD": "Cards",
+    "cat.POSSIBLE_CARD": "Possible card",
     "cat.IBAN": "Bank Accounts (IBAN)",
     "cat.RU_INN": "RU INN",
     "cat.RU_SNILS": "RU SNILS",
@@ -492,10 +502,12 @@ export const TRANSLATIONS = Object.freeze({
     "cat.CUSTOM": "Custom Words",
     "cat.EMAIL": "Email",
     "cat.PHONE": "Phones",
+    "cat.RU_ORG": "RU Organizations",
     "cat.RU_AUTO_PLATE": "RU Auto Plates",
     "cat.RU_FIO": "RU Full Names",
     "cat.RU_ADDRESS": "RU Addresses",
     "cat.IPV4": "IP Addresses",
+    "cat.UUID": "UUID",
     "cat.HIGH_ENTROPY": "Secret Strings",
     "theme.toDark": "Switch to dark theme",
     "theme.toLight": "Switch to light theme",
@@ -518,7 +530,7 @@ export const TRANSLATIONS = Object.freeze({
     "proof.netTitle": "Server text transmission & CSP policy",
     "proof.netMetric": "{count} requests",
     "proof.netDetail":
-      "External requests: {ext}, server text calls: {count}, CSP violations: {cspViolations}. Active policy: {policy}.",
+      "External requests: {ext}, server text calls: {count}, CSP violations in app document: {cspViolations}. Active policy: {policy}.",
     "proof.storageTitle": "Stored text & secrets on site",
     "proof.storageMetric": "{bytes} bytes",
     "proof.storageDetail":
@@ -534,6 +546,7 @@ export const TRANSLATIONS = Object.freeze({
     "proof.transportHttp": "unencrypted HTTP (enable HTTPS for public launch)",
     "proof.ramNote":
       "Volatile tab RAM (cleared on reload/close or via Reset to 0): text chars — {chars}, active mappings — {entities}.",
+    "proof.repoLink": "Open-source code (MIT) on GitHub",
     "pricing.title": "Pricing & Roadmap",
     "pricing.subtitle":
       "All core masking, restoration, and Russian ID tools are 100% free today.",
@@ -600,6 +613,7 @@ export const TRANSLATIONS = Object.freeze({
     "footer.navPricing": "Pricing",
     "footer.privacyPolicyBtn": "Privacy Policy",
     "footer.termsBtn": "Terms of Use",
+    "footer.sourceLink": "Source Code (MIT)",
     "footer.trustHeading": "Trust Architecture",
     "footer.badgeTls": "HTTPS / TLS",
     "footer.badgeZero": "0 Text Logs",
