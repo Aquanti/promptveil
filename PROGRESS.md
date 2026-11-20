@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T18:18+03:00  
-**Session Status:** Stage 3B (Lighthouse Audit 95+) Complete — Proceeding to Netlify Production Deploy & Live Verification  
-**Exact Stop Point:** Modularized `app/static/js/app.js` (`1534` -> `972` lines) into `clipboard.js`, `pricing.js`, `modals.js` + updated `sw.js` (`promptveil-static-v2`), verified `pytest tests/test_server.py` (`22 passed`), `run_e2e.py --mode self-test` (`ALL CHECKS PASSED`), `run_e2e.py --mode live --tier all` (`150 passed`, `0 failed`), and ran Lighthouse audits against `http://127.0.0.1:8000` (Desktop: Performance **100**, Accessibility **100**, Best Practices **100**, SEO **100**; Mobile: Performance **98**, Accessibility **100**, Best Practices **100**, SEO **100**). Temporary server stopped cleanly. Next: Deploy `app/static` to Netlify `promptveil` (`12775486-f2aa-4d79-90c2-a85446c2b7a8`) and verify live HTTPS/offline via `browser` subagent.
+**Checkpoint Date:** 2026-11-20T18:21+03:00 (Periodic 15m Safety Save)  
+**Session Status:** Deployed v2 to Netlify (`deployId: 6b0064d917c8d8fd558f0da9`, `ready`) — Live Browser Verification in Progress  
+**Exact Stop Point:** All local implementation & verification complete (`pytest` 22/22, live E2E 150/150, Lighthouse Desktop 100/100/100/100 & Mobile 98/100/100/100). Production deploy `6b0064d917c8d8fd558f0da9` published and `ready` on `https://promptveil.netlify.app`. Browser subagent `0516d1c8-c381-4bed-b722-87c7572182d7` is actively executing the live HTTPS/offline verification checklist. Next: review `BROWSER_HOST_FACTS` & screenshot, record final deploy checkpoint, cancel 15m schedule `task-1966`, and send completion email to `kilkauciha@gmail.com`.
 
 ---
 
@@ -48,4 +48,4 @@
 ## 4. Public Launch & Hosting Record
 - **Live Public URL:** `https://promptveil.netlify.app` (renamed from `promtveil` on 2026-11-20)
 - **Netlify Project:** `promptveil` (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`, `teamSlug: kil-ka-uchikha`, `plan: nf_team_dev` / Free)
-- **Pending Production Re-deploy:** Deploy updated `app/static/` (Stage 1–3) after Stage 3 completion and verify live HTTPS/offline behavior.
+- **Latest Production Deploy:** `6b0064d917c8d8fd558f0da9` (`buildId: 6b0064d817c8d8fd558f0da7`, state `ready` — live HTTPS/offline `browser` verification in progress)
