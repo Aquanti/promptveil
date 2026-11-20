@@ -1,11 +1,11 @@
 /**
- * PromptVeil Modals, Zero-Retention Proof Renderer, Theme Switcher, Contacts & SW Registration.
+ * PromptVeil Modals, Lazy <template> Hydration, Zero-Retention Proof Renderer, Theme Switcher, Contacts & SW Registration.
  */
 
 import { copyWithFeedback } from "./clipboard.js";
 import { SITE_CONTACTS, buildMailtoHref } from "./contacts.js";
 import { clearEl, createEl, getEl, handleDrawerKeydown } from "./dom.js";
-import { getLang, normalizeLang, pluralizeCount, t } from "./i18n.js";
+import { applyTranslationsToRoot, getLang, normalizeLang, pluralizeCount, t } from "./i18n.js";
 import { runZeroRetentionSelfTest } from "./privacy-proof.js";
 import { closeDrawers, getOpenDialogEl, openDrawer } from "./render-drawers.js";
 import { loadThemePreference, saveThemePreference } from "./storage.js";
@@ -13,6 +13,38 @@ import { loadThemePreference, saveThemePreference } from "./storage.js";
 export const THEME_MOON_PATH = "M16.2 12.6A6.8 6.8 0 0 1 7.4 3.8a7 7 0 1 0 8.8 8.8Z";
 export const THEME_SUN_PATH =
   "M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M13 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z";
+
+const modalHydrators = new Map();
+
+export function registerModalHydrator(modalId, bindFn) {
+  modalHydrators.set(modalId, bindFn);
+}
+
+export function ensureModalMounted(modalId) {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  let modalEl = getEl(modalId);
+  if (!modalEl) {
+    const tpl = getEl(`tpl-${modalId}`);
+    if (!tpl || !("content" in tpl) || !document.body) {
+      return null;
+    }
+    const fragment = document.importNode(tpl.content, true);
+    document.body.appendChild(fragment);
+    modalEl = getEl(modalId);
+  }
+  if (modalEl) {
+    applyTranslationsToRoot(modalEl, getLang());
+    if (modalEl.dataset?.boundModal !== "1") {
+      if (modalEl.dataset) {
+        modalEl.dataset.boundModal = "1";
+      }
+      modalHydrators.get(modalId)?.(modalEl);
+    }
+  }
+  return modalEl;
+}
 
 export function resolveInitialTheme() {
   const saved = loadThemePreference();
@@ -303,9 +335,85 @@ export function renderContactsAndPolicy(lang = getLang()) {
 }
 
 export function registerOfflineServiceWorker() {
-  if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return;
   }
+
+  let waitingWorker = null;
+  let registrationRef = null;
+  let swUpdateRequested = false;
+  let reloading = false;
+
+  const showSwUpdateBanner = (worker) => {
+    if (worker) {
+      waitingWorker = worker;
+    }
+    const banner = getEl("sw-update-banner");
+    if (!banner) return;
+    applyTranslationsToRoot(banner, getLang());
+    const updateBtn = getEl("sw-update-btn");
+    if (updateBtn) {
+      updateBtn.disabled = false;
+    }
+    banner.hidden = false;
+  };
+
+  const updateBtn = getEl("sw-update-btn");
+  if (updateBtn && updateBtn.dataset.boundSw !== "1") {
+    updateBtn.dataset.boundSw = "1";
+    updateBtn.addEventListener("click", () => {
+      swUpdateRequested = true;
+      updateBtn.disabled = true;
+      const targetWorker = waitingWorker || registrationRef?.waiting;
+      if (targetWorker && targetWorker.state !== "redundant") {
+        targetWorker.postMessage({ type: "SKIP_WAITING" });
+      } else {
+        window.location.reload();
+      }
+    });
+  }
+
+  const dismissBtn = getEl("sw-update-dismiss-btn");
+  if (dismissBtn && dismissBtn.dataset.boundSw !== "1") {
+    dismissBtn.dataset.boundSw = "1";
+    dismissBtn.addEventListener("click", () => {
+      const banner = getEl("sw-update-banner");
+      if (banner) {
+        banner.hidden = true;
+      }
+    });
+  }
+
+  if (typeof navigator.serviceWorker.addEventListener === "function") {
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (swUpdateRequested && !reloading) {
+        reloading = true;
+        window.location.reload();
+      }
+    });
+  }
+
+  navigator.serviceWorker
+    .register("/sw.js")
+    .then((reg) => {
+      registrationRef = reg;
+      if (reg.waiting && (navigator.serviceWorker.controller || reg.active)) {
+        showSwUpdateBanner(reg.waiting);
+      }
+      reg.addEventListener("updatefound", () => {
+        const installing = reg.installing;
+        if (!installing) return;
+        installing.addEventListener("statechange", () => {
+          if (
+            installing.state === "installed" &&
+            (navigator.serviceWorker.controller || reg.active)
+          ) {
+            showSwUpdateBanner(installing);
+          }
+        });
+      });
+    })
+    .catch(() => {});
 }
 
 export function bindModalAndThemeEvents({
@@ -314,6 +422,30 @@ export function bindModalAndThemeEvents({
   showStatusBanner,
   onResetSession,
 }) {
+  const closeActiveDialog = () => {
+    hideInlineAlert("rulebook-alert");
+    closeDrawers(true, state);
+  };
+
+  registerModalHydrator("modal-privacy-proof", () => {
+    getEl("run-proof-check-btn")?.addEventListener("click", () => {
+      renderPrivacyProofModal(state, getLang());
+    });
+    getEl("reset-session-btn")?.addEventListener("click", onResetSession);
+    getEl("close-proof-btn")?.addEventListener("click", closeActiveDialog);
+    getEl("close-proof-footer-btn")?.addEventListener("click", closeActiveDialog);
+  });
+
+  registerModalHydrator("modal-privacy-policy", () => {
+    getEl("close-policy-modal-btn")?.addEventListener("click", closeActiveDialog);
+    getEl("close-policy-footer-btn")?.addEventListener("click", closeActiveDialog);
+  });
+
+  registerModalHydrator("modal-terms", () => {
+    getEl("close-terms-modal-btn")?.addEventListener("click", closeActiveDialog);
+    getEl("close-terms-footer-btn")?.addEventListener("click", closeActiveDialog);
+  });
+
   getEl("theme-toggle-btn")?.addEventListener("click", () => {
     applyTheme(state.theme === "dark" ? "light" : "dark", state, { persist: true });
   });
@@ -327,42 +459,26 @@ export function bindModalAndThemeEvents({
   });
 
   const handleOpenProofModal = (event) => {
+    ensureModalMounted("modal-privacy-proof");
     renderPrivacyProofModal(state, getLang());
     openDrawer("modal-privacy-proof", event.currentTarget, state);
   };
   getEl("open-proof-btn")?.addEventListener("click", handleOpenProofModal);
   getEl("footer-open-proof-btn")?.addEventListener("click", handleOpenProofModal);
-  getEl("run-proof-check-btn")?.addEventListener("click", () => {
-    renderPrivacyProofModal(state, getLang());
-  });
-  getEl("reset-session-btn")?.addEventListener("click", onResetSession);
 
   getEl("open-privacy-policy-btn")?.addEventListener("click", (event) => {
+    ensureModalMounted("modal-privacy-policy");
     renderContactsAndPolicy(getLang());
     openDrawer("modal-privacy-policy", event.currentTarget, state);
   });
   getEl("open-terms-btn")?.addEventListener("click", (event) => {
+    ensureModalMounted("modal-terms");
     renderContactsAndPolicy(getLang());
     openDrawer("modal-terms", event.currentTarget, state);
   });
 
-  const closeIds = [
-    "close-rulebook-btn",
-    "close-audit-btn",
-    "close-proof-btn",
-    "close-proof-footer-btn",
-    "close-plan-modal-btn",
-    "close-policy-modal-btn",
-    "close-policy-footer-btn",
-    "close-terms-modal-btn",
-    "close-terms-footer-btn",
-    "drawer-backdrop",
-  ];
-  for (const id of closeIds) {
-    getEl(id)?.addEventListener("click", () => {
-      hideInlineAlert("rulebook-alert");
-      closeDrawers(true, state);
-    });
+  for (const id of ["close-rulebook-btn", "close-audit-btn", "drawer-backdrop"]) {
+    getEl(id)?.addEventListener("click", closeActiveDialog);
   }
 
   const contactCopyTargets = [
@@ -383,9 +499,67 @@ export function bindModalAndThemeEvents({
 
   document.addEventListener("keydown", (event) => {
     const openDialogEl = getOpenDialogEl();
-    handleDrawerKeydown(event, openDialogEl, () => {
-      hideInlineAlert("rulebook-alert");
-      closeDrawers(true, state);
-    });
+    handleDrawerKeydown(event, openDialogEl, closeActiveDialog);
   });
+
+  const setMobileMoreOpen = (open, { restoreFocus = false } = {}) => {
+    const btn = getEl("mobile-more-btn");
+    const menu = getEl("mobile-more-menu");
+    if (!btn || !menu) return;
+    menu.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (!open && restoreFocus) {
+      btn.focus();
+    }
+  };
+
+  getEl("mobile-more-btn")?.addEventListener("click", () => {
+    const menu = getEl("mobile-more-menu");
+    if (!menu) return;
+    setMobileMoreOpen(menu.hidden);
+  });
+  getEl("mobile-open-rulebook-btn")?.addEventListener("click", () => {
+    setMobileMoreOpen(false);
+    hideInlineAlert("rulebook-alert");
+    openDrawer("drawer-rulebook", getEl("mobile-more-btn"), state);
+  });
+  getEl("mobile-open-audit-btn")?.addEventListener("click", () => {
+    setMobileMoreOpen(false);
+    openDrawer("drawer-audit", getEl("mobile-more-btn"), state);
+  });
+  getEl("mobile-pricing-btn")?.addEventListener("click", () => {
+    setMobileMoreOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const menu = getEl("mobile-more-menu");
+    if (menu && !menu.hidden && !getOpenDialogEl()) {
+      event.preventDefault();
+      setMobileMoreOpen(false, { restoreFocus: true });
+    }
+  });
+  document.addEventListener("click", (event) => {
+    const menu = getEl("mobile-more-menu");
+    if (!menu || menu.hidden) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest("#mobile-more-btn, #mobile-more-menu")
+    ) {
+      return;
+    }
+    setMobileMoreOpen(false);
+  });
+  if (typeof window.matchMedia === "function") {
+    const mobileMediaQuery = window.matchMedia("(max-width: 639px)");
+    const handleMobileMediaChange = (event) => {
+      if (!event.matches) {
+        setMobileMoreOpen(false);
+      }
+    };
+    if (typeof mobileMediaQuery.addEventListener === "function") {
+      mobileMediaQuery.addEventListener("change", handleMobileMediaChange);
+    } else if (typeof mobileMediaQuery.addListener === "function") {
+      mobileMediaQuery.addListener(handleMobileMediaChange);
+    }
+  }
 }

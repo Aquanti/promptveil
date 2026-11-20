@@ -36,8 +36,9 @@
     content="Free client-side masking and restoration workspace for AI prompts with zero data retention."
   />
   <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
-  <link rel="stylesheet" href="/styles.css" />
-  <script type="module" src="/js/app.js"></script>
+  <link rel="stylesheet" href="/dist/styles.V6OENGR4.css" />
+  <script type="module" src="/dist/app.G2JSUUFJ.js"></script>
+  <link rel="modulepreload" href="/dist/i18n-ru-K33PTIXV.js" />
 </head>
 <body>
   <a href="#main-workbench" class="skip-link" data-i18n="a11y.skipLink">Skip to workbench</a>
@@ -219,6 +220,34 @@
       hidden
       data-testid="status-banner"
     ></div>
+
+    <div
+      id="sw-update-banner"
+      class="sw-update-banner"
+      role="region"
+      aria-live="polite"
+      hidden
+      data-testid="sw-update-banner"
+    >
+      <span id="sw-update-message" class="sw-update-message" data-i18n="sw.updateMessage">A new version of PromptVeil is available</span>
+      <div class="sw-update-actions">
+        <button
+          type="button"
+          id="sw-update-btn"
+          class="btn-lime sw-update-btn"
+          data-testid="sw-update-btn"
+          data-i18n="sw.updateBtn"
+        >Refresh</button>
+        <button
+          type="button"
+          id="sw-update-dismiss-btn"
+          class="drawer-close sw-update-dismiss"
+          aria-label="Dismiss update notification"
+          data-i18n-aria="sw.dismissAria"
+          data-testid="sw-update-dismiss-btn"
+        >×</button>
+      </div>
+    </div>
 
     <section class="hero-strip" aria-labelledby="hero-title" data-testid="hero-summary">
       <div class="hero-main-card">
@@ -1105,6 +1134,7 @@
     </div>
   </aside>
 
+  <template id="tpl-modal-privacy-proof">
   <section
     id="modal-privacy-proof"
     class="modal-dialog"
@@ -1187,7 +1217,9 @@
       </div>
     </div>
   </section>
+  </template>
 
+  <template id="tpl-modal-plan-request">
   <section
     id="modal-plan-request"
     class="modal-dialog"
@@ -1304,7 +1336,9 @@
       </div>
     </div>
   </section>
+  </template>
 
+  <template id="tpl-modal-privacy-policy">
   <section
     id="modal-privacy-policy"
     class="modal-dialog"
@@ -1364,7 +1398,9 @@
       >Close</button>
     </div>
   </section>
+  </template>
 
+  <template id="tpl-modal-terms">
   <section
     id="modal-terms"
     class="modal-dialog"
@@ -1420,5 +1456,6 @@
       >Close</button>
     </div>
   </section>
+  </template>
 </body>
 </html>

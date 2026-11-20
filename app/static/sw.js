@@ -1,47 +1,33 @@
-/* PromptVeil Self-Hosted Offline Service Worker (Static Assets Cache Only) */
+/* PromptVeil Self-Hosted Offline Service Worker (Network-First HTML, Cache-First /dist/*, SWR Static) */
 
-const CACHE_NAME = "promptveil-static-v2";
+const CACHE_NAME = "promptveil-build-25408dc9ec";
 
 const PRECACHE_URLS = [
-  "./",
-  "./index.html",
-  "./styles.css",
-  "./favicon.svg",
-  "./manifest.webmanifest",
-  "./404.html",
-  "./apple-touch-icon.png",
-  "./icon-192.png",
-  "./icon-512.png",
-  "./og-image.png",
-  "./css/tokens.css",
-  "./css/layout.css",
-  "./css/components.css",
-  "./css/drawers.css",
-  "./css/sections.css",
-  "./css/modals.css",
-  "./js/app.js",
-  "./js/clipboard.js",
-  "./js/contacts.js",
-  "./js/detector.js",
-  "./js/dom.js",
-  "./js/i18n.js",
-  "./js/modals.js",
-  "./js/presets.js",
-  "./js/pricing.js",
-  "./js/privacy-proof.js",
-  "./js/render-drawers.js",
-  "./js/render-workbench.js",
-  "./js/storage.js",
-  "./js/vault.js",
+  "/",
+  "/en/",
+  "/404.html",
+  "/manifest.webmanifest",
+  "/favicon.svg",
+  "/apple-touch-icon.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/og-image.png",
+  "/dist/styles.V6OENGR4.css",
+  "/dist/app.G2JSUUFJ.js",
+  "/dist/i18n-en-4AZRN63R.js",
+  "/dist/i18n-ru-K33PTIXV.js"
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (event) => {
@@ -66,16 +52,20 @@ self.addEventListener("fetch", (event) => {
   }
 
   const reqUrl = new URL(req.url);
-  if (reqUrl.origin !== self.location.origin || reqUrl.pathname === "/health") {
+  if (
+    reqUrl.origin !== self.location.origin ||
+    reqUrl.pathname === "/health" ||
+    reqUrl.pathname === "/sw.js"
+  ) {
     return;
   }
 
-  event.respondWith(
-    caches.match(req, { ignoreSearch: true }).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-      return fetch(req)
+  const acceptHeader = req.headers.get("accept") || "";
+  const isHtmlRequest = req.mode === "navigate" || acceptHeader.includes("text/html");
+
+  if (isHtmlRequest) {
+    event.respondWith(
+      fetch(req)
         .then((networkRes) => {
           if (networkRes && networkRes.ok && networkRes.type === "basic") {
             const copy = networkRes.clone();
@@ -83,12 +73,55 @@ self.addEventListener("fetch", (event) => {
           }
           return networkRes;
         })
-        .catch(() => {
-          if (req.mode === "navigate") {
-            return caches.match("./index.html");
-          }
+        .catch(async () => {
+          const cached = await caches.match(req, { ignoreSearch: true });
+          if (cached) return cached;
+          const fallbackUrl = reqUrl.pathname.startsWith("/en") ? "/en/" : "/";
+          const fallback = await caches.match(fallbackUrl);
+          if (fallback) return fallback;
           return Response.error();
-        });
+        })
+    );
+    return;
+  }
+
+  if (reqUrl.pathname.startsWith("/dist/")) {
+    event.respondWith(
+      caches.match(req, { ignoreSearch: true }).then((cached) => {
+        if (cached) {
+          return cached;
+        }
+        return fetch(req)
+          .then((networkRes) => {
+            if (networkRes && networkRes.ok && networkRes.type === "basic") {
+              const copy = networkRes.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
+            }
+            return networkRes;
+          })
+          .catch(() => Response.error());
+      })
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(req, { ignoreSearch: true }).then((cached) => {
+      const networkPromise = fetch(req)
+        .then((networkRes) => {
+          if (networkRes && networkRes.ok && networkRes.type === "basic") {
+            const copy = networkRes.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => {});
+          }
+          return networkRes;
+        })
+        .catch(() => cached || Response.error());
+
+      if (cached) {
+        event.waitUntil(networkPromise);
+        return cached;
+      }
+      return networkPromise;
     })
   );
 });

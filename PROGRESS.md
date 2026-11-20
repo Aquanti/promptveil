@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T17:04Z (`20:04+03:00`)  
-**Session Status:** v2 Audit Remediation — Stage C / Milestone M3 (Mobile UX `390×844`, Items 14–18) COMPLETE  
-**Exact Stop Point:** Stage C / M3 (Items 14–18) implemented, Iteration 2 gate-verified (Gate PASS: Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`; `node --check`, `25/25` `node:test`, `24/24` `pytest`, `7/7` targeted Playwright E2E + `548` & `92+3` live viewport/adversarial checks), and committed locally (`checkpoint: stage C mobile ux and viewport fit`). Stage A (`5636cd9`), E2E Alignment (`664f816`), and Stage B (`2d91890`) are preserved below; `e2e_tests/` remains untouched by M3. Next planned stage: `Milestone M4: Stage D Performance, Security Headers, Hygiene & CI`.
+**Checkpoint Date:** 2026-11-20T17:30Z (`20:30+03:00`)  
+**Session Status:** v2 Audit Remediation — Stage D / Milestone M4 (Performance, Security Headers, Hygiene & CI, Items 19–26) COMPLETE  
+**Exact Stop Point:** Stage D / M4 (Items 19–26) implemented, Gate-verified (Gate PASS: Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`; deterministic `esbuild` bundle `25408dc9ec`, `44/44` `node:test`, `24/24` `pytest`, `172` E2E self-test, `12/12` targeted live E2E + real HTTP SW update probe), and committed locally (`checkpoint: stage D performance bundling sw and ci`). Stage A (`5636cd9`), E2E Alignment (`664f816`), Stage B (`2d91890`), and Stage C (`3c6fb1f`) are preserved below; `e2e_tests/` and `render-drawers.js` remain untouched by M4. Next planned stage: `Milestone M5: Stage E Safe Growth Features` (Items 28, 31–34, 36).
 
 ---
 
@@ -145,6 +145,37 @@
 
 ---
 
+## 6b. v2 Audit Remediation — Stage D (Milestone M4: Performance, Security Headers, Hygiene & CI, Items 19–26)
+
+### Completed Items (Items 19–26)
+1. **Items 19 & 20 — CSS `@import` Elimination, `esbuild` Bundling & Immutable Cache (`package.json`, `package-lock.json`, `scripts/build.mjs`, `app/static/dist/`, `app/static/{index.html,en/index.html,404.html}`, `netlify.toml`):**
+   - Added `scripts/build.mjs` (`esbuild@^0.25.12`) generating deterministic content-hashed build `25408dc9ec` in `app/static/dist/` (`styles.V6OENGR4.css` with 0 `@import`, `app.G2JSUUFJ.js`, `i18n-ru-K33PTIXV.js`, `i18n-en-4AZRN63R.js`), injecting root-relative `/dist/*` links into `index.html`, `en/index.html`, and `404.html` while keeping `app/static/js/*.js` intact for unit/E2E tests.
+   - Configured `[[headers]] for = "/dist/*"` in `netlify.toml` with `Cache-Control = "public, max-age=31536000, immutable"`.
+2. **Item 21 — Lazy i18n Dictionaries & `<template>` Modals (`app/static/js/{i18n,i18n-ru,i18n-en,modals,pricing,app}.js`, `app/static/{index,en/index}.html`):**
+   - Split `i18n-ru.js` and `i18n-en.js` for on-demand dynamic `import()` in `i18n.js` (`pendingLoads` + `applySeq` race protection, zero `fetch()`), paired with `<link rel="modulepreload">` for the alternate language chunk to preserve zero interactive egress.
+   - Moved all 4 modals (`#modal-privacy-proof`, `#modal-plan-request`, `#modal-privacy-policy`, `#modal-terms`) into `<template id="tpl-modal-...">` elements hydrated on first open via `document.importNode(tpl.content, true)` (zero `innerHTML`).
+3. **Item 22 — Service Worker Strategy & Update Banner (`app/static/sw.js`, `app/static/js/modals.js`, `app/static/css/components.css`, `app/static/{index,en/index}.html`):**
+   - Updated `sw.js` (`CACHE_NAME = "promptveil-build-25408dc9ec"`) with network-first HTML navigation, cache-first `/dist/*`, stale-while-revalidate for other same-origin GET assets, `message` handler for `{ type: "SKIP_WAITING" }`, and `#sw-update-banner` / `#sw-update-btn` / `#sw-update-dismiss-btn` reload flow.
+4. **Item 23 — COOP & CORP Headers (`app/main.py`, `netlify.toml`):**
+   - Added `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Resource-Policy: same-origin` in both `app/main.py` and `netlify.toml`.
+5. **Items 24 & 25 — Dead Code Removal & `app.js` Modularization (`app/static/js/{pricing,notifications,pipeline,app}.js`):**
+   - Removed dead pricing code (`billingCycle`, `_cycle`, and empty `renderPricingSection()`).
+   - Extracted `notifications.js` (96 lines) and `pipeline.js` (405 lines) from `app.js`, reducing `app.js` to `686` lines (`< 750`).
+6. **Item 26 — JS Unit Tests, Repo Hygiene & CI (`.gitattributes`, `CHANGELOG.md`, `README.md`, `.github/workflows/ci.yml`, `tests/js/*.test.mjs`, `tests/test_server.py`, `.gitignore`):**
+   - Added `.gitattributes`, `CHANGELOG.md`, updated `README.md`, `.gitignore` (`node_modules/`), and `.github/workflows/ci.yml`.
+   - Expanded `tests/js/*.test.mjs` (`detector.test.mjs`, `detector-core.test.mjs`, `state-i18n.test.mjs`, `notifications-pipeline.test.mjs`, `storage.test.mjs`, `vault.test.mjs`) and `tests/test_server.py` (scanning both `js/` and `dist/`).
+
+### Stage D Verification Results (Gate PASS)
+- **Gate Iteration 1 Result:** **PASS** (Forensic Auditor `CLEAN`, 2/2 Reviewers `APPROVE`, 2/2 Challengers `APPROVE`).
+- **`npm run build`:** Deterministic build `25408dc9ec` (`100%` identical SHA-256 hashes across `index.html`, `en/index.html`, `404.html`, `sw.js`, and 4 `dist/*` bundles on re-run).
+- **`node --test tests\js\*.test.mjs`:** **`44/44` passed** (`12` suites, `0` failures).
+- **`pytest tests\test_server.py -v`:** **`24/24` passed** (`0` failures).
+- **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`172` tests collected).
+- **Targeted Live Playwright E2E (`ACC_01`, `ACC_02`, `ACC_04`, `ACC_06`, `ACC_08`, `ACC_11`, `ACC_12`, `T4_05`, `T4_06`, `T5_08`, `T5_28`, `T5_29`) + Real HTTP SW Update Probe:** **`12/12` passed** (`0` failures) + ephemeral HTTP probe verified full `#sw-update-banner` -> `SKIP_WAITING` -> reload cycle (`SW_PROBE_OK`).
+- **Operational Note for `E2E_TRACK` / M6 (`T5_32`):** In `e2e_tests/test_tier5_adversarial.py`, `T5_32` parts 1–3 (`COOP`/`CORP`, `/dist/*` 200, 4 `<template>` modals, `sw_ready`) pass, while line 1945 (`#sw-update-banner`) times out under `page.context.route("**/sw.js", ...)` because Chromium's browser-process `ServiceWorkerRegistration.update()` bypasses context route interception. Route to `E2E_TRACK` / M6 (use a test-server `/sw.js` version-bump hook) before running full `--tier all` / CI.
+
+---
+
 ## 7. GitHub Remote & Push Instructions (Item 4)
 No GitHub credentials or `origin` remote are configured in this local environment. Once ready to publish the repository to `https://github.com/Aquanti/promptveil`, run:
 
@@ -159,7 +190,6 @@ git push -u origin master
 ---
 
 ## 8. Next Steps
-1. **Next Planned Stage — `Milestone M4: Stage D Performance, Security Headers, Hygiene & CI` (Items 19–26):** Eliminate CSS `@import` chain, `esbuild` CSS/JS bundling & minification into `app/static/dist/` with immutable cache headers, lazy i18n & `<template>` modals, SW network-first HTML + SWR + `"Обновить"` banner, COOP/CORP headers, dead code removal, `app.js` modularization (`notifications.js`, `pipeline.js`), `.gitattributes`, `CHANGELOG.md`, and GitHub Actions CI workflow.
-2. **`M5` — Stage E Growth Features:** Safe static client-side growth items (Items 28, 31–34, 36 + out-of-scope roadmap notes).
-3. **`M6` — Full Live E2E (`172` tests):** Run `pytest`, `node --test`, `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all` (`172/172` with `0` failures).
-4. **`M7` — Production Netlify Deploy & Delivery:** Deploy to production Netlify + confirm via `netlify-open-deployments`, verify live `https://promptveil.netlify.app` in browser, run Desktop & Mobile Lighthouse outside repo, update `PROGRESS.md` + commit, and send completion email to `kilkauciha@gmail.com`.
+1. **Next Planned Stage — `Milestone M5: Stage E Safe Growth Features` (Items 28, 31–34, 36 + roadmap notes for 29, 30, 35, 37):** One-click Copy & Open AI, client-side Telegram/email plan request flow, static `"Как это работает"` & `"Что мы пока НЕ ловим"`, sensitivity mode (`"Обычный / Строгий"`) + tooltips, 4 industry word packs, rebuild `dist/`, and `PROGRESS.md` checkpoint.
+2. **`E2E_TRACK` / `M6` — Full Live E2E (`172` tests):** Update `T5_32` `/sw.js` update harness (replacing `page.context.route("**/sw.js")` with a real HTTP version-bump hook), then run `pytest`, `node --test`, `run_e2e.py --mode self-test`, and `run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all` (`172/172` with `0` failures).
+3. **`M7` — Production Netlify Deploy & Delivery:** Deploy to production Netlify + confirm via `netlify-open-deployments`, verify live `https://promptveil.netlify.app` in browser, run Desktop & Mobile Lighthouse outside repo, update `PROGRESS.md` + commit, and send completion email to `kilkauciha@gmail.com`.

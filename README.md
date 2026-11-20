@@ -57,13 +57,17 @@ python -m venv .venv
 Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
-# 2. Серверные тесты и проверка CSP/гигиены
+# 2. Сборка production-бандла (CSS/JS -> app/static/dist/)
+npm ci
+npm run build
+
+# 3. Серверные тесты и проверка CSP/гигиены
 .\.venv\Scripts\python.exe -m pytest tests\test_server.py -v
 
-# 3. Модульные JS-тесты детекторов и хранилища (Node.js)
-node --test tests\js\detector.test.mjs
+# 4. Модульные JS-тесты детекторов, хранилища и i18n (Node.js)
+node --test tests\js\*.test.mjs
 
-# 4. E2E-тесты (Playwright)
+# 5. E2E-тесты (Playwright, 172 теста)
 .\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all
 ```
 
@@ -127,17 +131,21 @@ node --test tests\js\detector.test.mjs
 │   ├── main.py              # Local static host + security headers + /health
 │   └── static/
 │       ├── index.html
+│       ├── en/index.html    # English route (/en/)
 │       ├── 404.html
 │       ├── manifest.webmanifest
-│       ├── sw.js
+│       ├── sw.js            # Network-first HTML, cache-first /dist/*, SWR static
 │       ├── styles.css
 │       ├── css/             # tokens.css, layout.css, components.css, drawers.css, modals.css, sections.css
-│       └── js/              # detector.js, vault.js, storage.js, privacy-proof.js, contacts.js, i18n.js, app.js, ...
+│       ├── js/              # detector.js, vault.js, storage.js, i18n-{ru,en}.js, notifications.js, pipeline.js, app.js, ...
+│       └── dist/            # Content-hashed esbuild CSS & code-split ESM JS bundles
+├── scripts/
+│   └── build.mjs            # esbuild CSS/JS bundler + HTML/SW hash injector
 ├── tests/
-│   ├── test_server.py       # FastAPI, CSP, zero-egress, and static hygiene tests
+│   ├── test_server.py       # FastAPI, CSP/COOP/CORP, zero-egress, and static hygiene tests
 │   └── js/
-│       └── detector.test.mjs # Fast Node.js unit tests (detectors, vault, storage)
-└── e2e_tests/               # Playwright E2E test suite (Tiers 1–5 + Acceptance)
+│       └── *.test.mjs       # Fast Node.js unit tests (detectors, vault, storage, i18n, pipeline)
+└── e2e_tests/               # Playwright E2E test suite (172 tests: Tiers 1–5 + Acceptance)
 ```
 
 ### Local Setup & Verification
@@ -149,13 +157,17 @@ python3 -m venv .venv
 cp .env.example .env
 .venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
+# Build production bundles (CSS/JS -> app/static/dist/)
+npm ci
+npm run build
+
 # Static security & FastAPI tests
 .venv/bin/python -m pytest tests/test_server.py -v
 
-# Node.js detector & storage unit tests
-node --test tests/js/detector.test.mjs
+# Node.js unit tests
+node --test tests/js/*.test.mjs
 
-# Playwright E2E suite
+# Playwright E2E suite (172 tests)
 ./e2e_tests/.venv_e2e/bin/python e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all
 ```
 

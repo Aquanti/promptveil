@@ -23,6 +23,8 @@ EXPECTED_SECURITY_HEADERS: dict[str, str] = {
     "x-frame-options": "DENY",
     "referrer-policy": "no-referrer",
     "permissions-policy": "camera=(), microphone=(), geolocation=()",
+    "cross-origin-opener-policy": "same-origin",
+    "cross-origin-resource-policy": "same-origin",
 }
 
 FORBIDDEN_LEAK_SUBSTRINGS: tuple[str, ...] = (
@@ -170,11 +172,7 @@ def test_health_endpoint_and_security_headers() -> None:
             }
         else:
             assert response.content == b""
-        assert response.headers["content-security-policy"] == CSP_POLICY
-        assert response.headers["x-content-type-options"] == "nosniff"
-        assert response.headers["x-frame-options"] == "DENY"
-        assert response.headers["referrer-policy"] == "no-referrer"
-        assert response.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+        _assert_security_headers(response.headers)
 
 
 def test_disallowed_methods_docs_directory_and_traversal_hardening() -> None:
@@ -200,29 +198,36 @@ def test_disallowed_methods_docs_directory_and_traversal_hardening() -> None:
     ):
         resp = client.get(hidden_path)
         assert resp.status_code == 404, f"Expected 404 for {hidden_path}, got {resp.status_code}"
-        assert resp.headers["content-security-policy"] == CSP_POLICY
-        assert resp.headers["x-content-type-options"] == "nosniff"
-        assert resp.headers["x-frame-options"] == "DENY"
-        assert resp.headers["referrer-policy"] == "no-referrer"
-        assert resp.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+        _assert_security_headers(resp.headers)
 
 
 def test_root_serves_index_html_with_relative_assets_and_csp() -> None:
-    """Verify GET / serves index.html with relative asset links and CSP header."""
+    """Verify GET / serves index.html with bundled /dist/ asset links and CSP/COOP/CORP headers."""
     client = TestClient(app)
     response = client.get("/")
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert response.headers["content-security-policy"] == CSP_POLICY
+    _assert_security_headers(response.headers)
     body = response.text
     assert './favicon.svg"' in body
-    assert './styles.css"' in body
-    assert './js/app.js"' in body
+    assert './styles.css"' not in body
+    assert './js/app.js"' not in body
+    css_match = re.search(r'<link\s+rel="stylesheet"\s+href="(/dist/styles\.[A-Za-z0-9_-]+\.css)"', body)
+    js_match = re.search(r'<script\s+type="module"\s+src="(/dist/app\.[A-Za-z0-9_-]+\.js)"', body)
+    assert css_match is not None, "Expected root-relative /dist/styles.<hash>.css in index.html"
+    assert js_match is not None, "Expected root-relative /dist/app.<hash>.js in index.html"
+    assert client.get(css_match.group(1)).status_code == 200
+    assert client.get(js_match.group(1)).status_code == 200
 
 
 def test_en_route_serves_english_index_with_root_assets_and_headers() -> None:
-    """Verify GET/HEAD /en/ serves en/index.html with root-relative assets, hreflang, and security headers."""
+    """Verify GET/HEAD /en/ serves en/index.html with matching /dist/ assets, hreflang, and security headers."""
     client = TestClient(app)
+    root_body = client.get("/").text
+    root_css = re.search(r'href="(/dist/styles\.[A-Za-z0-9_-]+\.css)"', root_body)
+    root_js = re.search(r'src="(/dist/app\.[A-Za-z0-9_-]+\.js)"', root_body)
+    assert root_css is not None and root_js is not None
+
     for method in ("GET", "HEAD"):
         response = client.request(method, "/en/")
         assert response.status_code == 200
@@ -234,8 +239,10 @@ def test_en_route_serves_english_index_with_root_assets_and_headers() -> None:
             body = response.text
             assert '<html lang="en">' in body
             assert 'href="/favicon.svg"' in body
-            assert 'href="/styles.css"' in body
-            assert 'src="/js/app.js"' in body
+            assert 'href="/styles.css"' not in body
+            assert 'src="/js/app.js"' not in body
+            assert f'href="{root_css.group(1)}"' in body
+            assert f'src="{root_js.group(1)}"' in body
             assert 'href="/manifest.webmanifest"' in body
             assert 'rel="canonical" href="https://promptveil.netlify.app/en/"' in body
             assert 'hreflang="ru" href="https://promptveil.netlify.app/"' in body
@@ -285,6 +292,12 @@ def test_static_assets_served_from_root() -> None:
     assert seen_counts[".css"] >= 1
     assert seen_counts[".svg"] >= 1
 
+    dist_css = sorted((STATIC_DIR / "dist").glob("*.css"))
+    dist_js = sorted((STATIC_DIR / "dist").glob("*.js"))
+    assert len(dist_css) == 1, f"Expected single bundled dist CSS, found {dist_css}"
+    assert len(dist_js) >= 3, f"Expected entry + split i18n dist JS chunks, found {dist_js}"
+    assert "@import" not in dist_css[0].read_text(encoding="utf-8")
+
 
 def test_static_css_subdir_and_woff2_mime_headers(tmp_path: Path) -> None:
     """Verify nested css/*.css and fonts/*.woff2 assets are served with exact MIME types and all 5 security headers."""
@@ -312,11 +325,7 @@ def test_static_css_subdir_and_woff2_mime_headers(tmp_path: Path) -> None:
         resp = client.get(path)
         assert resp.status_code == 200
         assert mime_substring in resp.headers["content-type"]
-        assert resp.headers["content-security-policy"] == CSP_POLICY
-        assert resp.headers["x-content-type-options"] == "nosniff"
-        assert resp.headers["x-frame-options"] == "DENY"
-        assert resp.headers["referrer-policy"] == "no-referrer"
-        assert resp.headers["permissions-policy"] == "camera=(), microphone=(), geolocation=()"
+        _assert_security_headers(resp.headers)
 
 
 def test_zero_egress_no_sanitize_or_rehydrate_endpoints() -> None:
@@ -345,7 +354,7 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
         "https://alice.yandex.ru/",
         "https://claude.ai/",
     }
-    for html_path in (STATIC_DIR / "index.html", STATIC_DIR / "en" / "index.html"):
+    for html_path in (STATIC_DIR / "index.html", STATIC_DIR / "en" / "index.html", STATIC_DIR / "404.html"):
         html_src = html_path.read_text(encoding="utf-8")
         rel_html = html_path.relative_to(STATIC_DIR).as_posix()
 
@@ -417,28 +426,29 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
             f"Protocol-relative URL found in {css_path.relative_to(STATIC_DIR)}"
         )
 
-    # Client JS must remain 100% XSS-safe and zero-egress across all nested modules.
-    all_js = sorted((STATIC_DIR / "js").rglob("*.js"))
+    # Client JS (both source modules and bundled dist chunks) must remain 100% XSS-safe and zero-egress.
+    all_js = sorted((STATIC_DIR / "js").rglob("*.js")) + sorted((STATIC_DIR / "dist").rglob("*.js"))
     assert all_js, "Expected at least one JS module in app/static/js"
     for js_path in all_js:
         source = js_path.read_text(encoding="utf-8")
+        rel_js = js_path.relative_to(STATIC_DIR).as_posix()
         assert not re.search(r"\b(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write)\b", source), (
-            f"Forbidden unsafe HTML sink in {js_path.name}"
+            f"Forbidden unsafe HTML sink in {rel_js}"
         )
-        assert not re.search(r"\beval\s*\(", source), f"Forbidden eval() in {js_path.name}"
-        assert not re.search(r"\bnew\s+Function\s*\(", source), f"Forbidden new Function() in {js_path.name}"
-        assert not re.search(r"\bfetch\s*\(", source), f"Forbidden fetch() in {js_path.name}"
-        assert "XMLHttpRequest" not in source, f"Forbidden XMLHttpRequest in {js_path.name}"
-        assert "sendBeacon" not in source, f"Forbidden sendBeacon in {js_path.name}"
-        assert not re.search(r"\bnew\s+WebSocket\s*\(", source), f"Forbidden WebSocket in {js_path.name}"
-        assert not re.search(r"\bEventSource\b", source), f"Forbidden EventSource in {js_path.name}"
+        assert not re.search(r"\beval\s*\(", source), f"Forbidden eval() in {rel_js}"
+        assert not re.search(r"\bnew\s+Function\s*\(", source), f"Forbidden new Function() in {rel_js}"
+        assert not re.search(r"\bfetch\s*\(", source), f"Forbidden fetch() in {rel_js}"
+        assert "XMLHttpRequest" not in source, f"Forbidden XMLHttpRequest in {rel_js}"
+        assert "sendBeacon" not in source, f"Forbidden sendBeacon in {rel_js}"
+        assert not re.search(r"\bnew\s+WebSocket\s*\(", source), f"Forbidden WebSocket in {rel_js}"
+        assert not re.search(r"\bEventSource\b", source), f"Forbidden EventSource in {rel_js}"
         assert not re.search(r"""(['"`])(?:https?|wss?)://""", source, re.IGNORECASE), (
-            f"Forbidden external URL string literal in {js_path.name}"
+            f"Forbidden external URL string literal in {rel_js}"
         )
 
 
 def test_netlify_toml_matches_publish_dir_and_csp() -> None:
-    """Verify netlify.toml publishes app/static with matching CSP and security headers."""
+    """Verify netlify.toml publishes app/static with matching CSP, COOP, CORP, and immutable /dist/* headers."""
     netlify_path = BASE_DIR / "netlify.toml"
     data = tomllib.loads(netlify_path.read_text(encoding="utf-8"))
     assert data["build"]["publish"] == "app/static"
@@ -451,6 +461,12 @@ def test_netlify_toml_matches_publish_dir_and_csp() -> None:
     assert values["X-Frame-Options"] == "DENY"
     assert values["Referrer-Policy"] == "no-referrer"
     assert values["Permissions-Policy"] == "camera=(), microphone=(), geolocation=()"
+    assert values["Cross-Origin-Opener-Policy"] == "same-origin"
+    assert values["Cross-Origin-Resource-Policy"] == "same-origin"
+
+    dist_headers = next((h for h in data["headers"] if h.get("for") == "/dist/*"), None)
+    assert dist_headers is not None, "Missing [[headers]] block for /dist/* in netlify.toml"
+    assert dist_headers["values"]["Cache-Control"] == "public, max-age=31536000, immutable"
 
     for cached_path in ("/js/*", "/styles.css", "/css/*", "/fonts/*"):
         cache_headers = next((h for h in data["headers"] if h.get("for") == cached_path), None)
@@ -648,6 +664,7 @@ def test_cache_control_and_netlify_parity() -> None:
     header_blocks = data["headers"]
     assert {block["for"] for block in header_blocks} == {
         "/*",
+        "/dist/*",
         "/js/*",
         "/styles.css",
         "/css/*",
@@ -655,6 +672,9 @@ def test_cache_control_and_netlify_parity() -> None:
         "/sw.js",
         "/manifest.webmanifest",
     }
+
+    dist_block = next(block for block in header_blocks if block["for"] == "/dist/*")
+    assert dist_block["values"]["Cache-Control"] == "public, max-age=31536000, immutable"
 
     sw_block = next(block for block in header_blocks if block["for"] == "/sw.js")
     assert sw_block["values"]["Cache-Control"] == "no-cache"
@@ -704,7 +724,10 @@ def test_r1_geometric_brand_emblem_without_shield_or_check() -> None:
 def test_r2_obsolete_local_browser_nagging_removed() -> None:
     """Verify obsolete repetitive local-browser/server-warning copy is removed from HTML and i18n."""
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
-    i18n_js = (STATIC_DIR / "js" / "i18n.js").read_text(encoding="utf-8")
+    i18n_sources = "\n".join(
+        (STATIC_DIR / "js" / name).read_text(encoding="utf-8")
+        for name in ("i18n.js", "i18n-ru.js", "i18n-en.js")
+    )
 
     obsolete_phrases = (
         "Только в браузере",
@@ -716,16 +739,22 @@ def test_r2_obsolete_local_browser_nagging_removed() -> None:
     )
     for phrase in obsolete_phrases:
         assert phrase not in index_html, f"Obsolete phrase {phrase!r} still in index.html"
-        assert phrase not in i18n_js, f"Obsolete phrase {phrase!r} still in i18n.js"
+        assert phrase not in i18n_sources, f"Obsolete phrase {phrase!r} still in i18n modules"
 
 
 def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
-    """Verify Zero-Retention Proof, UX paste/combo controls, honest waitlist pricing, trust footer, and contacts."""
+    """Verify Zero-Retention Proof, UX paste/combo controls, honest waitlist pricing, trust footer, and Stage D contracts."""
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     en_html = (STATIC_DIR / "en" / "index.html").read_text(encoding="utf-8")
+    not_found_html = (STATIC_DIR / "404.html").read_text(encoding="utf-8")
     i18n_js = (STATIC_DIR / "js" / "i18n.js").read_text(encoding="utf-8")
+    i18n_ru_js = (STATIC_DIR / "js" / "i18n-ru.js").read_text(encoding="utf-8")
+    i18n_en_js = (STATIC_DIR / "js" / "i18n-en.js").read_text(encoding="utf-8")
+    i18n_all = f"{i18n_js}\n{i18n_ru_js}\n{i18n_en_js}"
     contacts_js = (STATIC_DIR / "js" / "contacts.js").read_text(encoding="utf-8")
     proof_js = (STATIC_DIR / "js" / "privacy-proof.js").read_text(encoding="utf-8")
+    pricing_js = (STATIC_DIR / "js" / "pricing.js").read_text(encoding="utf-8")
+    app_js = (STATIC_DIR / "js" / "app.js").read_text(encoding="utf-8")
 
     for hook in (
         'id="open-proof-btn"',
@@ -753,20 +782,39 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
         'id="toggle-reveal-btn"',
         'id="add-rule-form"',
         'id="theme-toggle-btn"',
+        'id="sw-update-banner"',
+        'id="sw-update-btn"',
+        'id="tpl-modal-privacy-proof"',
+        'id="tpl-modal-plan-request"',
+        'id="tpl-modal-privacy-policy"',
+        'id="tpl-modal-terms"',
     ):
-        assert hook in index_html, f"Missing required R2-R5 hook {hook} in index.html"
-        assert hook in en_html, f"Missing required R2-R5 hook {hook} in en/index.html"
+        assert hook in index_html, f"Missing required hook {hook} in index.html"
+        assert hook in en_html, f"Missing required hook {hook} in en/index.html"
 
-    # Unimplemented billing claims must not remain.
+    assert index_html.count("<template ") >= 4
+    assert en_html.count("<template ") >= 4
+    assert re.search(r'href="/dist/styles\.[A-Za-z0-9_-]+\.css"', not_found_html)
+
+    # Unimplemented billing claims and Stage D removed dead code must not remain.
     for forbidden_claim in ("30 дней бесплатно", "30 days free", "490 ₽", "390 ₽", "1 990 ₽", "1 590 ₽", "billing-month-btn"):
         assert forbidden_claim not in index_html, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in index.html"
         assert forbidden_claim not in en_html, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in en/index.html"
-        assert forbidden_claim not in i18n_js, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in i18n.js"
+        assert forbidden_claim not in i18n_all, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in i18n"
+
+    for dead_symbol in ("billingCycle", "renderPricingSection"):
+        assert dead_symbol not in pricing_js, f"Dead code {dead_symbol!r} still in pricing.js"
+        assert dead_symbol not in app_js, f"Dead code {dead_symbol!r} still in app.js"
+
+    assert (STATIC_DIR / "js" / "notifications.js").is_file()
+    assert (STATIC_DIR / "js" / "pipeline.js").is_file()
+    assert "./notifications.js" in app_js and "./pipeline.js" in app_js
+    assert len(app_js.splitlines()) < 750
 
     assert "0 логов ваших текстов" in index_html
     assert "0 Text Logs" in en_html
-    assert "0 логов ваших текстов" in i18n_js
-    assert "0 Text Logs" in i18n_js
+    assert "0 логов ваших текстов" in i18n_ru_js
+    assert "0 Text Logs" in i18n_en_js
 
     free_card_match = re.search(
         r'data-testid="pricing-card-free".*?</article>',
@@ -860,6 +908,12 @@ def test_service_worker_and_stage2_p1_contracts() -> None:
     assert "origin !== self.location.origin" in sw_src
     assert "innerHTML" not in sw_src
     assert "eval(" not in sw_src
+    assert 'CACHE_NAME = "promptveil-build-' in sw_src
+    assert "/dist/styles." in sw_src and "/dist/app." in sw_src
+    assert "SKIP_WAITING" in sw_src
+    assert "self.clients.claim()" in sw_src
+    install_block = re.search(r'addEventListener\("install".*?\}\);', sw_src, re.DOTALL)
+    assert install_block is not None and "skipWaiting" not in install_block.group(0)
 
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
     tokens_css = (STATIC_DIR / "css" / "tokens.css").read_text(encoding="utf-8")

@@ -1,9 +1,15 @@
 import test, { afterEach, beforeEach, describe } from "node:test";
 import assert from "node:assert/strict";
 
+import { RU } from "../../app/static/js/i18n-ru.js";
+import { EN } from "../../app/static/js/i18n-en.js";
 import {
-  TRANSLATIONS,
   applyLanguage,
+  applyTranslationsToRoot,
+  ensureDictionary,
+  getCategoryLabel,
+  getCustomRuleTagLabel,
+  isLangLoaded,
   pluralizeCount,
   pluralizeEn,
   pluralizeRu,
@@ -57,8 +63,57 @@ function createMockEl(initialAttrs = {}) {
   };
 }
 
+function extractPlaceholders(str) {
+  return Array.from(String(str).matchAll(/\{([a-zA-Z0-9_]+)\}/g), (m) => m[1]).sort();
+}
+
+describe("PromptVeil M4 Lazy i18n Loading & Parity (Item 21a)", () => {
+  test("RU and EN dictionaries start unloaded and load lazily on ensureDictionary", async () => {
+    assert.equal(isLangLoaded("ru"), false);
+    assert.equal(isLangLoaded("en"), false);
+    assert.equal(t("proof.netMetric", { count: 1 }, "ru"), "proof.netMetric");
+
+    const ruDict = await ensureDictionary("ru");
+    assert.equal(ruDict, RU);
+    assert.equal(isLangLoaded("ru"), true);
+    assert.equal(isLangLoaded("en"), false);
+    assert.equal(getCategoryLabel("EMAIL", "ru"), RU["cat.EMAIL"]);
+    assert.equal(getCustomRuleTagLabel("ORG", "ru"), RU["rulebook.tag.ORG"]);
+
+    const enDict = await ensureDictionary("en");
+    assert.equal(enDict, EN);
+    assert.equal(isLangLoaded("en"), true);
+    assert.equal(getCategoryLabel("EMAIL", "en"), EN["cat.EMAIL"]);
+    assert.equal(getCustomRuleTagLabel("ORG", "en"), EN["rulebook.tag.ORG"]);
+  });
+
+  test("RU and EN have complete key parity, {placeholder} parity, and clean EN free-tier copy", () => {
+    const ruKeys = Object.keys(RU).sort();
+    const enKeys = Object.keys(EN).sort();
+    assert.deepEqual(enKeys, ruKeys);
+
+    for (const key of ruKeys) {
+      assert.deepEqual(
+        extractPlaceholders(EN[key]),
+        extractPlaceholders(RU[key]),
+        `Placeholder mismatch for key ${key}`
+      );
+    }
+
+    const enFreeFeat = EN["pricing.freeFeat1"];
+    const enSubtitle = EN["pricing.subtitle"];
+    for (const forbidden of ["INN", "SNILS", "OGRN", "BIK", "OMS", "ИНН", "СНИЛС", "Russian ID"]) {
+      assert.equal(enFreeFeat.includes(forbidden), false, `EN freeFeat1 must not contain ${forbidden}`);
+      assert.equal(enSubtitle.includes(forbidden), false, `EN pricing.subtitle must not contain ${forbidden}`);
+    }
+  });
+});
+
 describe("PromptVeil M2 Pluralization (Item 12)", () => {
-  test("pluralizeRu handles Russian declensions across 0..121 including байт and трекер", () => {
+  test("pluralizeRu handles Russian declensions across 0..121 including байт and трекер", async () => {
+    await ensureDictionary("ru");
+    await ensureDictionary("en");
+
     const byteForms = ["байт", "байта", "байт"];
     assert.equal(pluralizeRu(0, ...byteForms), "байт");
     assert.equal(pluralizeRu(1, ...byteForms), "байт");
@@ -87,7 +142,10 @@ describe("PromptVeil M2 Pluralization (Item 12)", () => {
     assert.equal(pluralizeRu(5, ...prefKeyForms), "служебных ключей");
   });
 
-  test("pluralizeEn and pluralizeCount select correct singular/plural forms", () => {
+  test("pluralizeEn and pluralizeCount select correct singular/plural forms", async () => {
+    await ensureDictionary("ru");
+    await ensureDictionary("en");
+
     assert.equal(pluralizeEn(0, "tracker", "trackers"), "trackers");
     assert.equal(pluralizeEn(1, "tracker", "trackers"), "tracker");
     assert.equal(pluralizeEn(2, "tracker", "trackers"), "trackers");
@@ -115,7 +173,7 @@ describe("PromptVeil M2 Pluralization (Item 12)", () => {
   });
 });
 
-describe("PromptVeil M2 i18n Parity, Meta Sync & Route Detection (Item 13)", () => {
+describe("PromptVeil M2 Meta Sync & Route Detection (Item 13)", () => {
   let prevDocument;
   let prevWindow;
 
@@ -130,20 +188,7 @@ describe("PromptVeil M2 i18n Parity, Meta Sync & Route Detection (Item 13)", () 
     setLang("ru");
   });
 
-  test("TRANSLATIONS.ru and TRANSLATIONS.en have complete key parity and clean EN free-tier copy", () => {
-    const ruKeys = Object.keys(TRANSLATIONS.ru).sort();
-    const enKeys = Object.keys(TRANSLATIONS.en).sort();
-    assert.deepEqual(enKeys, ruKeys);
-
-    const enFreeFeat = TRANSLATIONS.en["pricing.freeFeat1"];
-    const enSubtitle = TRANSLATIONS.en["pricing.subtitle"];
-    for (const forbidden of ["INN", "SNILS", "OGRN", "BIK", "OMS", "ИНН", "СНИЛС", "Russian ID"]) {
-      assert.equal(enFreeFeat.includes(forbidden), false, `EN freeFeat1 must not contain ${forbidden}`);
-      assert.equal(enSubtitle.includes(forbidden), false, `EN pricing.subtitle must not contain ${forbidden}`);
-    }
-  });
-
-  test("applyLanguage syncs document lang, title, meta/OG/Twitter tags, and theme toggle aria/title", () => {
+  test("applyLanguage syncs document lang, title, meta/OG/Twitter tags, and theme toggle aria/title", async () => {
     const elementsBySelector = new Map([
       ['meta[name="description"]', createMockEl()],
       ['meta[property="og:locale"]', createMockEl()],
@@ -172,12 +217,12 @@ describe("PromptVeil M2 i18n Parity, Meta Sync & Route Detection (Item 13)", () 
       },
     };
 
-    applyLanguage("en");
+    await applyLanguage("en");
     assert.equal(globalThis.document.documentElement.lang, "en");
-    assert.equal(globalThis.document.title, TRANSLATIONS.en["meta.title"]);
+    assert.equal(globalThis.document.title, EN["meta.title"]);
     assert.equal(
       elementsBySelector.get('meta[name="description"]').getAttribute("content"),
-      TRANSLATIONS.en["meta.description"]
+      EN["meta.description"]
     );
     assert.equal(
       elementsBySelector.get('meta[property="og:locale"]').getAttribute("content"),
@@ -189,26 +234,44 @@ describe("PromptVeil M2 i18n Parity, Meta Sync & Route Detection (Item 13)", () 
     );
     assert.equal(
       elementsBySelector.get('meta[property="og:title"]').getAttribute("content"),
-      TRANSLATIONS.en["meta.ogTitle"]
+      EN["meta.ogTitle"]
     );
     assert.equal(
       elementsBySelector.get('meta[name="twitter:description"]').getAttribute("content"),
-      TRANSLATIONS.en["meta.twitterDescription"]
+      EN["meta.twitterDescription"]
     );
-    assert.equal(themeBtn.getAttribute("aria-label"), TRANSLATIONS.en["theme.toDark"]);
-    assert.equal(themeBtn.getAttribute("title"), TRANSLATIONS.en["theme.toDark"]);
+    assert.equal(themeBtn.getAttribute("aria-label"), EN["theme.toDark"]);
+    assert.equal(themeBtn.getAttribute("title"), EN["theme.toDark"]);
 
-    // Dark-mode key survives RU -> EN -> RU switches
     themeBtn.setAttribute("data-i18n-aria", "theme.toLight");
     themeBtn.setAttribute("data-i18n-title", "theme.toLight");
-    applyLanguage("ru");
+    await applyLanguage("ru");
     assert.equal(globalThis.document.documentElement.lang, "ru");
     assert.equal(
       elementsBySelector.get('meta[property="og:locale"]').getAttribute("content"),
       "ru_RU"
     );
-    assert.equal(themeBtn.getAttribute("aria-label"), TRANSLATIONS.ru["theme.toLight"]);
-    assert.equal(themeBtn.getAttribute("title"), TRANSLATIONS.ru["theme.toLight"]);
+    assert.equal(themeBtn.getAttribute("aria-label"), RU["theme.toLight"]);
+    assert.equal(themeBtn.getAttribute("title"), RU["theme.toLight"]);
+  });
+
+  test("applyTranslationsToRoot translates cloned modal subtree elements", async () => {
+    await ensureDictionary("en");
+    const titleEl = createMockEl({ "data-i18n": "proof.title" });
+    const inputEl = createMockEl({ "data-i18n-placeholder": "request.namePlaceholder" });
+    const closeEl = createMockEl({ "data-i18n-aria": "common.close" });
+    const root = {
+      querySelectorAll(selector) {
+        if (selector === "[data-i18n]") return [titleEl];
+        if (selector === "[data-i18n-placeholder]") return [inputEl];
+        if (selector === "[data-i18n-aria]") return [closeEl];
+        return [];
+      },
+    };
+    applyTranslationsToRoot(root, "en");
+    assert.equal(titleEl.textContent, EN["proof.title"]);
+    assert.equal(inputEl.placeholder, EN["request.namePlaceholder"]);
+    assert.equal(closeEl.getAttribute("aria-label"), EN["common.close"]);
   });
 
   test("loadLanguage prioritizes /en/ route over saved ru localStorage", () => {
@@ -277,7 +340,6 @@ describe("PromptVeil M2 Copy Feedback Reset & Contact Validation (Items 7 & 11)"
     assert.equal(btn.hasAttribute("data-copied"), false);
     assert.equal(btn.textContent, "Скопировать для ИИ");
 
-    // Disabled button guard in showCopyFeedback
     const disabledBtn = createMockEl();
     disabledBtn.disabled = true;
     disabledBtn.textContent = "Скопировать для ИИ";
@@ -286,7 +348,6 @@ describe("PromptVeil M2 Copy Feedback Reset & Contact Validation (Items 7 & 11)"
     assert.equal(disabledBtn.textContent, "Скопировать для ИИ");
     assert.equal(scheduled.length, 1);
 
-    // Safe no-ops
     assert.doesNotThrow(() => clearCopyFeedback(null));
     assert.doesNotThrow(() => clearCopyFeedback(createMockEl()));
   });
@@ -315,7 +376,7 @@ describe("PromptVeil M3 Mobile UX Helpers (Items 14, 15, 17)", () => {
     setLang("ru");
   });
 
-  test("applyLanguage syncs mobile language toggle and Step 2 dual-span label with fallback", () => {
+  test("applyLanguage syncs mobile language toggle and Step 2 dual-span label with fallback", async () => {
     const mobileLangBtn = createMockEl({ "data-lang": "ru" });
     const shortSpan = createMockEl();
     const tailSpan = createMockEl();
@@ -340,25 +401,28 @@ describe("PromptVeil M3 Mobile UX Helpers (Items 14, 15, 17)", () => {
       },
     };
 
-    applyLanguage("en");
+    await applyLanguage("en");
     assert.equal(mobileLangBtn.textContent, "EN");
     assert.equal(mobileLangBtn.getAttribute("data-lang"), "en");
-    assert.equal(mobileLangBtn.getAttribute("aria-label"), TRANSLATIONS.en["lang.mobileToggleToRu"]);
-    assert.equal(mobileLangBtn.getAttribute("title"), TRANSLATIONS.en["lang.mobileToggleToRu"]);
+    assert.equal(mobileLangBtn.getAttribute("aria-label"), EN["lang.mobileToggleToRu"]);
+    assert.equal(mobileLangBtn.getAttribute("title"), EN["lang.mobileToggleToRu"]);
     assert.equal(shortSpan.textContent, "2. Restore");
     assert.equal(tailSpan.textContent, " in AI Reply");
     assert.equal(step2FallbackEl.textContent, "2. Restore in AI Reply");
 
-    applyLanguage("ru");
+    await applyLanguage("ru");
     assert.equal(mobileLangBtn.textContent, "RU");
     assert.equal(mobileLangBtn.getAttribute("data-lang"), "ru");
-    assert.equal(mobileLangBtn.getAttribute("aria-label"), TRANSLATIONS.ru["lang.mobileToggleToEn"]);
+    assert.equal(mobileLangBtn.getAttribute("aria-label"), RU["lang.mobileToggleToEn"]);
     assert.equal(shortSpan.textContent, "2. Вернуть");
     assert.equal(tailSpan.textContent, " в ответ ИИ");
     assert.equal(step2FallbackEl.textContent, "2. Вернуть в ответ ИИ");
   });
 
-  test("renderTelemetryAndActions toggles and resets mobileStickyCopyBtn state", () => {
+  test("renderTelemetryAndActions toggles and resets mobileStickyCopyBtn state", async () => {
+    await ensureDictionary("ru");
+    await ensureDictionary("en");
+
     let nextTimerId = 1;
     globalThis.window = {
       setTimeout() {
@@ -375,9 +439,9 @@ describe("PromptVeil M3 Mobile UX Helpers (Items 14, 15, 17)", () => {
       { rawText: "hello", result: { sanitizedText: "hello" }, maskedCount: 1, revealValues: true, lang: "ru" }
     );
     assert.equal(stickyBtn.disabled, false);
-    assert.equal(stickyBtn.textContent, TRANSLATIONS.ru["step1.mobileStickyCta"]);
+    assert.equal(stickyBtn.textContent, RU["step1.mobileStickyCta"]);
 
-    showCopyFeedback(stickyBtn, TRANSLATIONS.ru["action.copiedFeedback"], () => TRANSLATIONS.ru["step1.mobileStickyCta"]);
+    showCopyFeedback(stickyBtn, RU["action.copiedFeedback"], () => RU["step1.mobileStickyCta"]);
     assert.equal(stickyBtn.getAttribute("data-copied"), "true");
 
     renderTelemetryAndActions(
@@ -386,6 +450,6 @@ describe("PromptVeil M3 Mobile UX Helpers (Items 14, 15, 17)", () => {
     );
     assert.equal(stickyBtn.disabled, true);
     assert.equal(stickyBtn.hasAttribute("data-copied"), false);
-    assert.equal(stickyBtn.textContent, TRANSLATIONS.en["step1.mobileStickyCta"]);
+    assert.equal(stickyBtn.textContent, EN["step1.mobileStickyCta"]);
   });
 });

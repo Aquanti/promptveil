@@ -271,6 +271,73 @@
   }
 }
 
+/* Service Worker Update Banner */
+.sw-update-banner {
+  position: fixed;
+  bottom: 1.25rem;
+  left: 1.25rem;
+  z-index: 75;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: min(440px, calc(100% - 2.5rem));
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-rail);
+  background-color: var(--bg-rail);
+  color: var(--text-on-rail);
+  font-size: 0.875rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-lg);
+}
+
+.sw-update-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sw-update-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.sw-update-btn {
+  min-height: 36px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.82rem;
+}
+
+.sw-update-dismiss {
+  min-width: 36px;
+  min-height: 36px;
+  color: var(--text-on-rail);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: transparent;
+}
+
+.sw-update-dismiss:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+@media (max-width: 639px) {
+  .sw-update-banner {
+    bottom: 4.75rem;
+    left: 0.75rem;
+    right: 0.75rem;
+    max-width: none;
+    flex-wrap: wrap;
+  }
+
+  .sw-update-btn,
+  .sw-update-dismiss {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
 /* Spark Two-Surface Hero (Deep Forest Card + Sage Callout Card) */
 .hero-main-card {
   position: relative;
