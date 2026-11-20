@@ -1,6 +1,6 @@
 /* PromptVeil Self-Hosted Offline Service Worker (Static Assets Cache Only) */
 
-const CACHE_NAME = "promptveil-static-v1";
+const CACHE_NAME = "promptveil-static-v2";
 
 const PRECACHE_URLS = [
   "./",
@@ -20,11 +20,14 @@ const PRECACHE_URLS = [
   "./css/sections.css",
   "./css/modals.css",
   "./js/app.js",
+  "./js/clipboard.js",
   "./js/contacts.js",
   "./js/detector.js",
   "./js/dom.js",
   "./js/i18n.js",
+  "./js/modals.js",
   "./js/presets.js",
+  "./js/pricing.js",
   "./js/privacy-proof.js",
   "./js/render-drawers.js",
   "./js/render-workbench.js",

@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-20T18:08+03:00  
-**Session Status:** Stage 2 (P1 PWA Offline, AI Launchers, P1 Detectors, Dark Theme) Complete — Proceeding to Stage 3 (`app.js` Modularization & Lighthouse >= 95)  
-**Exact Stop Point:** Completed and verified all Stage 2 (P1) upgrades: `app/static/sw.js` self-hosted static-only Service Worker + `#proof-offline-card` + `/sw.js` `no-cache` header in `netlify.toml`, `#ai-launchers-bar` 5-LLM launcher strip + clickable `@supv1rus` & `github.com/Aquanti` footer links + allowlisted CSP checks, P1 detectors (`URL_TOKEN`, `RU_AUTO_PLATE`, `RU_FIO` sliding window, `RU_ADDRESS`), Dark Theme (`#theme-toggle-btn`, `promptveil_theme_v1`, `prefers-color-scheme: dark`, `prefers-reduced-motion: reduce`), plus acceptance fixes (`<link rel="canonical">` excluded from external DOM scan, `#modal-terms` registered in `DIALOG_IDS`). Verified `py_compile` (`0` errors), `pytest tests/test_server.py` (`22 passed`), `run_e2e.py --mode self-test` (`150` unique tests), and full live suite `run_e2e.py --mode live --tier all` (`150 passed`, `0 failed`). Next: Stage 3 (`app.js` -> `clipboard.js`, `pricing.js`, `modals.js` + Lighthouse >= 95 + final Netlify production deploy & live HTTPS verification).
+**Checkpoint Date:** 2026-11-20T18:16+03:00  
+**Session Status:** Stage 3A (`app.js` Modularization) Complete — Proceeding to Stage 3B (Lighthouse Audit >= 95)  
+**Exact Stop Point:** Modularized `app/static/js/app.js` (`1534` -> `972` lines) into focused ES6 modules `clipboard.js` (`187` lines), `pricing.js` (`152` lines), and `modals.js` (`343` lines), updated `app/static/sw.js` `PRECACHE_URLS` (`promptveil-static-v2`), and re-verified `pytest tests/test_server.py` (`22 passed`), `run_e2e.py --mode self-test` (`ALL CHECKS PASSED`), and full live E2E `run_e2e.py --mode live --tier all` (`150 passed`, `0 failed`). Next: Stage 3B Lighthouse desktop & mobile audit (`>= 95` all categories) + Netlify production deploy (`https://promptveil.netlify.app`).
 
 ---
 
@@ -15,7 +15,7 @@
   - `contacts.js`: Centralized frozen owner contacts (`@supv1rus`, `kilkauciha@gmail.com`, `github.com/Aquanti`, author `SupV1rus`) + safe `mailto:` builder without external `http(s)://` literals.
 - **UI & Spark Admin Design System (`app/static/`):**
   - `index.html` (`lang="ru"`), `favicon.svg`, `styles.css`, and modular CSS (`css/{tokens,layout,components,drawers,sections,modals}.css`) using Spark Admin palette (`#051C12`, `#072F1F`, `#B4F105`, `#FFFFFF`, `#F4F6F5`, `#E2E8DF`) and geometric prism/veil monogram.
-  - Modular ES6 UI controllers: `js/{i18n,dom,presets,render-workbench,render-drawers,privacy-proof,contacts,app}.js` with full `RU | EN` coverage, Step 1/2 Paste + Copy-and-Go-Step-2 UX, instant `resetSessionToZero()` + `pagehide` scrub, Pricing (`Free`/`Pro`/`Team`, Month/Year −20%) with client-only request modals, and Trust Footer + Privacy Policy modal.
+  - Modular ES6 UI controllers: `js/{i18n,dom,presets,clipboard,pricing,modals,render-workbench,render-drawers,privacy-proof,contacts,app}.js` + `sw.js` (`promptveil-static-v2`) with full `RU | EN` coverage, Step 1/2 Paste + Copy-and-Go-Step-2 UX, `"Открыть в ИИ"` 5-LLM bar, instant `resetSessionToZero()` + `pagehide` scrub, Honest Waitlist Pricing (`Free 0 ₽ / навсегда`, `Pro`, `Team` without prices), Dark Theme (`promptveil_theme_v1`), and Trust Footer + `#modal-privacy-policy` + `#modal-terms`.
 - **Local Preview & Static Cloud Hosting (`app/`, `netlify.toml`):**
   - `app/main.py`, `app/config.py`, `app/schemas.py`: FastAPI static host (`http://127.0.0.1:8000`) + `/health` + strict CSP & security headers.
   - `netlify.toml`: Static deployment config (`publish = "app/static"`) with matching security and cache headers.
@@ -37,7 +37,7 @@
 - **`py_compile` across `app/`, `tests/`, `e2e_tests/`:** Exit `0` (all Python files, `0` syntax errors).
 - **`pytest tests/test_server.py -v`:** **`22 passed`** (`1.19s`, exit `0`, including Stage 1 SEO/PWA and Stage 2 SW/AI-launcher/Dark-theme contract checks).
 - **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`109` Tier 1–4 + `29` Tier 5 + `12` Acceptance = `150` unique tests, exit `0`).
-- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`150 passed`** (`322.36s`, exit `0`, `0` failed, `0` skipped, `0` console/page/CSP errors).
+- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`150 passed`** (`323.51s` on modular Stage 3A, exit `0`, `0` failed, `0` skipped, `0` console/page/CSP errors).
 - **Visual Inspection (`e2e_tests/artifacts/acceptance/*.png`):** Inspected `1440×900` & `390×844` light and dark screenshots (`acc_desktop_dark_1440x900.png`, `acc_mobile_dark_390x844.png`, `acc_desktop_pricing_footer_1440x900.png`) — zero overlaps, zero clipping, zero horizontal overflow, WCAG AA contrast, mobile `.top-rail <= 64px`.
 
 ---

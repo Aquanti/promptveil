@@ -4,41 +4,45 @@
  */
 
 import { SessionVault } from "./vault.js";
-import { SITE_CONTACTS, buildMailtoHref } from "./contacts.js";
-import { attachCspViolationTracker, runZeroRetentionSelfTest } from "./privacy-proof.js";
+import { attachCspViolationTracker } from "./privacy-proof.js";
+import {
+  copyTextToClipboard,
+  copyWithFeedback,
+  createFileController,
+  downloadTextFile,
+  readClipboardForInput,
+} from "./clipboard.js";
+import {
+  applyTheme,
+  bindModalAndThemeEvents,
+  registerOfflineServiceWorker,
+  renderContactsAndPolicy,
+  renderPrivacyProofModal,
+  resolveInitialTheme,
+  updateThemeToggleButton,
+} from "./modals.js";
+import {
+  bindPricingEvents,
+  renderPricingSection,
+  syncPlanRequestModalMeta,
+} from "./pricing.js";
 import {
   createRuleId,
   makeRuleDedupKey,
   loadRules,
   saveRules,
   exportRulesJson,
-  importRulesJson,
   loadAuditLog,
   appendAuditReceipt,
   exportAuditJson,
   clearAuditLog,
   loadLanguage,
   saveLanguage,
-  loadThemePreference,
-  saveThemePreference,
   onStorageWarning,
 } from "./storage.js";
 import { PRESETS, getLocalizedPreset, getPresetById } from "./presets.js";
-import {
-  applyLanguage,
-  getLang,
-  t,
-} from "./i18n.js";
-import {
-  clearEl,
-  copyTextToClipboard,
-  createEl,
-  downloadTextFile,
-  getEl,
-  handleDrawerKeydown,
-  readTextFromClipboard,
-  showCopyFeedback,
-} from "./dom.js";
+import { applyLanguage, getLang, t } from "./i18n.js";
+import { createEl, getEl } from "./dom.js";
 import {
   renderCategoryChips,
   renderPresetRuleSuggestion,
@@ -49,16 +53,7 @@ import {
   renderTelemetryAndActions,
   renderVaultList,
 } from "./render-workbench.js";
-import {
-  closeDrawers,
-  getOpenDialogEl,
-  openDrawer,
-  renderAuditList,
-  renderRulebookList,
-} from "./render-drawers.js";
-
-const MAX_FILE_BYTES = 2 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set([".txt", ".md", ".csv", ".json", ".log", ".env"]);
+import { renderAuditList, renderRulebookList } from "./render-drawers.js";
 
 const state = {
   lang: "ru",
@@ -83,51 +78,9 @@ const state = {
   theme: "light",
 };
 
-const THEME_MOON_PATH = "M16.2 12.6A6.8 6.8 0 0 1 7.4 3.8a7 7 0 1 0 8.8 8.8Z";
-const THEME_SUN_PATH =
-  "M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M13 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z";
-
-function resolveInitialTheme() {
-  const saved = loadThemePreference();
-  if (saved) return saved;
-  try {
-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      return "dark";
-    }
-  } catch {
-    // Ignore matchMedia unavailability.
-  }
-  return "light";
-}
-
-function updateThemeToggleButton(theme, lang = getLang()) {
-  const btn = getEl("theme-toggle-btn");
-  if (!btn) return;
-  const isDark = theme === "dark";
-  const label = t(isDark ? "theme.toLight" : "theme.toDark", {}, lang);
-  btn.setAttribute("aria-pressed", isDark ? "true" : "false");
-  btn.setAttribute("aria-label", label);
-  btn.setAttribute("title", label);
-  const pathEl = btn.querySelector("path");
-  if (pathEl) {
-    pathEl.setAttribute("d", isDark ? THEME_SUN_PATH : THEME_MOON_PATH);
-  }
-}
-
-function applyTheme(nextTheme, { persist = false } = {}) {
-  const normalized = nextTheme === "dark" ? "dark" : "light";
-  state.theme = persist ? saveThemePreference(normalized) : normalized;
-  if (typeof document !== "undefined") {
-    document.documentElement.dataset.theme = state.theme;
-  }
-  updateThemeToggleButton(state.theme, getLang());
-  return state.theme;
-}
-
 let liveAuditTimer = null;
 let liveSanitizeTimer = null;
 let statusBannerTimer = null;
-let activeFileReadId = 0;
 let activeStatusBanner = null;
 const activeInlineAlerts = new Map();
 
@@ -143,12 +96,6 @@ function cancelPendingLiveSanitize() {
     window.clearTimeout(liveSanitizeTimer);
     liveSanitizeTimer = null;
   }
-}
-
-function cancelPendingFileRead() {
-  activeFileReadId += 1;
-  const loading = getEl("file-loading-indicator");
-  if (loading) loading.hidden = true;
 }
 
 function resolveAlertVars(varsOrFn, lang) {
@@ -223,6 +170,38 @@ function refreshBannersAndAlerts(lang = getLang()) {
     renderInlineAlert(elementId, lang);
   }
 }
+
+const fileController = createFileController({
+  getRules: () => state.rules,
+  showStatusBanner,
+  showInlineAlert,
+  hideInlineAlert,
+  cancelPendingLiveSanitize,
+  cancelPendingLiveAudit,
+  onPromptFileLoaded: (text, fileName) => {
+    state.vault.reset();
+    state.activePresetId = "";
+    state.showAllCategories = false;
+    state.highlightedToken = "";
+    state.pinnedToken = "";
+    state.rawText = text;
+    const rawInput = getEl("raw-prompt-input");
+    if (rawInput) rawInput.value = state.rawText;
+    runSanitizePipeline(true);
+    showStatusBanner("banner.fileLoaded", { name: fileName });
+  },
+  onRulesImported: ({ rules, addedCount, skippedCount }) => {
+    state.rules = rules;
+    refreshDrawersUi();
+    runSanitizePipeline(false);
+    showInlineAlert(
+      "rulebook-alert",
+      "rulebook.imported",
+      { added: addedCount, skipped: skippedCount },
+      "success"
+    );
+  },
+});
 
 function getUnappliedPresetRules(preset) {
   if (!preset || !Array.isArray(preset.suggestedRules) || preset.suggestedRules.length === 0) {
@@ -439,274 +418,8 @@ function refreshDrawersUi() {
   );
 }
 
-function formatProofTime(isoString, lang) {
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) return isoString;
-  const locale = lang === "en" ? "en-US" : "ru-RU";
-  try {
-    return new Intl.DateTimeFormat(locale, {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    }).format(date);
-  } catch {
-    return date.toLocaleTimeString(locale);
-  }
-}
-
-function renderPrivacyProofModal(lang = getLang()) {
-  const report = runZeroRetentionSelfTest({
-    rawText: state.rawText,
-    llmReply: state.llmReply,
-    vault: state.vault,
-  });
-
-  const summaryCard = getEl("proof-summary-card");
-  const summaryStatus = getEl("proof-summary-status");
-  const checkedAtEl = getEl("proof-checked-at");
-  const listEl = getEl("proof-checks-list");
-  const ramNoteEl = getEl("proof-ram-note");
-
-  if (summaryCard) {
-    summaryCard.classList.toggle("proof-summary-card--warn", !report.allPassed);
-  }
-  if (summaryStatus) {
-    summaryStatus.textContent = t(
-      report.allPassed ? "proof.statusPass" : "proof.statusWarn",
-      {},
-      lang
-    );
-  }
-  if (checkedAtEl) {
-    checkedAtEl.textContent = t(
-      "proof.checkedAt",
-      { time: formatProofTime(report.checkedAt, lang) },
-      lang
-    );
-  }
-
-  if (listEl) {
-    clearEl(listEl);
-
-    const transportText = report.trackers.isHttps
-      ? t("proof.transportHttps", {}, lang)
-      : report.trackers.isLocalStand
-        ? t("proof.transportLocal", {}, lang)
-        : t("proof.transportHttp", {}, lang);
-    const trackersBadge = report.trackers.isHttps
-      ? t("proof.trackersMetricHttps", { trackers: report.trackers.trackerCount }, lang)
-      : report.trackers.isLocalStand
-        ? t("proof.trackersMetricLocal", { trackers: report.trackers.trackerCount }, lang)
-        : t("proof.trackersMetricHttp", { trackers: report.trackers.trackerCount }, lang);
-
-    const rows = [
-      {
-        ok: report.network.ok,
-        title: t("proof.netTitle", {}, lang),
-        metric: t("proof.netMetric", { count: report.network.textRequests }, lang),
-        detail: t(
-          "proof.netDetail",
-          {
-            ext: report.network.externalResourceCount,
-            count: report.network.textRequests,
-            cspViolations: report.network.cspViolationCount,
-            policy: report.network.cspPolicy,
-          },
-          lang
-        ),
-      },
-      {
-        ok: report.storage.ok,
-        title: t("proof.storageTitle", {}, lang),
-        metric: t("proof.storageMetric", { bytes: report.storage.storedTextBytes }, lang),
-        detail: t(
-          "proof.storageDetail",
-          {
-            sessionKeys: report.storage.sessionStorageKeys,
-            cookies: report.storage.cookieCount,
-            unknownKeys: report.storage.unknownStorageKeys,
-            prefKeys: report.storage.allowedPrefKeysPresent,
-          },
-          lang
-        ),
-      },
-      {
-        ok: report.trackers.ok,
-        title: t("proof.trackersTitle", {}, lang),
-        metric: trackersBadge,
-        detail: t(
-          "proof.trackersDetail",
-          {
-            trackers: report.trackers.trackerCount,
-            transport: transportText,
-          },
-          lang
-        ),
-      },
-    ];
-
-    for (const row of rows) {
-      const li = createEl("li", "proof-check-row");
-      const top = createEl("div", "proof-check-top");
-      top.appendChild(createEl("span", "proof-check-label", row.title));
-      top.appendChild(
-        createEl(
-          "span",
-          row.ok ? "proof-check-metric tabular-nums" : "proof-check-metric proof-check-metric--warn tabular-nums",
-          row.metric
-        )
-      );
-      li.appendChild(top);
-      li.appendChild(createEl("p", "proof-check-detail", row.detail));
-      listEl.appendChild(li);
-    }
-  }
-
-  if (ramNoteEl) {
-    ramNoteEl.textContent = t(
-      "proof.ramNote",
-      {
-        chars: report.ram.ramChars,
-        entities: report.ram.ramEntities,
-      },
-      lang
-    );
-  }
-
-  const offlineMetricEl = getEl("proof-offline-metric");
-  if (offlineMetricEl) {
-    const sw = typeof navigator !== "undefined" ? navigator.serviceWorker : null;
-    if (!sw) {
-      offlineMetricEl.textContent = t("proof.offlineMetricUnsupported", {}, lang);
-    } else {
-      const hasCtrl = Boolean(sw.controller);
-      offlineMetricEl.textContent = t(
-        hasCtrl ? "proof.offlineMetricReady" : "proof.offlineMetricPending",
-        {},
-        lang
-      );
-      if (typeof sw.getRegistration === "function") {
-        sw.getRegistration()
-          .then((reg) => {
-            const active = Boolean(sw.controller || reg?.active);
-            const activeLang = getLang();
-            offlineMetricEl.textContent = t(
-              active ? "proof.offlineMetricReady" : "proof.offlineMetricPending",
-              {},
-              activeLang
-            );
-          })
-          .catch(() => {});
-      }
-    }
-  }
-}
-
-function getPlanPricing(plan, _cycle, lang) {
-  if (plan === "team") {
-    return {
-      planName: t("pricing.teamName", {}, lang),
-      status: t("pricing.teamWaitlistTitle", {}, lang),
-    };
-  }
-  return {
-    planName: t("pricing.proName", {}, lang),
-    status: t("pricing.proWaitlistTitle", {}, lang),
-  };
-}
-
-function renderPricingSection(_lang = getLang()) {
-  // All Free features are active; Pro and Team display honest Waitlist status.
-}
-
-function renderContactsAndPolicy(lang = getLang()) {
-  const tgEl = getEl("contact-telegram-text");
-  const emailLinkEl = getEl("contact-email-link");
-  const githubEl = getEl("contact-github-text");
-  const copyrightEl = getEl("footer-copyright");
-  const policyOwnerEl = getEl("policy-owner-contact-body");
-  const termsOwnerEl = getEl("terms-owner-contact-body");
-
-  if (tgEl) tgEl.textContent = SITE_CONTACTS.telegramHandle;
-  if (emailLinkEl) {
-    emailLinkEl.textContent = SITE_CONTACTS.email;
-    emailLinkEl.setAttribute("href", buildMailtoHref(SITE_CONTACTS.email));
-  }
-  if (githubEl) githubEl.textContent = SITE_CONTACTS.githubDisplay;
-  if (copyrightEl) {
-    copyrightEl.textContent = t(
-      "footer.copyright",
-      { author: SITE_CONTACTS.authorSignature },
-      lang
-    );
-  }
-  if (policyOwnerEl) {
-    policyOwnerEl.textContent = t(
-      "policy.item5Body",
-      {
-        email: SITE_CONTACTS.email,
-        telegram: SITE_CONTACTS.telegramHandle,
-      },
-      lang
-    );
-  }
-  if (termsOwnerEl) {
-    termsOwnerEl.textContent = t(
-      "terms.item4Body",
-      {
-        author: SITE_CONTACTS.authorSignature,
-        email: SITE_CONTACTS.email,
-        telegram: SITE_CONTACTS.telegramHandle,
-      },
-      lang
-    );
-  }
-}
-
-function syncPlanRequestModalMeta(lang = getLang()) {
-  const isTeam = state.activeRequestPlan === "team";
-  const titleEl = getEl("plan-modal-title");
-  const subtitleEl = getEl("plan-modal-subtitle");
-  const summaryPillEl = getEl("plan-summary-pill");
-  const seatsFieldEl = getEl("plan-req-seats-field");
-
-  if (titleEl) {
-    titleEl.textContent = t(isTeam ? "request.teamTitle" : "request.proTitle", {}, lang);
-  }
-  if (subtitleEl) {
-    subtitleEl.textContent = t(isTeam ? "request.teamSubtitle" : "request.proSubtitle", {}, lang);
-  }
-  if (seatsFieldEl) {
-    seatsFieldEl.hidden = !isTeam;
-  }
-  if (summaryPillEl) {
-    const info = getPlanPricing(state.activeRequestPlan, state.billingCycle, lang);
-    summaryPillEl.textContent = `${info.planName} • ${info.status}`;
-  }
-}
-
-function openPlanRequestModal(plan, triggerEl) {
-  state.activeRequestPlan = plan === "team" ? "team" : "pro";
-  state.lastRequestSummary = "";
-  hideInlineAlert("plan-request-alert");
-  const resultBox = getEl("plan-request-result");
-  const previewEl = getEl("plan-request-preview");
-  if (resultBox) resultBox.hidden = true;
-  if (previewEl) previewEl.textContent = "";
-  syncPlanRequestModalMeta(getLang());
-  openDrawer("modal-plan-request", triggerEl, state);
-}
-
-function isValidContactInput(val) {
-  const trimmed = String(val || "").trim();
-  if (!trimmed) return false;
-  const emailLike = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/;
-  const telegramLike = /^@[A-Za-z0-9_]{3,64}$/;
-  return emailLike.test(trimmed) || telegramLike.test(trimmed);
-}
-
 function resetSessionToZero({ silent = false, wipeDomOnly = false } = {}) {
-  cancelPendingFileRead();
+  fileController.cancelPendingFileRead();
   cancelPendingLiveSanitize();
   cancelPendingLiveAudit();
   hideInlineAlert("input-error-banner");
@@ -738,7 +451,7 @@ function resetSessionToZero({ silent = false, wipeDomOnly = false } = {}) {
   runSanitizePipeline(false);
   const proofModal = getEl("modal-privacy-proof");
   if (proofModal && !proofModal.hidden) {
-    renderPrivacyProofModal(getLang());
+    renderPrivacyProofModal(state, getLang());
   }
   if (!silent) {
     showStatusBanner("banner.sessionReset");
@@ -752,11 +465,11 @@ function rerenderAll() {
   refreshBannersAndAlerts(lang);
   renderPricingSection(lang);
   renderContactsAndPolicy(lang);
-  syncPlanRequestModalMeta(lang);
+  syncPlanRequestModalMeta(state, lang);
   updateThemeToggleButton(state.theme, lang);
   const proofModal = getEl("modal-privacy-proof");
   if (proofModal && !proofModal.hidden) {
-    renderPrivacyProofModal(lang);
+    renderPrivacyProofModal(state, lang);
   }
 }
 
@@ -852,7 +565,7 @@ function switchMode(nextMode) {
 function loadPresetById(presetId) {
   const preset = getLocalizedPreset(presetId, getLang());
   if (!preset) return;
-  cancelPendingFileRead();
+  fileController.cancelPendingFileRead();
   cancelPendingLiveSanitize();
   cancelPendingLiveAudit();
   hideInlineAlert("input-error-banner");
@@ -870,60 +583,7 @@ function loadPresetById(presetId) {
   }));
 }
 
-function handleLocalFile(file) {
-  hideInlineAlert("input-error-banner");
-  if (!file) return;
-
-  const lowerName = file.name.toLowerCase();
-  const dotIdx = lowerName.lastIndexOf(".");
-  const ext = dotIdx >= 0 ? lowerName.slice(dotIdx) : "";
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    showInlineAlert("input-error-banner", "banner.fileUnsupported", {
-      ext: ext || "—",
-    });
-    return;
-  }
-
-  if (file.size > MAX_FILE_BYTES) {
-    showInlineAlert("input-error-banner", "banner.fileTooLarge", { name: file.name });
-    return;
-  }
-
-  cancelPendingLiveSanitize();
-  cancelPendingLiveAudit();
-  const readId = ++activeFileReadId;
-  const loading = getEl("file-loading-indicator");
-  if (loading) loading.hidden = false;
-
-  const reader = new FileReader();
-  reader.onload = () => {
-    if (readId !== activeFileReadId) return;
-    if (loading) loading.hidden = true;
-    state.vault.reset();
-    state.activePresetId = "";
-    state.showAllCategories = false;
-    state.highlightedToken = "";
-    state.pinnedToken = "";
-    state.rawText = String(reader.result || "");
-    const rawInput = getEl("raw-prompt-input");
-    if (rawInput) rawInput.value = state.rawText;
-    runSanitizePipeline(true);
-    showStatusBanner("banner.fileLoaded", { name: file.name });
-  };
-  reader.onerror = () => {
-    if (readId !== activeFileReadId) return;
-    if (loading) loading.hidden = true;
-    showInlineAlert("input-error-banner", "banner.fileReadError", { name: file.name });
-  };
-  reader.readAsText(file, "UTF-8");
-}
-
-function translateImportError() {
-  return "rulebook.importBadJson";
-}
-
 function bindEvents() {
-  // Language & Theme switchers (live without reload)
   getEl("lang-ru-btn")?.addEventListener("click", () => {
     state.lang = saveLanguage("ru");
     applyLanguage(state.lang, { onAfterApply: rerenderAll });
@@ -932,11 +592,8 @@ function bindEvents() {
     state.lang = saveLanguage("en");
     applyLanguage(state.lang, { onAfterApply: rerenderAll });
   });
-  getEl("theme-toggle-btn")?.addEventListener("click", () => {
-    applyTheme(state.theme === "dark" ? "light" : "dark", { persist: true });
-  });
 
-  // Mode tabs & arrow navigation
+  // Mode tabs & navigation
   getEl("mode-btn-sanitize")?.addEventListener("click", () => switchMode("sanitize"));
   getEl("mode-btn-rehydrate")?.addEventListener("click", () => switchMode("rehydrate"));
   document.querySelector(".mode-switch")?.addEventListener("keydown", (event) => {
@@ -989,7 +646,7 @@ function bindEvents() {
 
   const rawInput = getEl("raw-prompt-input");
   rawInput?.addEventListener("input", () => {
-    cancelPendingFileRead();
+    fileController.cancelPendingFileRead();
     hideInlineAlert("input-error-banner");
     state.rawText = rawInput.value;
     renderRawMetrics(getEl("raw-metrics"), state.rawText, getLang());
@@ -1053,7 +710,7 @@ function bindEvents() {
   });
 
   getEl("clear-raw-btn")?.addEventListener("click", () => {
-    cancelPendingFileRead();
+    fileController.cancelPendingFileRead();
     cancelPendingLiveSanitize();
     cancelPendingLiveAudit();
     hideInlineAlert("input-error-banner");
@@ -1067,56 +724,26 @@ function bindEvents() {
     runSanitizePipeline(false);
   });
 
-  getEl("paste-raw-btn")?.addEventListener("click", async () => {
-    const res = await readTextFromClipboard();
-    if (!res.ok) {
-      rawInput?.focus();
-      showStatusBanner("banner.pasteFallback", {}, true);
-      return;
-    }
-    if (!res.text.trim()) {
-      rawInput?.focus();
-      showStatusBanner("banner.clipboardEmpty");
-      return;
-    }
-    cancelPendingFileRead();
-    cancelPendingLiveSanitize();
-    cancelPendingLiveAudit();
-    hideInlineAlert("input-error-banner");
-    state.vault.reset();
-    state.activePresetId = "";
-    state.showAllCategories = false;
-    state.highlightedToken = "";
-    state.pinnedToken = "";
-    state.rawText = res.text;
-    if (rawInput) rawInput.value = res.text;
-    runSanitizePipeline(true);
-    showStatusBanner("banner.pasted");
-  });
-
-  // File upload & drag-drop
-  const fileInput = getEl("file-upload-input");
-  getEl("upload-file-btn")?.addEventListener("click", () => fileInput?.click());
-  fileInput?.addEventListener("change", (event) => {
-    const file = event.target.files?.[0];
-    if (file) handleLocalFile(file);
-    event.target.value = "";
-  });
-
-  const dropzone = getEl("input-dropzone");
-  dropzone?.addEventListener("dragover", (event) => {
-    event.preventDefault();
-    dropzone.classList.add("is-dragover");
-  });
-  dropzone?.addEventListener("dragleave", () => {
-    dropzone.classList.remove("is-dragover");
-  });
-  dropzone?.addEventListener("drop", (event) => {
-    event.preventDefault();
-    dropzone.classList.remove("is-dragover");
-    const file = event.dataTransfer?.files?.[0];
-    if (file) handleLocalFile(file);
-  });
+  getEl("paste-raw-btn")?.addEventListener("click", () =>
+    readClipboardForInput({
+      inputEl: rawInput,
+      showStatusBanner,
+      onTextRead: (text) => {
+        fileController.cancelPendingFileRead();
+        cancelPendingLiveSanitize();
+        cancelPendingLiveAudit();
+        hideInlineAlert("input-error-banner");
+        state.vault.reset();
+        state.activePresetId = "";
+        state.showAllCategories = false;
+        state.highlightedToken = "";
+        state.pinnedToken = "";
+        state.rawText = text;
+        if (rawInput) rawInput.value = text;
+        runSanitizePipeline(true);
+      },
+    })
+  );
 
   getEl("toggle-reveal-btn")?.addEventListener("click", () => {
     state.revealVaultValues = !state.revealVaultValues;
@@ -1125,16 +752,13 @@ function bindEvents() {
 
   getEl("copy-sanitized-btn")?.addEventListener("click", async () => {
     const text = ensureFreshSanitizedOutput();
-    if (!text) return;
-    const ok = await copyTextToClipboard(text);
-    if (ok) {
-      showCopyFeedback(
-        getEl("copy-sanitized-btn"),
-        t("action.copiedFeedback"),
-        () => t("step1.copyBtn")
-      );
-    }
-    showStatusBanner(ok ? "banner.copied" : "banner.copyFailed", {}, !ok);
+    await copyWithFeedback({
+      text,
+      buttonEl: getEl("copy-sanitized-btn"),
+      resetLabelGetter: () => t("step1.copyBtn"),
+      showStatusBanner,
+      skipEmpty: true,
+    });
   });
 
   getEl("download-sanitized-btn")?.addEventListener("click", () => {
@@ -1180,38 +804,29 @@ function bindEvents() {
     refreshWorkbenchUi();
   });
 
-  getEl("paste-rehydrate-btn")?.addEventListener("click", async () => {
-    const res = await readTextFromClipboard();
-    if (!res.ok) {
-      llmInput?.focus();
-      showStatusBanner("banner.pasteFallback", {}, true);
-      return;
-    }
-    if (!res.text.trim()) {
-      llmInput?.focus();
-      showStatusBanner("banner.clipboardEmpty");
-      return;
-    }
-    hideInlineAlert("rehydrate-error-banner");
-    state.llmReply = res.text;
-    state.lastRehydrateResult = null;
-    if (llmInput) llmInput.value = res.text;
-    refreshWorkbenchUi();
-    llmInput?.focus();
-    showStatusBanner("banner.pasted");
-  });
+  getEl("paste-rehydrate-btn")?.addEventListener("click", () =>
+    readClipboardForInput({
+      inputEl: llmInput,
+      showStatusBanner,
+      onTextRead: (text) => {
+        hideInlineAlert("rehydrate-error-banner");
+        state.llmReply = text;
+        state.lastRehydrateResult = null;
+        if (llmInput) llmInput.value = text;
+        refreshWorkbenchUi();
+        llmInput?.focus();
+      },
+    })
+  );
 
   getEl("copy-restored-btn")?.addEventListener("click", async () => {
     const text = state.lastRehydrateResult?.rehydratedText || "";
-    const ok = await copyTextToClipboard(text);
-    if (ok) {
-      showCopyFeedback(
-        getEl("copy-restored-btn"),
-        t("action.copiedFeedback"),
-        () => t("step2.copyBtn")
-      );
-    }
-    showStatusBanner(ok ? "banner.copied" : "banner.copyFailed", {}, !ok);
+    await copyWithFeedback({
+      text,
+      buttonEl: getEl("copy-restored-btn"),
+      resetLabelGetter: () => t("step2.copyBtn"),
+      showStatusBanner,
+    });
   });
 
   getEl("download-restored-btn")?.addEventListener("click", () => {
@@ -1221,180 +836,7 @@ function bindEvents() {
     showStatusBanner("banner.downloaded");
   });
 
-  // Drawers & Modals
-  getEl("open-rulebook-btn")?.addEventListener("click", (event) => {
-    hideInlineAlert("rulebook-alert");
-    openDrawer("drawer-rulebook", event.currentTarget, state);
-  });
-  getEl("open-audit-btn")?.addEventListener("click", (event) => {
-    openDrawer("drawer-audit", event.currentTarget, state);
-  });
-  const handleOpenProofModal = (event) => {
-    renderPrivacyProofModal(getLang());
-    openDrawer("modal-privacy-proof", event.currentTarget, state);
-  };
-  getEl("open-proof-btn")?.addEventListener("click", handleOpenProofModal);
-  getEl("footer-open-proof-btn")?.addEventListener("click", handleOpenProofModal);
-  getEl("run-proof-check-btn")?.addEventListener("click", () => {
-    renderPrivacyProofModal(getLang());
-  });
-  getEl("reset-session-btn")?.addEventListener("click", () => {
-    resetSessionToZero();
-  });
-  getEl("open-privacy-policy-btn")?.addEventListener("click", (event) => {
-    renderContactsAndPolicy(getLang());
-    openDrawer("modal-privacy-policy", event.currentTarget, state);
-  });
-  getEl("open-terms-btn")?.addEventListener("click", (event) => {
-    renderContactsAndPolicy(getLang());
-    openDrawer("modal-terms", event.currentTarget, state);
-  });
-  getEl("close-rulebook-btn")?.addEventListener("click", () => closeDrawers(true, state));
-  getEl("close-audit-btn")?.addEventListener("click", () => closeDrawers(true, state));
-  getEl("close-proof-btn")?.addEventListener("click", () => closeDrawers(true, state));
-  getEl("close-proof-footer-btn")?.addEventListener("click", () => closeDrawers(true, state));
-  getEl("close-plan-modal-btn")?.addEventListener("click", () => closeDrawers(true, state));
-  getEl("close-policy-modal-btn")?.addEventListener("click", () => closeDrawers(true, state));
-  getEl("close-policy-footer-btn")?.addEventListener("click", () => closeDrawers(true, state));
-  getEl("close-terms-modal-btn")?.addEventListener("click", () => closeDrawers(true, state));
-  getEl("close-terms-footer-btn")?.addEventListener("click", () => closeDrawers(true, state));
-  getEl("drawer-backdrop")?.addEventListener("click", () => closeDrawers(true, state));
-
-  // Pricing & Client-Only Waitlist Modals
-  getEl("pricing-free-start-btn")?.addEventListener("click", () => {
-    switchMode("sanitize");
-    const raw = getEl("raw-prompt-input");
-    raw?.scrollIntoView({ behavior: "smooth", block: "center" });
-    raw?.focus({ preventScroll: true });
-  });
-  getEl("open-pro-modal-btn")?.addEventListener("click", (event) => {
-    openPlanRequestModal("pro", event.currentTarget);
-  });
-  getEl("open-team-modal-btn")?.addEventListener("click", (event) => {
-    openPlanRequestModal("team", event.currentTarget);
-  });
-
-  getEl("plan-request-form")?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    hideInlineAlert("plan-request-alert");
-    const lang = getLang();
-    const isTeam = state.activeRequestPlan === "team";
-    const nameVal = (getEl("plan-req-name")?.value || "").trim();
-    const contactVal = (getEl("plan-req-contact")?.value || "").trim();
-    const seatsInputRaw = (getEl("plan-req-seats")?.value ?? "").trim();
-    const seatsRaw = seatsInputRaw === "" ? NaN : Number(seatsInputRaw);
-    const noteVal = (getEl("plan-req-note")?.value || "").trim();
-
-    if (!nameVal) {
-      showInlineAlert("plan-request-alert", "request.errorName");
-      getEl("plan-req-name")?.focus();
-      return;
-    }
-    if (!isValidContactInput(contactVal)) {
-      showInlineAlert("plan-request-alert", "request.errorContact");
-      getEl("plan-req-contact")?.focus();
-      return;
-    }
-    if (isTeam && (!Number.isInteger(seatsRaw) || seatsRaw < 1 || seatsRaw > 5000)) {
-      showInlineAlert("plan-request-alert", "request.errorSeats");
-      getEl("plan-req-seats")?.focus();
-      return;
-    }
-
-    const pricing = getPlanPricing(state.activeRequestPlan, state.billingCycle, lang);
-    const lines = [
-      `${t("request.summaryPlan", {}, lang)}: ${pricing.planName}`,
-      `${t("request.summaryStatus", {}, lang)}: ${t("request.summaryStatusWaitlist", {}, lang)}`,
-      `${t("request.summaryName", {}, lang)}: ${nameVal}`,
-      `${t("request.summaryContact", {}, lang)}: ${contactVal}`,
-    ];
-    if (isTeam) {
-      lines.push(`${t("request.summarySeats", {}, lang)}: ${seatsRaw}`);
-    }
-    if (noteVal) {
-      lines.push(`${t("request.summaryNote", {}, lang)}: ${noteVal}`);
-    }
-    const summaryText = lines.join("\n");
-    state.lastRequestSummary = summaryText;
-
-    const previewEl = getEl("plan-request-preview");
-    const resultBox = getEl("plan-request-result");
-    const mailtoLink = getEl("plan-req-mailto-link");
-    if (previewEl) previewEl.textContent = summaryText;
-    if (mailtoLink) {
-      const subject = t(
-        isTeam ? "request.mailSubjectTeam" : "request.mailSubjectPro",
-        {},
-        lang
-      );
-      mailtoLink.setAttribute("href", buildMailtoHref(SITE_CONTACTS.email, subject, summaryText));
-    }
-    if (resultBox) resultBox.hidden = false;
-  });
-
-  getEl("plan-req-copy-btn")?.addEventListener("click", async () => {
-    const text = state.lastRequestSummary || getEl("plan-request-preview")?.textContent || "";
-    const ok = await copyTextToClipboard(text);
-    if (ok) {
-      showCopyFeedback(
-        getEl("plan-req-copy-btn"),
-        t("action.copiedFeedback"),
-        () => t("request.copyBtn")
-      );
-    }
-    showStatusBanner(ok ? "banner.copied" : "banner.copyFailed", {}, !ok);
-  });
-
-  // Footer contact copy buttons
-  const bindContactCopy = (btnId, value) => {
-    getEl(btnId)?.addEventListener("click", async () => {
-      const ok = await copyTextToClipboard(value);
-      if (ok) {
-        showCopyFeedback(
-          getEl(btnId),
-          t("action.copiedFeedback"),
-          () => t("action.copy")
-        );
-      }
-      showStatusBanner(ok ? "banner.copied" : "banner.copyFailed", {}, !ok);
-    });
-  };
-  bindContactCopy("copy-contact-telegram-btn", SITE_CONTACTS.telegramHandle);
-  bindContactCopy("copy-contact-email-btn", SITE_CONTACTS.email);
-  bindContactCopy("copy-contact-github-btn", SITE_CONTACTS.githubDisplay);
-
-  document.addEventListener("click", (event) => {
-    if (!state.pinnedToken) return;
-    const target = event.target;
-    if (
-      target instanceof Element &&
-      target.closest(
-        '#sanitized-output mark[data-token], #entity-vault-list [data-testid="vault-item"]'
-      )
-    ) {
-      return;
-    }
-    const prev = state.pinnedToken;
-    state.pinnedToken = "";
-    setTokenHighlight(prev, false);
-  });
-
-  document.addEventListener("keydown", (event) => {
-    const openDialogEl = getOpenDialogEl();
-    handleDrawerKeydown(event, openDialogEl, () => closeDrawers(true, state));
-  });
-
-  window.addEventListener("pagehide", () => {
-    resetSessionToZero({ silent: true });
-  });
-
-  window.addEventListener("pageshow", (event) => {
-    if (event.persisted) {
-      resetSessionToZero({ silent: true });
-    }
-  });
-
-  // Rulebook Form & Export/Import
+  // Rulebook Add & Export, File Uploads, Pricing & Modals
   getEl("add-rule-form")?.addEventListener("submit", (event) => {
     event.preventDefault();
     hideInlineAlert("rulebook-alert");
@@ -1436,56 +878,6 @@ function bindEvents() {
     showInlineAlert("rulebook-alert", "rulebook.exported", {}, "success");
   });
 
-  const importInput = getEl("import-rules-input");
-  getEl("import-rules-btn")?.addEventListener("click", () => importInput?.click());
-  importInput?.addEventListener("change", (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    hideInlineAlert("rulebook-alert");
-
-    const lowerName = file.name.toLowerCase();
-    const dotIdx = lowerName.lastIndexOf(".");
-    const ext = dotIdx >= 0 ? lowerName.slice(dotIdx) : "";
-    if (ext !== ".json") {
-      showInlineAlert("rulebook-alert", "rulebook.importInvalidExt", {
-        ext: ext || "—",
-      });
-      return;
-    }
-
-    if (file.size > MAX_FILE_BYTES) {
-      showInlineAlert("rulebook-alert", "rulebook.importTooLarge", { name: file.name });
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const { rules, addedCount, skippedCount } = importRulesJson(
-          String(reader.result || ""),
-          state.rules
-        );
-        state.rules = rules;
-        refreshDrawersUi();
-        runSanitizePipeline(false);
-        showInlineAlert(
-          "rulebook-alert",
-          "rulebook.imported",
-          { added: addedCount, skipped: skippedCount },
-          "success"
-        );
-      } catch (err) {
-        showInlineAlert("rulebook-alert", translateImportError(err));
-      }
-    };
-    reader.onerror = () => {
-      showInlineAlert("rulebook-alert", "rulebook.importReadError");
-    };
-    reader.readAsText(file, "UTF-8");
-  });
-
-  // Audit Export & Clear
   getEl("export-audit-btn")?.addEventListener("click", () => {
     const json = exportAuditJson(state.auditLog);
     downloadTextFile("promptveil-audit.json", json, "application/json;charset=utf-8");
@@ -1501,6 +893,54 @@ function bindEvents() {
     refreshDrawersUi();
     showStatusBanner("audit.cleared");
   });
+
+  fileController.bindFileAndRuleImportEvents();
+
+  bindPricingEvents({
+    state,
+    showInlineAlert,
+    hideInlineAlert,
+    showStatusBanner,
+    onStartFree: () => {
+      switchMode("sanitize");
+      const raw = getEl("raw-prompt-input");
+      raw?.scrollIntoView({ behavior: "smooth", block: "center" });
+      raw?.focus({ preventScroll: true });
+    },
+  });
+
+  bindModalAndThemeEvents({
+    state,
+    hideInlineAlert,
+    showStatusBanner,
+    onResetSession: () => resetSessionToZero(),
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!state.pinnedToken) return;
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest(
+        '#sanitized-output mark[data-token], #entity-vault-list [data-testid="vault-item"]'
+      )
+    ) {
+      return;
+    }
+    const prev = state.pinnedToken;
+    state.pinnedToken = "";
+    setTokenHighlight(prev, false);
+  });
+
+  window.addEventListener("pagehide", () => {
+    resetSessionToZero({ silent: true });
+  });
+
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) {
+      resetSessionToZero({ silent: true });
+    }
+  });
 }
 
 export function init() {
@@ -1509,7 +949,7 @@ export function init() {
     showStatusBanner("banner.storageWarning", {}, true);
   });
   state.lang = loadLanguage();
-  applyTheme(resolveInitialTheme(), { persist: false });
+  applyTheme(resolveInitialTheme(), state, { persist: false });
   state.rules = loadRules();
   state.auditLog = loadAuditLog();
   bindEvents();
@@ -1522,9 +962,7 @@ export function init() {
       updateThemeToggleButton(state.theme, getLang());
     },
   });
-  if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
-  }
+  registerOfflineServiceWorker();
 }
 
 if (document.readyState === "loading") {
