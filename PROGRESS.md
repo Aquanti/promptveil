@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-21T15:09+03:00  
-**Session Status:** PRO UPGRADE M3 COMPLETE — Multi-Project Rulebook Profiles, Extended Pro Dictionaries & Templates (R5)  
-**Exact Stop Point:** Completed Milestone M3 (R5) (build `22cecb109f`, `75/75` JS tests across `18` suites, `26/26` pytest, `app.js` `719` lines `< 750`, targeted Playwright E2E Tier 1 `F13`/`F8_15` `6/6` + Tier 2 `F13` `5/5` + Tier 5 `T5_11`/`T5_18` `2/2` passing). Next: M3 Gate & Milestone M4B (Extension ZIP packaging, Pro Downloads modal, Server/Netlify/SW).
+**Checkpoint Date:** 2026-11-21T18:17+03:00  
+**Session Status:** PRO UPGRADE M5 PHASE 1 — E2E Test & Page-Object Fixes Verified (`checkpoint: m5-phase1-fixes`)  
+**Exact Stop Point:** Fixed the 3 E2E defects (`test_T1_F8_14`, `PromptVeilUI.download_extension_zip`, `test_T4_09`) without touching `app/` or `extension/`; verified deterministic `npm run build` x2 (`bbad93a0d1`), `py_compile` (`17` files), `pytest tests/test_server.py` (`27/27`), `node --test` (`79/79` + `14/14`), E2E `--mode self-test` (`245` tests), and targeted Live FastAPI (`6/6`) + Static-Only (`6/6`) E2E runs (`0` listeners on port `8000`). Next: M5 Phase 1 full verification gate (Tiers 1–4 + Acceptance).
 
 ---
 
@@ -322,3 +322,18 @@ git push -u origin master
   - Registered `application/zip` for `.zip` and `Cache-Control: public, max-age=300` on `/downloads/*.zip` in `app/main.py` and `netlify.toml` (keeping all 7 CSP/security headers intact).
   - Added `<template id="tpl-modal-pro-downloads">` (`#modal-pro-downloads`, 1-click `#download-extension-zip-btn`, Chrome / Edge / Яндекс.Браузер / Yandex Browser setup guides), `#open-pro-downloads-btn` in `#pricing-card-pro`, and `#pro-license-downloads-btn` in `#tpl-modal-pro-license`, wired purely inside `modals.js` (keeping `app.js` untouched at `719 < 750` lines) with strict Free gating, mutual modal exclusion, Escape/Tab focus trap, updated `terms.item3*` copy, 100% RU/EN parity, and `>= 44px` mobile `390×844` tap targets with zero `100vw`.
 - **Verification:** Double-run `"C:\Program Files\nodejs\npm.cmd" run build` produced identical SHA-256 hashes across `promptveil-pro-extension.zip`, `extension/dist/*`, `app/static/dist/*`, and `app/static/sw.js`; `"C:\Program Files\nodejs\node.exe" --test tests\js\*.test.mjs` (`79/79` across `19` suites), `"C:\Program Files\nodejs\node.exe" --test extension\tests\*.test.mjs` (`14/14`), `.\.venv\Scripts\python.exe -m pytest tests\test_server.py -v` (`27/27`), `app.js` `719` lines, and port `8000` free.
+
+---
+
+## 13. PromptVeil Pro Upgrade — Milestone M5 Phase 1 E2E Fixes (`checkpoint: m5-phase1-fixes`)
+- **E2E Test & Page-Object Fixes (`e2e_tests/test_tier1_features.py`, `e2e_tests/locators.py`, `e2e_tests/test_tier4_scenarios.py`):**
+  - `test_T1_F8_14_zero_egress_across_full_pro_workflow`: moved 1-click prompt template selection (`ui.click_prompt_template(tid)`) before `ui.upload_files([docx_p, pdf_p])` so template loading does not clear `state.batchItems` and `state.vault` mid-batch before `download_batch_zip` / `click_batch_rehydrate` / `rehydrate_text`.
+  - `PromptVeilUI.download_extension_zip`: checked whether `#modal-pro-downloads` was already visible prior to calling `self.open_pro_downloads_modal()` and closed `#modal-pro-downloads` via `self.close_active_modal()` after `download.save_as(...)` when opened by `download_extension_zip()`, preventing `#drawer-backdrop` from intercepting subsequent clicks in `test_T3_14` and `test_ACC_16` while keeping `test_T1_F12_03` and `test_T1_F12_05` passing.
+  - `test_T4_09_mobile_390x844_pro_workflow_and_key_deactivation_downgrade`: called `ui.click_clear_input()` before `ui.sanitize_text("Downgraded free.user@example.ru")` on mobile `390×844` so `SessionVault` resets cleanly after the prior Pro batch and deterministically assigns `[EMAIL_1]` post-downgrade.
+- **Verification (Sequential):**
+  - Deterministic `npm run build` x2: `bbad93a0d1` (`0` unexpected git diffs across `app/static/dist/`, `app/static/downloads/promptveil-pro-extension.zip`, `app/static/sw.js`, and HTML files).
+  - `.\.venv\Scripts\python.exe -m py_compile` (`app/*.py`, `tests/*.py`, `e2e_tests/*.py`): exit `0` (`17` files).
+  - `.\.venv\Scripts\python.exe -m pytest tests/test_server.py -v`: **`27 passed`**.
+  - `node --test tests/js/*.test.mjs`: **`79 passed`** (`19` suites); `node --test extension/tests/*.test.mjs`: **`14 passed`**.
+  - `.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode self-test`: **`ALL CHECKS PASSED`** (`245` unique tests collected).
+  - Targeted Live FastAPI (`--base-url http://127.0.0.1:8000 --start-server`) & Static-Only (`--static-only`) for `test_T1_F8_14 or test_T1_F12_03 or test_T1_F12_05 or test_T3_14 or test_T4_09 or test_ACC_16`: **`6 passed` / `6 passed`**, `0` listeners on port `8000`.

@@ -573,6 +573,7 @@ def test_T4_09_mobile_390x844_pro_workflow_and_key_deactivation_downgrade(
 
     ui.select_rulebook_profile("Основной")
     ui.close_open_drawer()
+    ui.click_clear_input()
     assert "[EMAIL_1]" in ui.sanitize_text("Downgraded free.user@example.ru")
     verify_responsive_layout(page, 390, 844)
 

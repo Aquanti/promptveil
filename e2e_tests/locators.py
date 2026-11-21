@@ -2885,6 +2885,15 @@ class PromptVeilUI:
 
     def download_extension_zip(self, target_dir: Path) -> Path:
         """Click #download-extension-zip-btn inside #modal-pro-downloads and save the .zip."""
+        already_open = (
+            self._first_visible_or_none(
+                [
+                    self.page.locator("[data-testid='modal-pro-downloads']"),
+                    self.page.locator("#modal-pro-downloads"),
+                ]
+            )
+            is not None
+        )
         modal = self.open_pro_downloads_modal()
         btn = self._first_visible(
             [
@@ -2902,6 +2911,8 @@ class PromptVeilUI:
         download: Download = dl_info.value
         dest = target_dir / (download.suggested_filename or "promptveil-pro-extension.zip")
         download.save_as(str(dest))
+        if not already_open:
+            self.close_active_modal()
         return dest
 
     # -----------------------------------------------------------------------

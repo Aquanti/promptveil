@@ -1885,6 +1885,15 @@ def test_T1_F8_14_zero_egress_across_full_pro_workflow(
     ui.apply_industry_word_pack("banking_fintech")
     ui.close_open_drawer()
 
+    bar = ui.get_prompt_templates_bar()
+    tpl_btn = bar.locator(".prompt-template-btn, button").first
+    tid = (
+        tpl_btn.get_attribute("data-template-id")
+        or tpl_btn.get_attribute("data-template")
+        or tpl_btn.inner_text().strip()
+    )
+    ui.click_prompt_template(tid)
+
     docx_p = make_synthetic_docx(
         pro_e2e_session.io.uploads / "egress_a.docx",
         paragraphs=["Contact egress.docx@example.com with ZeroEgressSecret"],
@@ -1894,15 +1903,6 @@ def test_T1_F8_14_zero_egress_across_full_pro_workflow(
         text_lines=["Contact egress.pdf@example.com"],
     )
     ui.upload_files([docx_p, pdf_p])
-
-    bar = ui.get_prompt_templates_bar()
-    tpl_btn = bar.locator(".prompt-template-btn, button").first
-    tid = (
-        tpl_btn.get_attribute("data-template-id")
-        or tpl_btn.get_attribute("data-template")
-        or tpl_btn.inner_text().strip()
-    )
-    ui.click_prompt_template(tid)
 
     ui.download_batch_zip(pro_e2e_session.io.downloads)
     ui.click_batch_rehydrate()
