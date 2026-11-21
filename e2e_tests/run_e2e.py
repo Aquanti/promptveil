@@ -24,6 +24,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ from locators import PromptVeilUI
 from monitors import (
     ConsoleErrorMonitor,
     NetworkMonitor,
+    RecordedRequest,
     verify_csp_and_security_headers,
     verify_health_endpoint,
     verify_no_overlap_or_clipping,
@@ -65,7 +67,8 @@ class _SmokeRequestHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/health":
+        req_path = urllib.parse.urlsplit(self.path).path
+        if req_path == "/health":
             payload = json.dumps(
                 {
                     "status": "ok",
@@ -79,13 +82,33 @@ class _SmokeRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
-        if self.path == "/favicon.ico":
+        if req_path == "/downloads/promptveil-pro-extension.zip":
+            payload = b"PK\x05\x06" + b"\x00" * 18
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("Cache-Control", "public, max-age=300")
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if req_path == "/favicon.ico":
             self.send_response(204)
             self.end_headers()
             return
-        if self.path == "/" or self.path.startswith("/?"):
+        if req_path == "/" or self.path.startswith("/?"):
             self.path = "/smoke_contract.html"
         super().do_GET()
+
+    def do_POST(self) -> None:  # noqa: N802
+        length = int(self.headers.get("Content-Length") or "0")
+        if length > 0:
+            _ = self.rfile.read(length)
+        payload = b"ok"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         _ = (format, args)
@@ -904,9 +927,238 @@ def _run_negative_monitor_checks(browser: Browser, base_url: str) -> None:
     finally:
         ctx_dom.close()
 
+    # (a3) Extension ZIP download exemption vs strict leak flagging
+    ext_handler = functools.partial(_SmokeRequestHandler, directory=str(FIXTURES_DIR))
+    ext_server = _ThreadingServer(("127.0.0.1", 0), ext_handler)
+    ext_port = int(ext_server.server_address[1])
+    ext_thread = threading.Thread(target=ext_server.serve_forever, daemon=True)
+    ext_thread.start()
+    ctx_zip = browser.new_context(accept_downloads=True, viewport={"width": 1440, "height": 900})
+    try:
+        # Positive 1: same-origin <a download> triggers page.on("download") and is exempted.
+        p_ok = ctx_zip.new_page()
+        net_ok = NetworkMonitor(page=p_ok)
+        net_ok.attach()
+        p_ok.goto(f"{base_url}/", wait_until="networkidle")
+        net_ok.start_interactive_phase()
+        p_ok.evaluate(
+            """() => {
+                const a = document.createElement('a');
+                a.id = 'probe-zip-dl';
+                a.href = '/downloads/promptveil-pro-extension.zip';
+                a.setAttribute('download', '');
+                a.textContent = 'dl';
+                document.body.appendChild(a);
+            }"""
+        )
+        with p_ok.expect_download(timeout=5000):
+            p_ok.locator("#probe-zip-dl").click()
+        interactive_ok = [r for r in net_ok.requests if r.phase == "interactive"]
+        assert len(interactive_ok) == 1 and interactive_ok[0].resource_type == "download", (
+            f"Expected 1 interactive download record, got {interactive_ok}"
+        )
+        assert len(net_ok.same_origin_requests(phase="interactive")) == 1
+        net_ok.assert_zero_egress()
+        net_ok.detach()
+        p_ok.close()
+
+        # Positive 2: same-origin plain <a href> navigation-to-download is exempted.
+        p_nav = ctx_zip.new_page()
+        net_nav = NetworkMonitor(page=p_nav)
+        net_nav.attach()
+        p_nav.goto(f"{base_url}/", wait_until="networkidle")
+        net_nav.start_interactive_phase()
+        p_nav.evaluate(
+            """() => {
+                const a = document.createElement('a');
+                a.id = 'probe-zip-nav';
+                a.href = '/downloads/promptveil-pro-extension.zip';
+                a.textContent = 'nav';
+                document.body.appendChild(a);
+            }"""
+        )
+        with p_nav.expect_download(timeout=5000):
+            p_nav.locator("#probe-zip-nav").click()
+        interactive_nav = [
+            r for r in net_nav.requests if r.phase == "interactive" and r.resource_type == "document"
+        ]
+        assert len(interactive_nav) == 1 and interactive_nav[0].is_navigation, (
+            f"Expected 1 interactive navigation document request, got {interactive_nav}"
+        )
+        assert len(net_nav.same_origin_requests(phase="interactive")) == 1
+        net_nav.assert_zero_egress()
+        net_nav.detach()
+        p_nav.close()
+
+        # Negative 1: ?leak=1 on <a download> MUST be flagged.
+        p_q_dl = ctx_zip.new_page()
+        net_q_dl = NetworkMonitor(page=p_q_dl)
+        net_q_dl.attach()
+        p_q_dl.goto(f"{base_url}/", wait_until="networkidle")
+        net_q_dl.start_interactive_phase()
+        p_q_dl.evaluate(
+            """() => {
+                const a = document.createElement('a');
+                a.id = 'probe-zip-q-dl';
+                a.href = '/downloads/promptveil-pro-extension.zip?leak=1';
+                a.setAttribute('download', '');
+                a.textContent = 'qdl';
+                document.body.appendChild(a);
+            }"""
+        )
+        with p_q_dl.expect_download(timeout=5000):
+            p_q_dl.locator("#probe-zip-q-dl").click()
+        caught_q_dl = False
+        try:
+            net_q_dl.assert_zero_egress()
+        except AssertionError:
+            caught_q_dl = True
+        assert caught_q_dl, "Negative monitor check failed: ?leak=1 on <a download> was not flagged"
+        net_q_dl.detach()
+        p_q_dl.close()
+
+        # Negative 2: ?leak=1 on plain <a> MUST be flagged.
+        p_q_nav = ctx_zip.new_page()
+        net_q_nav = NetworkMonitor(page=p_q_nav)
+        net_q_nav.attach()
+        p_q_nav.goto(f"{base_url}/", wait_until="networkidle")
+        net_q_nav.start_interactive_phase()
+        p_q_nav.evaluate(
+            """() => {
+                const a = document.createElement('a');
+                a.id = 'probe-zip-q-nav';
+                a.href = '/downloads/promptveil-pro-extension.zip?leak=1';
+                a.textContent = 'qnav';
+                document.body.appendChild(a);
+            }"""
+        )
+        with p_q_nav.expect_download(timeout=5000):
+            p_q_nav.locator("#probe-zip-q-nav").click()
+        caught_q_nav = False
+        try:
+            net_q_nav.assert_zero_egress()
+        except AssertionError:
+            caught_q_nav = True
+        assert caught_q_nav, "Negative monitor check failed: ?leak=1 on plain <a> was not flagged"
+        net_q_nav.detach()
+        p_q_nav.close()
+
+        # Negative 3: fetch('/downloads/promptveil-pro-extension.zip') MUST be flagged.
+        p_fetch = ctx_zip.new_page()
+        net_fetch = NetworkMonitor(page=p_fetch)
+        net_fetch.attach()
+        p_fetch.goto(f"{base_url}/", wait_until="networkidle")
+        net_fetch.start_interactive_phase()
+        p_fetch.evaluate("() => fetch('/downloads/promptveil-pro-extension.zip').then(r => r.status)")
+        caught_fetch = False
+        try:
+            net_fetch.assert_zero_egress()
+        except AssertionError:
+            caught_fetch = True
+        assert caught_fetch, "Negative monitor check failed: fetch() to extension zip was not flagged"
+        net_fetch.detach()
+        p_fetch.close()
+
+        # Negative 4: XMLHttpRequest to /downloads/promptveil-pro-extension.zip MUST be flagged.
+        p_xhr = ctx_zip.new_page()
+        net_xhr = NetworkMonitor(page=p_xhr)
+        net_xhr.attach()
+        p_xhr.goto(f"{base_url}/", wait_until="networkidle")
+        net_xhr.start_interactive_phase()
+        p_xhr.evaluate(
+            """() => new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', '/downloads/promptveil-pro-extension.zip');
+                xhr.onload = () => resolve(xhr.status);
+                xhr.onerror = () => reject(new Error('xhr error'));
+                xhr.send();
+            })"""
+        )
+        caught_xhr = False
+        try:
+            net_xhr.assert_zero_egress()
+        except AssertionError:
+            caught_xhr = True
+        assert caught_xhr, "Negative monitor check failed: XHR to extension zip was not flagged"
+        net_xhr.detach()
+        p_xhr.close()
+
+        # Negative 5: POST (both fetch POST and navigation POST form) to /downloads/promptveil-pro-extension.zip MUST be flagged.
+        p_post = ctx_zip.new_page()
+        net_post = NetworkMonitor(page=p_post)
+        net_post.attach()
+        p_post.goto(f"{base_url}/", wait_until="networkidle")
+        net_post.start_interactive_phase()
+        p_post.evaluate(
+            "() => fetch('/downloads/promptveil-pro-extension.zip', { method: 'POST', body: 'leak' }).then(r => r.status)"
+        )
+        caught_post = False
+        try:
+            net_post.assert_zero_egress()
+        except AssertionError:
+            caught_post = True
+        assert caught_post, "Negative monitor check failed: fetch POST to extension zip was not flagged"
+        net_post.detach()
+        p_post.close()
+
+        # Also assert RecordedRequest POST document navigation is never exempted.
+        net_post_doc = NetworkMonitor(page=p_ok)
+        net_post_doc.requests.append(
+            RecordedRequest(
+                phase="interactive",
+                url=f"{base_url}/downloads/promptveil-pro-extension.zip",
+                method="POST",
+                resource_type="document",
+                post_data="secret=1",
+                is_navigation=True,
+                page_url=f"{base_url}/",
+                has_post_data=True,
+                is_main_frame=True,
+            )
+        )
+        caught_post_doc = False
+        try:
+            net_post_doc.assert_zero_egress()
+        except AssertionError:
+            caught_post_doc = True
+        assert caught_post_doc, "Negative monitor check failed: POST document navigation was not flagged"
+
+        # Negative 6: Cross-origin <a download> MUST be flagged even with exact path.
+        p_ext = ctx_zip.new_page()
+        net_ext = NetworkMonitor(page=p_ext)
+        net_ext.attach()
+        p_ext.goto(f"{base_url}/", wait_until="networkidle")
+        net_ext.start_interactive_phase()
+        p_ext.evaluate(
+            """(extUrl) => {
+                const a = document.createElement('a');
+                a.id = 'probe-zip-ext';
+                a.href = extUrl;
+                a.setAttribute('download', '');
+                a.textContent = 'ext';
+                document.body.appendChild(a);
+            }""",
+            f"http://127.0.0.1:{ext_port}/downloads/promptveil-pro-extension.zip",
+        )
+        with p_ext.expect_download(timeout=5000):
+            p_ext.locator("#probe-zip-ext").click()
+        assert net_ext.same_origin_requests(phase="interactive") == []
+        caught_ext = False
+        try:
+            net_ext.assert_zero_egress()
+        except AssertionError:
+            caught_ext = True
+        assert caught_ext, "Negative monitor check failed: cross-origin extension zip download was not flagged"
+        net_ext.detach()
+        p_ext.close()
+    finally:
+        ctx_zip.close()
+        ext_server.shutdown()
+        ext_server.server_close()
+
     print(
         "[self-test] Negative & edge monitor checks OK "
-        "(http/ws egress, console/pageerror, 390x844 overflow, overlap/clipping/overlay-layer, RU purity, exact CSP/COOP/CORP, chip disambiguation)"
+        "(http/ws egress, ext-zip exemption/negative, console/pageerror, 390x844 overflow, overlap/clipping/overlay-layer, RU purity, exact CSP/COOP/CORP, chip disambiguation)"
     )
 
 

@@ -684,14 +684,10 @@ def test_T2_F9_01_launchers_empty_input_and_clipboard_denied_fallback(
         with page.expect_popup(timeout=3000) as pop_info:
             ui.click_ai_launcher("gemini")
         pop_info.value.close()
-        page.wait_for_timeout(120)
-        alert_text = ""
-        alert_loc = page.locator("[data-testid='status-banner'][role='alert'], [role='alert']")
-        if alert_loc.count() > 0 and alert_loc.first.is_visible():
-            alert_text = alert_loc.first.inner_text().strip()
-        else:
-            alert_text = ui.get_visible_error_notice()
-        assert alert_text
+        banner_alert = page.locator("[data-testid='status-banner'][role='alert']")
+        banner_alert.wait_for(state="visible", timeout=3000)
+        alert_text = banner_alert.inner_text().strip()
+        assert alert_text == "Доступ к буферу обмена ограничен — используйте Ctrl+C / Cmd+C."
     finally:
         page.context.unroute("https://gemini.google.com/**")
 
@@ -1276,28 +1272,34 @@ def test_T2_F12_04_extension_zip_contains_zero_secrets_and_exact_six_ai_hosts(
         assert int(resp.status) == 200
         payload = resp.read()
 
-    expected_domains = {
-        "chatgpt.com",
-        "claude.ai",
-        "gemini.google.com",
-        "chat.deepseek.com",
-        "giga.chat",
-        "alice.yandex.ru",
+    expected_origin_patterns = {
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://chat.deepseek.com/*",
+        "https://giga.chat/*",
+        "https://alice.yandex.ru/*",
     }
     with zipfile.ZipFile(io.BytesIO(payload), "r") as zf:
         assert zf.testzip() is None
         manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
-        host_perms = list(manifest.get("host_permissions", []))
-        cs_matches = [m for cs in manifest.get("content_scripts", []) for m in cs.get("matches", [])]
-        assert "<all_urls>" not in " ".join(host_perms + cs_matches)
+        host_perms = [
+            p for p in (manifest.get("host_permissions") or []) if isinstance(p, str)
+        ]
+        cs_matches = [
+            m
+            for cs in (manifest.get("content_scripts") or [])
+            for m in (cs.get("matches") or [])
+            if isinstance(m, str)
+        ]
+        all_matches = host_perms + cs_matches
 
-        for pattern_list in (host_perms, cs_matches):
-            found = {
-                dom
-                for dom in expected_domains
-                if any(dom in entry for entry in pattern_list)
-            }
-            assert found == expected_domains
+        for entry in all_matches:
+            for forbidden in ("<all_urls>", "*://*/*", "https://*/*", "http://*/*"):
+                assert forbidden not in entry, f"Forbidden wildcard {forbidden!r} in {entry!r}"
+
+        assert len(cs_matches) >= 6
+        assert set(all_matches) == expected_origin_patterns
 
         for member in zf.namelist():
             if member.endswith((".js", ".json", ".html", ".css", ".txt")):

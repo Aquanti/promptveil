@@ -1429,18 +1429,63 @@ def test_T1_F12_01_downloads_zip_endpoint_mime_cache_and_contents(e2e_session: E
     assert "application/zip" in headers.get("content-type", "").lower()
     assert headers.get("x-content-type-options", "").lower() == "nosniff"
     assert headers.get("cross-origin-resource-policy", "").lower() == "same-origin"
+    assert "max-age=" in headers.get("cache-control", "").lower()
 
     with zipfile.ZipFile(io.BytesIO(payload), "r") as zf:
         assert zf.testzip() is None
         names = set(zf.namelist())
         assert "manifest.json" in names
-        assert "popup.html" in names
-        assert "content.js" in names
         manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
         assert manifest.get("manifest_version") == 3
+
+        action = manifest.get("action") or {}
+        default_popup = action.get("default_popup")
+        assert isinstance(default_popup, str) and default_popup
+        popup_rel = default_popup.lstrip("./")
+        assert popup_rel in names
+        assert {"dist/popup.bundle.js", "popup.css"}.issubset(names)
+        popup_html = zf.read(popup_rel).decode("utf-8")
+        assert "popup.css" in popup_html
+        assert "dist/popup.bundle.js" in popup_html
+
+        icon_paths: list[str] = [
+            p for p in (manifest.get("icons") or {}).values() if isinstance(p, str) and p
+        ]
+        default_icon = action.get("default_icon")
+        if isinstance(default_icon, str) and default_icon:
+            icon_paths.append(default_icon)
+        elif isinstance(default_icon, dict):
+            icon_paths.extend(p for p in default_icon.values() if isinstance(p, str) and p)
+        assert len(icon_paths) >= 1
+        for icon_path in icon_paths:
+            assert icon_path.lstrip("./") in names
+
+        content_scripts = manifest.get("content_scripts") or []
+        cs_js: list[str] = [
+            p for cs in content_scripts for p in cs.get("js", []) if isinstance(p, str) and p
+        ]
+        cs_css: list[str] = [
+            p for cs in content_scripts for p in cs.get("css", []) if isinstance(p, str) and p
+        ]
+        assert "dist/content.bundle.js" in cs_js
+        assert "content.css" in cs_css
+        for asset_path in cs_js + cs_css:
+            assert asset_path.lstrip("./") in names
+
+        required_assets = {
+            "manifest.json",
+            popup_rel,
+            "popup.css",
+            "dist/popup.bundle.js",
+            *{p.lstrip("./") for p in icon_paths},
+            *{p.lstrip("./") for p in cs_js + cs_css},
+        }
+        for asset in required_assets:
+            assert zf.getinfo(asset).file_size > 0, f"Empty extension ZIP member: {asset}"
+
         all_hosts = " ".join(
-            list(manifest.get("host_permissions", []))
-            + [m for cs in manifest.get("content_scripts", []) for m in cs.get("matches", [])]
+            list(manifest.get("host_permissions") or [])
+            + [m for cs in content_scripts for m in (cs.get("matches") or [])]
         )
         for domain in (
             "chatgpt.com",

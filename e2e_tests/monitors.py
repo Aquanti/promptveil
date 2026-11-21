@@ -35,6 +35,7 @@ from playwright.sync_api import (
     CDPSession,
     ConsoleMessage,
     Dialog,
+    Download,
     Page,
     Request,
     Response,
@@ -44,6 +45,27 @@ from playwright.sync_api import (
 
 _EGRESS_SCHEMES = ("http://", "https://", "ws://", "wss://")
 _LOCAL_DOWNLOAD_SCHEMES = ("blob:", "data:")
+_EXEMPT_EXTENSION_ZIP_PATH = "/downloads/promptveil-pro-extension.zip"
+
+
+def _normalized_origin(url: str) -> tuple[str, str, int] | None:
+    """Return normalized (scheme, hostname, port) for http/https URLs without userinfo."""
+    parsed = urllib.parse.urlsplit(url)
+    scheme = parsed.scheme.lower()
+    if scheme not in ("http", "https") or not parsed.netloc:
+        return None
+    if parsed.username is not None or parsed.password is not None:
+        return None
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        return None
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    if port is None:
+        port = 443 if scheme == "https" else 80
+    return (scheme, hostname, port)
 
 _DEFAULT_SCREENSHOT_DIR = Path(__file__).resolve().parent / "artifacts" / "screenshots"
 
@@ -125,13 +147,17 @@ ALLOWED_LOCAL_STORAGE_KEYS: frozenset[str] = frozenset(
 
 @dataclass(frozen=True)
 class RecordedRequest:
-    """Snapshot of an observed browser network request."""
+    """Snapshot of an observed browser network request or download."""
 
     phase: str
     url: str
     method: str
     resource_type: str
     post_data: str | None = None
+    is_navigation: bool = False
+    page_url: str = ""
+    has_post_data: bool = False
+    is_main_frame: bool = True
 
 
 @dataclass
@@ -146,13 +172,14 @@ class NetworkMonitor:
     _attached: bool = False
 
     def attach(self) -> None:
-        """Attach Playwright request/response/requestfailed/websocket listeners."""
+        """Attach Playwright request/response/requestfailed/websocket/download listeners."""
         if self._attached:
             return
         self.page.on("request", self._on_request)
         self.page.on("requestfailed", self._on_request_failed)
         self.page.on("response", self._on_response)
         self.page.on("websocket", self._on_websocket)
+        self.page.on("download", self._on_download)
         self._attached = True
 
     def detach(self) -> None:
@@ -163,14 +190,32 @@ class NetworkMonitor:
         self.page.remove_listener("requestfailed", self._on_request_failed)
         self.page.remove_listener("response", self._on_response)
         self.page.remove_listener("websocket", self._on_websocket)
+        self.page.remove_listener("download", self._on_download)
         self._attached = False
 
     def _on_request(self, req: Request) -> None:
         post_data: str | None = None
+        has_post_data = False
         try:
             post_data = req.post_data
+            if post_data is not None:
+                has_post_data = True
         except Exception:  # noqa: BLE001
             post_data = None
+            has_post_data = True
+        if not has_post_data:
+            try:
+                has_post_data = req.post_data_buffer is not None
+            except Exception:  # noqa: BLE001
+                has_post_data = True
+        try:
+            is_nav = bool(req.is_navigation_request())
+        except Exception:  # noqa: BLE001
+            is_nav = False
+        try:
+            is_main = req.frame == self.page.main_frame
+        except Exception:  # noqa: BLE001
+            is_main = False
         self.requests.append(
             RecordedRequest(
                 phase=self.phase,
@@ -178,6 +223,10 @@ class NetworkMonitor:
                 method=req.method,
                 resource_type=req.resource_type,
                 post_data=post_data,
+                is_navigation=is_nav,
+                page_url=self.page.url,
+                has_post_data=has_post_data,
+                is_main_frame=is_main,
             )
         )
 
@@ -197,21 +246,91 @@ class NetworkMonitor:
                 method="WEBSOCKET",
                 resource_type="websocket",
                 post_data=None,
+                page_url=self.page.url,
             )
         )
+
+    def _on_download(self, download: Download) -> None:
+        url = download.url or ""
+        if not url or url.lower().startswith(_LOCAL_DOWNLOAD_SCHEMES):
+            return
+        # Avoid duplicating a plain navigation document request already captured in the same phase.
+        if any(
+            r.phase == self.phase
+            and r.url == url
+            and r.method.upper() == "GET"
+            and r.is_navigation
+            and r.resource_type == "document"
+            for r in self.requests
+        ):
+            return
+        self.requests.append(
+            RecordedRequest(
+                phase=self.phase,
+                url=url,
+                method="GET",
+                resource_type="download",
+                post_data=None,
+                is_navigation=True,
+                page_url=self.page.url,
+                has_post_data=False,
+                is_main_frame=True,
+            )
+        )
+
+    @staticmethod
+    def _is_same_origin_request(req: RecordedRequest) -> bool:
+        req_origin = _normalized_origin(req.url)
+        page_origin = _normalized_origin(req.page_url)
+        return req_origin is not None and page_origin is not None and req_origin == page_origin
+
+    @classmethod
+    def _is_exempt_extension_download(cls, req: RecordedRequest) -> bool:
+        """Allow ONLY clean same-origin GET navigation/download of /downloads/promptveil-pro-extension.zip."""
+        if req.method.upper() != "GET":
+            return False
+        if req.post_data is not None or req.has_post_data:
+            return False
+        if not req.is_main_frame:
+            return False
+        if req.resource_type == "document":
+            if not req.is_navigation:
+                return False
+        elif req.resource_type != "download":
+            return False
+        if not cls._is_same_origin_request(req):
+            return False
+        if "?" in req.url or "#" in req.url:
+            return False
+        parsed = urllib.parse.urlsplit(req.url)
+        if parsed.query or parsed.fragment:
+            return False
+        return parsed.path == _EXEMPT_EXTENSION_ZIP_PATH
+
+    def same_origin_requests(self, phase: str | None = None) -> list[RecordedRequest]:
+        """Return recorded http(s) requests matching the current page origin."""
+        return [
+            req
+            for req in self.requests
+            if (phase is None or req.phase == phase)
+            and req.url.lower().startswith(_EGRESS_SCHEMES)
+            and self._is_same_origin_request(req)
+        ]
 
     def start_interactive_phase(self) -> None:
         """Transition monitor from initial page load to interactive workflow phase."""
         self.phase = "interactive"
 
     def interactive_egress_requests(self) -> list[RecordedRequest]:
-        """Return interactive-phase requests using http(s):// or ws(s):// schemes."""
+        """Return interactive-phase http(s)/ws(s) requests, exempting only clean same-origin extension ZIP downloads."""
         egress: list[RecordedRequest] = []
         for req in self.requests:
             if req.phase != "interactive":
                 continue
             low = req.url.lower()
             if low.startswith(_LOCAL_DOWNLOAD_SCHEMES):
+                continue
+            if self._is_exempt_extension_download(req):
                 continue
             if low.startswith(_EGRESS_SCHEMES):
                 egress.append(req)
