@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PromptVeil</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="pv-app" id="pv-popup-root">
+      <header class="pv-rail">
+        <div class="pv-rail-brand">
+          <img src="icons/icon-48.png" alt="" width="24" height="24" class="pv-brand-img" />
+          <div class="pv-brand-copy">
+            <span class="pv-brand-title" id="popup-brand-title">PromptVeil</span>
+            <span class="pv-brand-tagline" id="popup-brand-tagline">Локальная защита промптов</span>
+          </div>
+        </div>
+        <div class="pv-rail-actions">
+          <button
+            type="button"
+            class="pv-pro-badge"
+            id="popup-pro-badge"
+            title="Лицензия Pro"
+          >
+            Free
+          </button>
+          <div class="pv-lang-switch" role="group" aria-label="Language">
+            <button type="button" class="pv-lang-btn is-active" id="popup-lang-ru" data-lang="ru">
+              RU
+            </button>
+            <button type="button" class="pv-lang-btn" id="popup-lang-en" data-lang="en">
+              EN
+            </button>
+          </div>
+          <button
+            type="button"
+            class="pv-icon-btn"
+            id="popup-theme-btn"
+            aria-label="Включить тёмную тему"
+            title="Включить тёмную тему"
+          >
+            <svg
+              id="popup-theme-icon-moon"
+              class="pv-svg-icon"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+            <svg
+              id="popup-theme-icon-sun"
+              class="pv-svg-icon"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+              hidden
+            >
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2" />
+              <path d="M12 20v2" />
+              <path d="m4.93 4.93 1.41 1.41" />
+              <path d="m17.66 17.66 1.41 1.41" />
+              <path d="M2 12h2" />
+              <path d="M20 12h2" />
+              <path d="m6.34 17.66-1.41 1.41" />
+              <path d="m19.07 4.93-1.41 1.41" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="pv-main">
+        <section class="pv-card pv-site-card" aria-labelledby="popup-site-status">
+          <div class="pv-site-row">
+            <span class="pv-site-dot" id="popup-site-dot" aria-hidden="true"></span>
+            <div class="pv-site-copy">
+              <div class="pv-site-status" id="popup-site-status">
+                Откройте один из 6 поддерживаемых ИИ-чатов
+              </div>
+              <div class="pv-site-hosts" id="popup-site-hosts">
+                ChatGPT • Claude • Gemini • DeepSeek • GigaChat • Алиса
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="pv-card" aria-labelledby="popup-controls-title">
+          <div class="pv-card-head">
+            <h2 class="pv-card-title" id="popup-controls-title">Защита в ИИ-чате</h2>
+          </div>
+
+          <div class="pv-control-row">
+            <span class="pv-control-label" id="popup-overlay-label">
+              Плавающая панель поверх ИИ-чата
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked="true"
+              aria-labelledby="popup-overlay-label"
+              class="pv-switch-btn"
+              id="popup-overlay-toggle"
+            >
+              <span class="pv-switch-thumb" aria-hidden="true"></span>
+            </button>
+          </div>
+
+          <div class="pv-control-row">
+            <span class="pv-control-label" id="popup-sensitivity-label">Режим проверки</span>
+            <div class="pv-seg-switch" role="group" aria-labelledby="popup-sensitivity-label">
+              <button
+                type="button"
+                class="pv-seg-btn is-active"
+                id="popup-sens-normal"
+                data-sensitivity="normal"
+              >
+                Обычный
+              </button>
+              <button
+                type="button"
+                class="pv-seg-btn"
+                id="popup-sens-strict"
+                data-sensitivity="strict"
+              >
+                Строгий
+              </button>
+            </div>
+          </div>
+
+          <label class="pv-checkbox-row" for="popup-uuid-toggle">
+            <input type="checkbox" class="pv-checkbox" id="popup-uuid-toggle" />
+            <span class="pv-checkbox-text">
+              <span id="popup-uuid-label">Скрывать UUID</span>
+              <span class="pv-hint-inline" id="popup-uuid-strict-hint" hidden>
+                В строгом режиме UUID скрываются всегда
+              </span>
+            </span>
+          </label>
+        </section>
+
+        <section class="pv-card" aria-labelledby="popup-categories-title">
+          <div class="pv-card-head">
+            <div class="pv-card-head-left">
+              <h2 class="pv-card-title" id="popup-categories-title">Категории детектора</h2>
+              <span class="pv-lock-badge" id="popup-categories-lock">Pro</span>
+            </div>
+            <button type="button" class="pv-btn-link" id="popup-categories-reset">
+              Включить все
+            </button>
+          </div>
+          <p class="pv-muted-note" id="popup-categories-summary">Включено: 24 из 24</p>
+          <p class="pv-pro-hint" id="popup-categories-pro-hint">
+            Выборочное отключение категорий доступно в Pro. В режиме Free работают все категории.
+          </p>
+          <div class="pv-cat-grid" id="popup-categories-grid"></div>
+        </section>
+
+        <section class="pv-card" aria-labelledby="popup-rules-title">
+          <div class="pv-card-head">
+            <h2 class="pv-card-title" id="popup-rules-title">Свои слова</h2>
+            <span class="pv-counter-pill" id="popup-custom-counter">0 / 5 (Free)</span>
+          </div>
+
+          <form class="pv-custom-form" id="popup-custom-form">
+            <input
+              type="text"
+              class="pv-input"
+              id="popup-custom-term"
+              maxlength="200"
+              placeholder="Имя, проект или компания..."
+              autocomplete="off"
+            />
+            <div class="pv-custom-form-row">
+              <select class="pv-select" id="popup-custom-category" aria-label="Категория">
+                <option value="CUSTOM">Своё слово</option>
+                <option value="PERSON">ФИО / Имя</option>
+                <option value="ORG">Компания</option>
+                <option value="PROJECT">Проект</option>
+                <option value="SECRET">Секрет</option>
+              </select>
+              <button type="submit" class="pv-btn pv-btn-primary" id="popup-custom-add-btn">
+                Добавить
+              </button>
+            </div>
+          </form>
+
+          <div class="pv-inline-alert" id="popup-custom-alert" role="alert" hidden></div>
+          <p class="pv-muted-note" id="popup-custom-empty">
+            Список пуст. Добавьте имена, проекты или термины, которые нужно скрывать.
+          </p>
+          <ul class="pv-rule-list" id="popup-custom-list"></ul>
+
+          <div class="pv-packs-block">
+            <div class="pv-packs-head">
+              <span class="pv-packs-title" id="popup-packs-title">Отраслевые наборы слов</span>
+              <span class="pv-lock-badge" id="popup-packs-lock">Только Pro</span>
+            </div>
+            <div class="pv-packs-grid" id="popup-packs-list"></div>
+          </div>
+        </section>
+
+        <section class="pv-card pv-pro-section" id="popup-pro-section" aria-labelledby="popup-pro-title">
+          <div class="pv-card-head">
+            <h2 class="pv-card-title" id="popup-pro-title">Лицензия Pro (Ed25519)</h2>
+          </div>
+
+          <div class="pv-pro-status-card" id="popup-pro-status-card">
+            <div class="pv-pro-status-title" id="popup-pro-status-title">Тариф: Старт (Free)</div>
+            <p class="pv-pro-status-desc" id="popup-pro-status-desc">
+              Базовая защита, строгий режим и до 5 своих слов.
+            </p>
+            <ul class="pv-pro-meta-list" id="popup-pro-meta-list" hidden></ul>
+          </div>
+
+          <textarea
+            class="pv-textarea"
+            id="popup-pro-key-input"
+            rows="2"
+            placeholder="Вставьте ключ вида PV1...."
+            spellcheck="false"
+            autocomplete="off"
+          ></textarea>
+
+          <div class="pv-inline-alert" id="popup-pro-alert" role="alert" hidden></div>
+
+          <div class="pv-pro-actions">
+            <button type="button" class="pv-btn pv-btn-lime" id="popup-pro-activate-btn">
+              Активировать
+            </button>
+            <button type="button" class="pv-btn pv-btn-danger-ghost" id="popup-pro-remove-btn" disabled>
+              Удалить ключ
+            </button>
+          </div>
+        </section>
+      </main>
+
+      <footer class="pv-footer">
+        <span id="popup-footer-text">0 хранения текстов • Метки только в RAM вкладки</span>
+      </footer>
+    </div>
+
+    <script src="dist/popup.bundle.js"></script>
+  </body>
+</html>

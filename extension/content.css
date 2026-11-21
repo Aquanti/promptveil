@@ -1,0 +1,14 @@
+#promptveil-ext-host {
+  all: initial;
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483647;
+  display: block;
+  font-family: "Segoe UI Variable Display", "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  line-height: 1.4;
+}
+
+#promptveil-ext-host[data-pv-hidden="true"] {
+  display: none !important;
+}
