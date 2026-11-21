@@ -336,6 +336,65 @@ a.plan-fallback-value:hover {
   color: var(--text-secondary);
 }
 
+/* Pro License Modal */
+.pro-license-status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg-surface-subtle);
+  color: var(--text-primary);
+}
+
+.pro-license-status-card.is-active {
+  border-color: var(--accent-safe-border);
+  background-color: var(--accent-safe-bg);
+  color: var(--accent-safe-fg);
+}
+
+.pro-license-status-card.is-owner {
+  box-shadow: 0 0 0 2px rgba(180, 241, 5, 0.25);
+}
+
+.pro-license-status-title {
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+
+.pro-license-status-desc {
+  margin: 0;
+  font-size: 0.81rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.pro-license-meta-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.pro-license-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pro-license-textarea {
+  font-family: var(--font-mono);
+  font-size: 0.79rem;
+  min-height: 5.2rem;
+  resize: vertical;
+}
+
 @media (max-width: 639px) {
   .modal-dialog {
     width: calc(100% - 1rem);
@@ -351,7 +410,9 @@ a.plan-fallback-value:hover {
 
   .plan-result-actions a,
   .plan-result-actions button,
-  .plan-fallback-contacts .btn-copy-xs {
+  .plan-fallback-contacts .btn-copy-xs,
+  .pro-license-form button,
+  #modal-pro-license .modal-footer button {
     min-height: 44px;
   }
 }

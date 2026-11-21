@@ -7,6 +7,11 @@ import { SITE_CONTACTS, buildMailtoHref } from "./contacts.js";
 import { clearEl, createEl, getEl, handleDrawerKeydown } from "./dom.js";
 import { applyTranslationsToRoot, getLang, normalizeLang, pluralizeCount, t } from "./i18n.js";
 import { runZeroRetentionSelfTest } from "./privacy-proof.js";
+import {
+  activateProLicense,
+  createFreeLicenseState,
+  deactivateProLicense,
+} from "./pro-license.js";
 import { closeDrawers, getOpenDialogEl, openDrawer } from "./render-drawers.js";
 import { loadThemePreference, saveThemePreference } from "./storage.js";
 
@@ -423,14 +428,151 @@ export function registerOfflineServiceWorker() {
     .catch(() => {});
 }
 
+export function formatLicenseDate(isoString, lang) {
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) return String(isoString || "");
+  const locale = normalizeLang(lang) === "en" ? "en-US" : "ru-RU";
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+export function renderProLicenseStatusCard(licenseState, lang = getLang()) {
+  const card = getEl("pro-license-status-card");
+  if (!card) return;
+  clearEl(card);
+
+  const lic = licenseState || createFreeLicenseState("none");
+  const isPro = Boolean(lic.isPro);
+  const isOwner = Boolean(lic.isOwner);
+  card.classList.toggle("is-active", isPro);
+  card.classList.toggle("is-owner", isOwner);
+
+  const titleKey = isOwner
+    ? "pro.statusTitleOwner"
+    : isPro
+      ? "pro.statusTitlePro"
+      : "pro.statusTitleFree";
+  card.appendChild(createEl("div", "pro-license-status-title", t(titleKey, {}, lang)));
+
+  if (!isPro) {
+    card.appendChild(createEl("p", "pro-license-status-desc", t("pro.statusDescFree", {}, lang)));
+    return;
+  }
+
+  const metaList = createEl("ul", "pro-license-meta-list");
+  const tierName = isOwner ? "Owner Pro" : "Pro";
+  const expText = lic.exp
+    ? t("pro.metaExp", { date: formatLicenseDate(lic.exp, lang) }, lang)
+    : t("pro.metaExpNever", {}, lang);
+  const rows = [
+    t("pro.metaTier", { tier: tierName }, lang),
+    t("pro.metaKeyId", { keyId: lic.keyId }, lang),
+    t("pro.metaLabel", { label: lic.label }, lang),
+    t("pro.metaIssuedAt", { date: formatLicenseDate(lic.issuedAt, lang) }, lang),
+    expText,
+  ];
+  for (const rowText of rows) {
+    metaList.appendChild(createEl("li", "pro-license-meta-item", rowText));
+  }
+  card.appendChild(metaList);
+}
+
+export function syncProUiState(state, lang = getLang()) {
+  const lic = state?.proLicense || createFreeLicenseState("none");
+  const isPro = Boolean(lic.isPro);
+  const isOwner = Boolean(lic.isOwner);
+  const proStateAttr = isOwner ? "owner" : isPro ? "pro" : "free";
+
+  const headerBtn = getEl("open-pro-license-btn");
+  if (headerBtn) {
+    headerBtn.dataset.proState = proStateAttr;
+    headerBtn.classList.toggle("is-pro", isPro && !isOwner);
+    headerBtn.classList.toggle("is-owner", isOwner);
+    headerBtn.textContent = t(
+      isOwner ? "pro.badgeOwner" : isPro ? "pro.badgePro" : "pro.badgeFree",
+      {},
+      lang
+    );
+    headerBtn.setAttribute("aria-label", t("pro.badgeAria", {}, lang));
+  }
+
+  const proCard = document.querySelector('[data-testid="pricing-card-pro"]');
+  if (proCard) {
+    proCard.classList.toggle("pricing-card--pro-unlocked", isPro);
+  }
+  const proBadge = getEl("pricing-pro-badge");
+  if (proBadge) {
+    proBadge.textContent = t(
+      isOwner ? "pricing.proBadgeOwner" : isPro ? "pricing.proBadgeActive" : "pricing.proBadge",
+      {},
+      lang
+    );
+  }
+  const proValue = getEl("price-pro-value");
+  if (proValue) {
+    proValue.textContent = t(
+      isPro ? "pricing.proActiveTitle" : "pricing.proWaitlistTitle",
+      {},
+      lang
+    );
+  }
+  const proNote = getEl("price-pro-note");
+  if (proNote) {
+    proNote.textContent = isPro
+      ? t("pricing.proActiveNote", { keyId: lic.keyId }, lang)
+      : t("pricing.proWaitlistNote", {}, lang);
+  }
+  const unlockedNote = getEl("pricing-pro-unlocked-note");
+  if (unlockedNote) {
+    unlockedNote.hidden = !isPro;
+    unlockedNote.textContent = isPro ? `${lic.label} • ${lic.keyId}` : "";
+  }
+  const activateCardBtn = getEl("pricing-activate-pro-btn");
+  if (activateCardBtn) {
+    activateCardBtn.textContent = t(
+      isPro ? "pricing.proManageCta" : "pricing.proActivateCta",
+      {},
+      lang
+    );
+  }
+
+  renderProLicenseStatusCard(lic, lang);
+  const removeBtn = getEl("pro-license-remove-btn");
+  if (removeBtn) {
+    removeBtn.disabled = !isPro;
+  }
+}
+
+export function openProLicenseModal(triggerEl, state, hideInlineAlert) {
+  ensureModalMounted("modal-pro-license");
+  hideInlineAlert?.("pro-license-alert");
+  syncProUiState(state, getLang());
+  openDrawer("modal-pro-license", triggerEl, state);
+  getEl("open-pro-license-btn")?.setAttribute("aria-expanded", "true");
+}
+
 export function bindModalAndThemeEvents({
   state,
+  showInlineAlert,
   hideInlineAlert,
   showStatusBanner,
   onResetSession,
 }) {
   const closeActiveDialog = () => {
     hideInlineAlert("rulebook-alert");
+    hideInlineAlert?.("pro-license-alert");
+    const proModal = getEl("modal-pro-license");
+    if (proModal && !proModal.hidden) {
+      proModal.hidden = true;
+    }
+    getEl("open-pro-license-btn")?.setAttribute("aria-expanded", "false");
     closeDrawers(true, state);
   };
 
@@ -451,6 +593,53 @@ export function bindModalAndThemeEvents({
   registerModalHydrator("modal-terms", () => {
     getEl("close-terms-modal-btn")?.addEventListener("click", closeActiveDialog);
     getEl("close-terms-footer-btn")?.addEventListener("click", closeActiveDialog);
+  });
+
+  registerModalHydrator("modal-pro-license", () => {
+    getEl("close-pro-license-btn")?.addEventListener("click", closeActiveDialog);
+    getEl("close-pro-license-footer-btn")?.addEventListener("click", closeActiveDialog);
+    getEl("pro-license-get-key-btn")?.addEventListener("click", () => {
+      const proModal = getEl("modal-pro-license");
+      if (proModal) proModal.hidden = true;
+      getEl("open-pro-license-btn")?.setAttribute("aria-expanded", "false");
+      hideInlineAlert?.("pro-license-alert");
+      getEl("open-pro-modal-btn")?.click();
+    });
+    getEl("pro-license-form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      hideInlineAlert?.("pro-license-alert");
+      const keyInput = getEl("pro-license-key-input");
+      const rawKey = (keyInput?.value || "").trim();
+      if (!rawKey) {
+        showInlineAlert?.("pro-license-alert", "pro.errorEmpty");
+        keyInput?.focus();
+        return;
+      }
+      const result = await activateProLicense(rawKey);
+      if (!result.valid) {
+        const errKey = result.reason === "expired" ? "pro.errorExpired" : "pro.errorInvalid";
+        showInlineAlert?.("pro-license-alert", errKey);
+        keyInput?.focus();
+        return;
+      }
+      state.proLicense = result;
+      if (keyInput) keyInput.value = "";
+      syncProUiState(state, getLang());
+      showStatusBanner("pro.activatedSuccess", {
+        tier: result.isOwner ? "Owner Pro" : "Pro",
+        keyId: result.keyId,
+      });
+    });
+    getEl("pro-license-remove-btn")?.addEventListener("click", () => {
+      state.proLicense = deactivateProLicense();
+      hideInlineAlert?.("pro-license-alert");
+      syncProUiState(state, getLang());
+      showStatusBanner("pro.removedSuccess");
+    });
+  });
+
+  getEl("open-pro-license-btn")?.addEventListener("click", (event) => {
+    openProLicenseModal(event.currentTarget, state, hideInlineAlert);
   });
 
   getEl("theme-toggle-btn")?.addEventListener("click", () => {
@@ -509,7 +698,8 @@ export function bindModalAndThemeEvents({
   }
 
   document.addEventListener("keydown", (event) => {
-    const openDialogEl = getOpenDialogEl();
+    const proModal = getEl("modal-pro-license");
+    const openDialogEl = proModal && !proModal.hidden ? proModal : getOpenDialogEl();
     handleDrawerKeydown(event, openDialogEl, closeActiveDialog);
   });
 

@@ -36,9 +36,9 @@
     content="Free client-side masking and restoration workspace for AI prompts with zero data retention."
   />
   <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
-  <link rel="stylesheet" href="/dist/styles.OSO7ZGEU.css" />
-  <script type="module" src="/dist/app.7ZFZXPFV.js"></script>
-  <link rel="modulepreload" href="/dist/i18n-ru-XC3DQG4V.js" />
+  <link rel="stylesheet" href="/dist/styles.5VHNHVGD.css" />
+  <script type="module" src="/dist/app.ZUAQO7SB.js"></script>
+  <link rel="modulepreload" href="/dist/i18n-ru-ZBLCURFE.js" />
 </head>
 <body>
   <a href="#main-workbench" class="skip-link" data-i18n="a11y.skipLink">Skip to workbench</a>
@@ -110,6 +110,19 @@
           <span id="audit-count" class="rail-count tabular-nums" hidden>0</span>
         </button>
       </nav>
+      <button
+        type="button"
+        id="open-pro-license-btn"
+        class="pro-status-badge"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        aria-controls="modal-pro-license"
+        aria-label="PromptVeil Pro license status — click to activate or inspect key"
+        data-i18n-aria="pro.badgeAria"
+        data-testid="open-pro-license-btn"
+        data-pro-state="free"
+        data-i18n="pro.badgeFree"
+      >Free</button>
       <div
         class="lang-switch"
         role="group"
@@ -563,17 +576,6 @@
               >Go to Step 2 →</button>
             </div>
           </div>
-
-          <div id="ai-launchers-bar" class="ai-launchers-bar" data-testid="ai-launchers-bar">
-            <span class="ai-launchers-label" data-i18n="step1.openInAiLabel">Open in AI:</span>
-            <div class="ai-launchers-links">
-              <a class="ai-launcher-pill" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-chatgpt">ChatGPT</a>
-              <a class="ai-launcher-pill" href="https://chat.deepseek.com/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-deepseek">DeepSeek</a>
-              <a class="ai-launcher-pill" href="https://giga.chat/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-gigachat">GigaChat</a>
-              <a class="ai-launcher-pill" href="https://alice.yandex.ru/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-alice" data-i18n="step1.aiAlice">Alice / YandexGPT</a>
-              <a class="ai-launcher-pill" href="https://claude.ai/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-claude">Claude</a>
-            </div>
-          </div>
         </section>
       </div>
 
@@ -756,6 +758,18 @@
       </div>
     </section>
 
+    <div id="ai-launchers-bar" class="ai-launchers-bar" data-testid="ai-launchers-bar">
+      <span class="ai-launchers-label" data-i18n="step1.openInAiLabel">Open in AI:</span>
+      <div class="ai-launchers-links">
+        <a class="ai-launcher-pill" href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-chatgpt">ChatGPT</a>
+        <a class="ai-launcher-pill" href="https://chat.deepseek.com/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-deepseek">DeepSeek</a>
+        <a class="ai-launcher-pill" href="https://giga.chat/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-gigachat">GigaChat</a>
+        <a class="ai-launcher-pill" href="https://alice.yandex.ru/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-alice" data-i18n="step1.aiAlice">Alice / YandexGPT</a>
+        <a class="ai-launcher-pill" href="https://claude.ai/" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-claude">Claude</a>
+        <a class="ai-launcher-pill" href="https://gemini.google.com/app" target="_blank" rel="noopener noreferrer" data-testid="ai-launcher-gemini">Gemini</a>
+      </div>
+    </div>
+
     <section
       id="how-it-works"
       class="info-section"
@@ -903,19 +917,20 @@
         <article class="pricing-card pricing-card--featured" data-testid="pricing-card-pro">
           <div class="pricing-card-top">
             <h3 class="pricing-plan-name" data-i18n="pricing.proName">Pro</h3>
-            <span class="pricing-plan-badge pricing-plan-badge--dev" data-i18n="pricing.proBadge">In Development</span>
+            <span id="pricing-pro-badge" class="pricing-plan-badge pricing-plan-badge--key" data-testid="pricing-pro-badge" data-i18n="pricing.proBadge">Key-Activated</span>
           </div>
           <div class="pricing-price-block">
             <div class="pricing-price-row">
-              <span id="price-pro-value" class="pricing-waitlist-status" data-testid="price-pro-value" data-i18n="pricing.proWaitlistTitle">Waitlist</span>
+              <span id="price-pro-value" class="pricing-waitlist-status" data-testid="price-pro-value" data-i18n="pricing.proWaitlistTitle">Offline Key</span>
             </div>
-            <p id="price-pro-note" class="pricing-price-note" data-i18n="pricing.proWaitlistNote">No charges or billing — waitlist notification on launch</p>
+            <p id="price-pro-note" class="pricing-price-note" data-i18n="pricing.proWaitlistNote">Lifetime device key • no subscription or recurring charges</p>
+            <p id="pricing-pro-unlocked-note" class="pricing-unlocked-note" data-testid="pricing-pro-unlocked-note" hidden></p>
           </div>
           <ul class="pricing-features">
-            <li data-i18n="pricing.proFeat1">Planned: batch .docx, .pdf, .xlsx processing up to 50 MB on device</li>
-            <li data-i18n="pricing.proFeat2">Planned: browser extension overlay for ChatGPT / Claude / DeepSeek</li>
-            <li data-i18n="pricing.proFeat3">Planned: dedicated rule profiles per client project</li>
-            <li data-i18n="pricing.proFeat4">Planned: extended legal &amp; domain entity dictionaries</li>
+            <li data-i18n="pricing.proFeat1">Batch .docx, .pdf, .xlsx processing up to 50 MB on device</li>
+            <li data-i18n="pricing.proFeat2">Browser extension overlay for ChatGPT / Claude / Gemini / DeepSeek</li>
+            <li data-i18n="pricing.proFeat3">Dedicated rule profiles per client project</li>
+            <li data-i18n="pricing.proFeat4">Extended legal, FinTech &amp; NDA dictionaries &amp; templates</li>
           </ul>
           <div class="pricing-card-footer">
             <button
@@ -926,7 +941,16 @@
               aria-controls="modal-plan-request"
               data-testid="open-pro-modal-btn"
               data-i18n="pricing.proCta"
-            >Join Waitlist</button>
+            >Get Key (Telegram / Email)</button>
+            <button
+              type="button"
+              id="pricing-activate-pro-btn"
+              class="btn-secondary pricing-activate-btn"
+              aria-haspopup="dialog"
+              aria-controls="modal-pro-license"
+              data-testid="pricing-activate-pro-btn"
+              data-i18n="pricing.proActivateCta"
+            >Have a key? • Activate</button>
           </div>
         </article>
 
@@ -1664,6 +1688,94 @@
         class="btn-secondary"
         data-i18n="common.close"
       >Close</button>
+    </div>
+  </section>
+  </template>
+
+  <template id="tpl-modal-pro-license">
+  <section
+    id="modal-pro-license"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="pro-license-modal-title"
+    hidden
+    data-testid="modal-pro-license"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="pro-license-modal-title" class="modal-title" data-i18n="pro.modalTitle">PromptVeil Pro License</h2>
+        <p class="modal-subtitle" data-i18n="pro.modalSubtitle">Offline Ed25519 signature activation with zero servers, subscriptions, or accounts.</p>
+      </div>
+      <button
+        type="button"
+        id="close-pro-license-btn"
+        class="drawer-close"
+        aria-label="Close"
+        data-i18n-aria="common.close"
+        data-testid="close-pro-license-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <div
+        id="pro-license-status-card"
+        class="pro-license-status-card"
+        data-testid="pro-license-status-card"
+      ></div>
+
+      <form id="pro-license-form" class="pro-license-form" novalidate>
+        <div class="field-group">
+          <label for="pro-license-key-input" class="field-label" data-i18n="pro.inputLabel">Activation key (PV1...)</label>
+          <textarea
+            id="pro-license-key-input"
+            class="ledger-textarea pro-license-textarea"
+            rows="3"
+            spellcheck="false"
+            autocomplete="off"
+            data-i18n-placeholder="pro.inputPlaceholder"
+            placeholder="Paste a PV1.... license key"
+            data-testid="pro-license-key-input"
+          ></textarea>
+        </div>
+
+        <div id="pro-license-alert" class="inline-alert inline-alert--error" role="alert" hidden></div>
+
+        <button
+          type="submit"
+          id="pro-license-activate-btn"
+          class="btn-lime"
+          data-testid="pro-license-activate-btn"
+          data-i18n="pro.activateBtn"
+        >Activate key</button>
+      </form>
+    </div>
+
+    <div class="modal-footer">
+      <button
+        type="button"
+        id="pro-license-remove-btn"
+        class="btn-danger-ghost"
+        disabled
+        data-testid="pro-license-remove-btn"
+        data-i18n="pro.removeBtn"
+      >Remove key</button>
+      <div class="modal-footer-actions">
+        <button
+          type="button"
+          id="pro-license-get-key-btn"
+          class="btn-secondary"
+          data-testid="pro-license-get-key-btn"
+          data-i18n="pro.getKeyBtn"
+        >Get a key</button>
+        <button
+          type="button"
+          id="close-pro-license-footer-btn"
+          class="btn-secondary"
+          data-testid="close-pro-license-footer-btn"
+          data-i18n="common.close"
+        >Close</button>
+      </div>
     </div>
   </section>
   </template>

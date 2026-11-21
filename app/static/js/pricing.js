@@ -6,7 +6,7 @@ import { copyWithFeedback } from "./clipboard.js";
 import { SITE_CONTACTS, buildMailtoHref } from "./contacts.js";
 import { clearCopyFeedback, copyTextToClipboard, getEl, showCopyFeedback } from "./dom.js";
 import { getLang, t } from "./i18n.js";
-import { ensureModalMounted, registerModalHydrator } from "./modals.js";
+import { ensureModalMounted, openProLicenseModal, registerModalHydrator } from "./modals.js";
 import { closeDrawers, openDrawer } from "./render-drawers.js";
 
 export function getPlanPricing(plan, lang) {
@@ -18,7 +18,7 @@ export function getPlanPricing(plan, lang) {
   }
   return {
     planName: t("pricing.proName", {}, lang),
-    status: t("pricing.proWaitlistTitle", {}, lang),
+    status: t("pricing.proBadge", {}, lang),
   };
 }
 
@@ -135,9 +135,14 @@ export function bindPricingEvents({
       }
 
       const pricing = getPlanPricing(state.activeRequestPlan, lang);
+      const statusText = t(
+        isTeam ? "request.summaryStatusWaitlist" : "request.summaryStatusProKey",
+        {},
+        lang
+      );
       const lines = [
         `${t("request.summaryPlan", {}, lang)}: ${pricing.planName}`,
-        `${t("request.summaryStatus", {}, lang)}: ${t("request.summaryStatusWaitlist", {}, lang)}`,
+        `${t("request.summaryStatus", {}, lang)}: ${statusText}`,
         `${t("request.summaryName", {}, lang)}: ${nameVal}`,
         `${t("request.summaryContact", {}, lang)}: ${contactVal}`,
       ];
@@ -212,6 +217,9 @@ export function bindPricingEvents({
   getEl("pricing-free-start-btn")?.addEventListener("click", onStartFree);
   getEl("open-pro-modal-btn")?.addEventListener("click", (event) => {
     openPlanRequestModal("pro", event.currentTarget, state, hideInlineAlert);
+  });
+  getEl("pricing-activate-pro-btn")?.addEventListener("click", (event) => {
+    openProLicenseModal(event.currentTarget, state, hideInlineAlert);
   });
   getEl("open-team-modal-btn")?.addEventListener("click", (event) => {
     openPlanRequestModal("team", event.currentTarget, state, hideInlineAlert);

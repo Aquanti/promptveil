@@ -12,3 +12,7 @@ Thumbs.db
 .agents/
 .netlify/
 node_modules/
+.secrets/
+*.pem
+pro_keys*.json
+

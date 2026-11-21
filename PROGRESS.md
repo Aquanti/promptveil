@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-21T13:04+03:00  
-**Session Status:** POST-CRASH RE-VERIFICATION COMPLETE & COMPLETION EMAIL SENT — Live at https://promptveil.netlify.app  
-**Exact Stop Point:** Clean recovery and full post-crash re-verification completed on `master` (live deploy `6b009726fbb09a4a4c3fc4e3`, `buildId: 6b009724fbb09a4a4c3fc4e1`, `ready` at `https://promptveil.netlify.app`). Verified `npm run build` (`7d1ffd0739`, `0` diffs), `py_compile` (`0` errors), `pytest tests\test_server.py -v` (`25/25`), `node --test tests\js\*.test.mjs` (`48/48`, `13` suites), `e2e_tests\run_e2e.py --mode self-test` (`172` tests), `e2e_tests\run_e2e.py --mode live --start-server --tier all` (`172/172`, `413.08s`), `e2e_tests\run_e2e.py --mode live --static-only --tier all` (`172/172`, `404.59s`), live browser verification `f2d75639` across desktop `1440×900` (`/` & `/en/`) and mobile `390×844`, and live Lighthouse on `https://promptveil.netlify.app` (Desktop `100/100/92/100`, Mobile `96/100/92/100`, Best Practices `92` caused solely by Netlify Free HUD `about:srcdoc`). Completion email sent to `kilkauciha@gmail.com` (`Sent: ID=1a1fd8f07328cc77`, Thread `1a1fd8f07328cc77`). Port `8000` is free and no background tasks remain. Only manual owner step remaining: create `Aquanti/promptveil` on GitHub and push `master` (Section 7).
+**Checkpoint Date:** 2026-11-21T14:06+03:00  
+**Session Status:** PRO UPGRADE M1 COMPLETE — Persistent AI Launchers + Gemini + Ed25519 Offline Pro Licensing  
+**Exact Stop Point:** Completed Milestone M1 (R1 + R2): `#ai-launchers-bar` hoisted outside `#panel-sanitize` / `#panel-rehydrate` with Gemini (`https://gemini.google.com/app`), `.gitignore` updated before keygen (`.secrets/`, `*.pem`, `pro_keys*.json`), `scripts/issue-pro-key.mjs` generated 1 Owner + 20 Client Ed25519 keys into gitignored `.secrets/pro_keys_bundle.json`, `app/static/js/pro-license.js` (WebCrypto Ed25519 + pure-JS Ed25519/SHA-512 fallback, `PRO_PUBLIC_KEY_B64U` only), `privacy-proof.js` allowlist (`promptveil_pro_license_v1`), `#open-pro-license-btn` header badge, `<template id="tpl-modal-pro-license">` (`#modal-pro-license`), updated `#pricing-section` + `i18n-{ru,en}.js`, `tests/js/pro-license.test.mjs`, and `tests/test_server.py`. Next: Milestone M2 (Local Batch & Office/PDF Document Scrubber).
 
 ---
 
@@ -279,3 +279,13 @@ git push -u origin master
 1. **GitHub Publish:** Create an empty public repository `Aquanti/promptveil` on GitHub and push local `master` using the commands in **Section 7** above, then optionally pin it to your GitHub profile README.
 2. **Production Live URL:** `https://promptveil.netlify.app` (`deployId: 6b009726fbb09a4a4c3fc4e3`, `ready`) — post-crash re-verified (`pytest 25/25`, `node --test 48/48`, FastAPI E2E `172/172`, Static E2E `172/172`, live browser verification `f2d75639`, live Lighthouse Desktop `100/100/92/100` & Mobile `96/100/92/100`).
 3. **Completion Email:** Delivered to `kilkauciha@gmail.com` (`Sent: ID=1a1fd8f07328cc77`).
+
+---
+
+## 9. PromptVeil Pro Upgrade — Milestone M1 (R1 + R2)
+- **R1 Persistent AI Launchers + Gemini (`index.html`, `en/index.html`, `app.js`, `components.css`, `tests/test_server.py`):**
+  - Hoisted `#ai-launchers-bar` out of `#panel-sanitize` into `<main id="main-workbench">` after `#panel-rehydrate` so it remains visible across both Step 1 and Step 2, added `data-testid="ai-launcher-gemini"` (`https://gemini.google.com/app`), flushed pending live sanitization on Step 2 switch so `.is-ready` stays active, and allowlisted Gemini in `tests/test_server.py`.
+- **R2 Offline Ed25519 Pro License System (`.gitignore`, `scripts/issue-pro-key.mjs`, `pro-license.js`, `privacy-proof.js`, `modals.js`, `pricing.js`, `i18n-{ru,en}.js`, `tests/js/pro-license.test.mjs`):**
+  - Protected `.secrets/`, `*.pem`, `pro_keys*.json` in `.gitignore` prior to key generation; generated Ed25519 keypair + 1 Owner Master Key + 20 Client Pro keys strictly into `.secrets/pro_keys_bundle.json` (plus external scratch backup).
+  - Implemented `pro-license.js` (`WebCrypto Ed25519` + pure-JS RFC 8032 Ed25519 & SHA-512 fallback), allowlisted `promptveil_pro_license_v1` in `privacy-proof.js`, added `#open-pro-license-btn` header badge (`>= 44px` mobile, `0` overflow), `<template id="tpl-modal-pro-license">` (`#modal-pro-license`), and key-activated `#pricing-section` Pro card (`#open-pro-modal-btn` + `#pricing-activate-pro-btn`).
+- **Verification:** `npm run build` (`878c8c93ef`), `node --test tests\js\*.test.mjs` (`55/55` across `14` suites), `pytest tests\test_server.py -v` (`25/25`), Playwright Chrome smoke check across `1440×900` and `390×844` (`/` & `/en/`), and secret hygiene audit (`0` leaked keys/tokens in Git or `app/static/`).

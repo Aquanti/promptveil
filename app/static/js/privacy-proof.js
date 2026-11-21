@@ -4,6 +4,7 @@
  * with strictly zero outbound network probes and zero forbidden API literals.
  */
 
+import { PRO_LICENSE_STORAGE_KEY } from "./pro-license.js";
 import {
   AUDIT_PERSIST_STORAGE_KEY,
   AUDIT_STORAGE_KEY,
@@ -18,6 +19,7 @@ const ALLOWED_LOCAL_STORAGE_KEYS = new Set([
   AUDIT_STORAGE_KEY,
   AUDIT_PERSIST_STORAGE_KEY,
   THEME_STORAGE_KEY,
+  PRO_LICENSE_STORAGE_KEY,
 ]);
 
 let cspViolationCount = 0;

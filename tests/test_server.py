@@ -353,6 +353,7 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
         "https://giga.chat/",
         "https://alice.yandex.ru/",
         "https://claude.ai/",
+        "https://gemini.google.com/app",
     }
     for html_path in (STATIC_DIR / "index.html", STATIC_DIR / "en" / "index.html", STATIC_DIR / "404.html"):
         html_src = html_path.read_text(encoding="utf-8")
@@ -788,13 +789,31 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
         'id="tpl-modal-plan-request"',
         'id="tpl-modal-privacy-policy"',
         'id="tpl-modal-terms"',
+        'id="tpl-modal-pro-license"',
+        'id="open-pro-license-btn"',
+        'data-testid="open-pro-license-btn"',
+        'id="pricing-activate-pro-btn"',
+        'id="modal-pro-license"',
+        'id="pro-license-status-card"',
+        'id="pro-license-key-input"',
+        'id="pro-license-activate-btn"',
+        'id="pro-license-remove-btn"',
     ):
         assert hook in index_html, f"Missing required hook {hook} in index.html"
         assert hook in en_html, f"Missing required hook {hook} in en/index.html"
 
-    assert index_html.count("<template ") >= 4
-    assert en_html.count("<template ") >= 4
+    assert index_html.count("<template ") >= 5
+    assert en_html.count("<template ") >= 5
     assert re.search(r'href="/dist/styles\.[A-Za-z0-9_-]+\.css"', not_found_html)
+
+    pro_license_js = (STATIC_DIR / "js" / "pro-license.js").read_text(encoding="utf-8")
+    assert "promptveil_pro_license_v1" in pro_license_js
+    assert "PRO_LICENSE_STORAGE_KEY" in proof_js
+    assert "__PV_TEST_" not in pro_license_js
+    assert "Получить ключ (Telegram / Почта)" in index_html
+    assert "Уже есть ключ • Активировать" in index_html
+    assert "Get Key (Telegram / Email)" in en_html
+    assert "Have a key? • Activate" in en_html
 
     # Unimplemented billing claims and Stage D removed dead code must not remain.
     for forbidden_claim in ("30 дней бесплатно", "30 days free", "490 ₽", "390 ₽", "1 990 ₽", "1 590 ₽", "billing-month-btn"):
@@ -927,12 +946,35 @@ def test_service_worker_and_stage2_p1_contracts() -> None:
         'data-testid="ai-launcher-gigachat"',
         'data-testid="ai-launcher-alice"',
         'data-testid="ai-launcher-claude"',
+        'data-testid="ai-launcher-gemini"',
+        'href="https://gemini.google.com/app"',
         'href="https://t.me/supv1rus"',
         'href="https://github.com/Aquanti"',
         'id="proof-offline-card"',
         'id="proof-offline-metric"',
     ):
         assert hook in index_html, f"Missing Stage 2 hook {hook} in index.html"
+
+    en_html = (STATIC_DIR / "en" / "index.html").read_text(encoding="utf-8")
+    for html_name, html_src in (("index.html", index_html), ("en/index.html", en_html)):
+        assert 'data-testid="ai-launcher-gemini"' in html_src, f"Missing Gemini launcher in {html_name}"
+        assert 'href="https://gemini.google.com/app"' in html_src, f"Missing Gemini href in {html_name}"
+        sanitize_match = re.search(
+            r'<section\s+id="panel-sanitize".*?<section\s+id="panel-rehydrate"',
+            html_src,
+            re.DOTALL,
+        )
+        rehydrate_match = re.search(
+            r'<section\s+id="panel-rehydrate".*?<div\s+id="ai-launchers-bar"',
+            html_src,
+            re.DOTALL,
+        )
+        assert sanitize_match is not None and 'id="ai-launchers-bar"' not in sanitize_match.group(0), (
+            f"#ai-launchers-bar must reside outside #panel-sanitize in {html_name}"
+        )
+        assert rehydrate_match is not None, (
+            f"#ai-launchers-bar must reside after #panel-rehydrate in {html_name}"
+        )
 
     modals_js = (STATIC_DIR / "js" / "modals.js").read_text(encoding="utf-8")
     assert 'register("/sw.js")' in modals_js

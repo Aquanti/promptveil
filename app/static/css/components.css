@@ -45,6 +45,41 @@
   line-height: 1.25;
 }
 
+.pro-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0.26rem 0.7rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-on-rail);
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.pro-status-badge:hover {
+  background-color: var(--bg-forest-hover);
+  border-color: var(--brand-lime);
+}
+
+.pro-status-badge.is-pro,
+.pro-status-badge.is-owner {
+  background-color: var(--brand-lime);
+  border-color: var(--brand-lime);
+  color: var(--bg-rail);
+}
+
+.pro-status-badge.is-owner {
+  box-shadow: 0 0 0 2px rgba(180, 241, 5, 0.32);
+}
+
 .lang-switch {
   display: inline-flex;
   align-items: center;
@@ -185,6 +220,13 @@
 
   .lang-switch {
     display: none;
+  }
+
+  .pro-status-badge {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.68rem;
   }
 
   .theme-toggle-btn {
@@ -1314,10 +1356,13 @@ button:disabled {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.42rem 0.5rem;
+  min-width: 0;
+  max-width: 100%;
   padding: 0.65rem 0.85rem;
   border-radius: var(--radius-lg);
   border: 1px dashed var(--border-strong);
-  background-color: var(--bg-surface-subtle);
+  background-color: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
@@ -1340,12 +1385,15 @@ button:disabled {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.35rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ai-launcher-pill {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+  max-width: 100%;
   padding: 0.28rem 0.68rem;
   border-radius: var(--radius-pill);
   border: 1px solid var(--border-strong);

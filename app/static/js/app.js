@@ -19,8 +19,10 @@ import {
   renderContactsAndPolicy,
   renderPrivacyProofModal,
   resolveInitialTheme,
+  syncProUiState,
   updateThemeToggleButton,
 } from "./modals.js";
+import { loadActiveProLicense } from "./pro-license.js";
 import { bindPricingEvents, syncPlanRequestModalMeta } from "./pricing.js";
 import {
   createPipelineController,
@@ -91,6 +93,7 @@ const state = {
   activeRequestPlan: "pro",
   lastRequestSummary: "",
   theme: "light",
+  proLicense: null,
 };
 
 let fileController = null;
@@ -332,6 +335,7 @@ function rerenderAll() {
   refreshBannersAndAlerts(lang);
   renderContactsAndPolicy(lang);
   syncPlanRequestModalMeta(state, lang);
+  syncProUiState(state, lang);
   updateThemeToggleButton(state.theme, lang);
   const proofModal = getEl("modal-privacy-proof");
   if (proofModal && !proofModal.hidden) {
@@ -358,6 +362,9 @@ function switchMode(nextMode) {
   }
   if (panelSanitize) panelSanitize.hidden = !isSanitize;
   if (panelRehydrate) panelRehydrate.hidden = isSanitize;
+  if (!isSanitize && state.rawText.trim() && state.rawText !== state.lastSanitizedInput && getEl("live-sanitize-toggle")?.checked) {
+    pipeline.ensureFreshSanitizedOutput();
+  }
   refreshWorkbenchUi();
 }
 
@@ -654,6 +661,7 @@ function bindEvents() {
 
   bindModalAndThemeEvents({
     state,
+    showInlineAlert,
     hideInlineAlert,
     showStatusBanner,
     onResetSession: () => pipeline.resetSessionToZero(),
@@ -699,6 +707,7 @@ export async function init() {
   purgeUnoptedAuditStorage();
   state.auditPersist = isAuditPersistenceEnabled();
   state.auditLog = loadAuditLog();
+  state.proLicense = await loadActiveProLicense();
   const detectUuidToggle = getEl("detect-uuid-toggle");
   if (detectUuidToggle) {
     detectUuidToggle.checked = Boolean(state.detectUuid);
@@ -713,6 +722,7 @@ export async function init() {
       pipeline.runSanitizePipeline(false);
       refreshDrawersUi();
       renderContactsAndPolicy(getLang());
+      syncProUiState(state, getLang());
       updateThemeToggleButton(state.theme, getLang());
     },
   });
