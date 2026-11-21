@@ -13,6 +13,10 @@ Provides:
 - capture_viewport_screenshot: Saves deterministic viewport PNGs for visual review.
 - verify_russian_purity: Enforces <html lang="ru"> and zero English/technical jargon
   in visible UI chrome.
+- verify_ai_launcher_links: Verifies #ai-launchers-bar links match ALLOWED_AI_LAUNCHER_URLS
+  with target="_blank" and rel containing "noopener".
+- verify_allowed_local_storage_keys: Verifies every window.localStorage key belongs
+  to ALLOWED_LOCAL_STORAGE_KEYS.
 """
 
 from __future__ import annotations
@@ -55,6 +59,15 @@ FORBIDDEN_RU_PHRASES: tuple[str, ...] = (
     "Sanitize",
     "Re-Hydrate",
     "Rehydrate",
+    # R2-R5 EN-only UI strings that must never leak into Russian UI chrome:
+    "Activate License",
+    "Invalid license",
+    "Batch Queue",
+    "Clear all (batch)",
+    "Download ZIP",
+    "Prompt Templates",
+    "Create Profile",
+    "Extension ZIP",
 )
 
 # All 11 internal detector category codes that must never leak raw outside
@@ -86,6 +99,27 @@ FORBIDDEN_RU_DEV_CODES: tuple[str, ...] = (
     "PHONE",
     "IPV4",
     "HIGH_ENTROPY",
+)
+
+ALLOWED_AI_LAUNCHER_URLS: dict[str, str] = {
+    "ai-launcher-chatgpt": "https://chatgpt.com/",
+    "ai-launcher-gemini": "https://gemini.google.com/app",
+    "ai-launcher-deepseek": "https://chat.deepseek.com/",
+    "ai-launcher-gigachat": "https://giga.chat/",
+    "ai-launcher-alice": "https://alice.yandex.ru/",
+    "ai-launcher-claude": "https://claude.ai/",
+}
+
+ALLOWED_LOCAL_STORAGE_KEYS: frozenset[str] = frozenset(
+    {
+        "promptveil_rules_v1",
+        "promptveil_audit_v1",
+        "promptveil_audit_persist_v1",
+        "promptveil_lang_v1",
+        "promptveil_theme_v1",
+        "promptveil_pro_license_v1",
+        "promptveil_profiles_v1",
+    }
 )
 
 
@@ -894,3 +928,68 @@ def verify_russian_purity(page: Page) -> dict[str, Any]:
         f"Scanned chrome text excerpt: {cleaned_chrome[:500]!r}"
     )
     return snapshot
+
+
+def verify_ai_launcher_links(page: Page) -> dict[str, str]:
+    """Verify #ai-launchers-bar is visible, non-empty, matches ALLOWED_AI_LAUNCHER_URLS, and uses safe new-tab attrs."""
+    bar_loc = page.locator("[data-testid='ai-launchers-bar'], #ai-launchers-bar")
+    assert bar_loc.count() > 0, (
+        "Missing AI launchers bar ([data-testid='ai-launchers-bar'] / #ai-launchers-bar)"
+    )
+    bar = bar_loc.first
+    assert bar.is_visible(), "AI launchers bar is present in DOM but not visible"
+
+    anchors = bar.locator("a")
+    anchor_count = anchors.count()
+    assert anchor_count > 0, "AI launchers bar contains 0 <a> launcher links"
+
+    observed: dict[str, str] = {}
+    for idx in range(anchor_count):
+        link = anchors.nth(idx)
+        tid = (link.get_attribute("data-testid") or "").strip()
+        href = (link.get_attribute("href") or "").strip()
+        assert tid in ALLOWED_AI_LAUNCHER_URLS, (
+            f"Unexpected AI launcher data-testid={tid!r} (href={href!r}); "
+            f"allowed={sorted(ALLOWED_AI_LAUNCHER_URLS)!r}"
+        )
+        assert tid not in observed, f"Duplicate AI launcher data-testid={tid!r}"
+        expected_href = ALLOWED_AI_LAUNCHER_URLS[tid]
+        assert href == expected_href, (
+            f"AI launcher {tid!r} href mismatch: expected {expected_href!r}, got {href!r}"
+        )
+        target = link.get_attribute("target")
+        assert target == "_blank", (
+            f"AI launcher {tid!r} must have target='_blank', got {target!r}"
+        )
+        rel_tokens = set((link.get_attribute("rel") or "").lower().split())
+        assert "noopener" in rel_tokens, (
+            f"AI launcher {tid!r} must include 'noopener' in rel, got {sorted(rel_tokens)!r}"
+        )
+        assert link.is_visible(), f"AI launcher {tid!r} is not visible"
+        observed[tid] = href
+
+    missing = sorted(set(ALLOWED_AI_LAUNCHER_URLS) - set(observed))
+    assert not missing, f"Missing expected AI launchers in #ai-launchers-bar: {missing!r}"
+    return observed
+
+
+def verify_allowed_local_storage_keys(page: Page) -> list[str]:
+    """Verify every window.localStorage key belongs to ALLOWED_LOCAL_STORAGE_KEYS."""
+    keys: list[str] = page.evaluate(
+        """() => {
+            const out = [];
+            if (typeof window !== 'undefined' && window.localStorage) {
+                for (let i = 0; i < window.localStorage.length; i += 1) {
+                    const k = window.localStorage.key(i);
+                    if (k !== null) out.push(k);
+                }
+            }
+            return out;
+        }"""
+    )
+    unknown = sorted(k for k in keys if k not in ALLOWED_LOCAL_STORAGE_KEYS)
+    assert not unknown, (
+        f"Unknown localStorage keys detected: {unknown!r}; "
+        f"allowed={sorted(ALLOWED_LOCAL_STORAGE_KEYS)!r}"
+    )
+    return sorted(keys)

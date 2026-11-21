@@ -2396,12 +2396,22 @@ class PromptVeilUI:
         return str(sel.input_value() or "normal").strip().lower()
 
     def apply_industry_word_pack(self, pack_key: str) -> None:
-        """Open Rulebook drawer and apply one of the starter industry word packs."""
+        """Open Rulebook drawer and apply a starter or Pro industry word pack."""
         pack_aliases: dict[str, re.Pattern[str]] = {
             "legal": re.compile(r"юрид|правов|legal", re.I),
             "hr": re.compile(r"\bhr\b|кадр", re.I),
             "medical": re.compile(r"медиц|здрав|medical|clinic", re.I),
             "accounting": re.compile(r"бухгалт|финанс|accounting|finance", re.I),
+            "corporate_ma": re.compile(
+                r"corporate\s*m&?a|\bm&a\b|слияни|поглощени|корпоративн.*сдел", re.I
+            ),
+            "devsecops": re.compile(
+                r"devsecops|devops|инфраструктур|безопасност.*код", re.I
+            ),
+            "banking_fintech": re.compile(r"banking|fintech|банк.*финтех|финтех", re.I),
+            "crossborder_nda": re.compile(
+                r"cross[- ]?border\s*nda|трансграничн.*nda|международн.*nda", re.I
+            ),
         }
         drawer = self.open_rulebook_drawer()
         candidates = [
@@ -2416,9 +2426,14 @@ class PromptVeilUI:
         self.page.wait_for_timeout(150)
 
     def get_ai_launcher(self, provider: str) -> Locator:
-        """Locate and return the AI launcher pill for provider (e.g. 'chatgpt', 'claude')."""
+        """Locate and return the AI launcher pill for provider (e.g. 'chatgpt', 'claude', 'gemini')."""
         return self._first_visible(
-            [self.page.locator(f"[data-testid='ai-launcher-{provider}']")],
+            [
+                self.page.locator(f"[data-testid='ai-launcher-{provider}']"),
+                self.page.locator("#ai-launchers-bar a").filter(
+                    has_text=re.compile(re.escape(provider), re.I)
+                ),
+            ],
             f"AI launcher pill ([data-testid='ai-launcher-{provider}'])",
         )
 
@@ -2486,3 +2501,590 @@ class PromptVeilUI:
         btn.click()
         self.page.wait_for_timeout(150)
         return self.open_rulebook_drawer()
+
+    # -----------------------------------------------------------------------
+    # R1: Persistent AI Launchers Bar
+    # -----------------------------------------------------------------------
+
+    def get_ai_launchers_bar(self) -> Locator:
+        """Locate the persistent AI launchers bar (#ai-launchers-bar) visible on Step 1 and Step 2."""
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='ai-launchers-bar']"),
+                self.page.locator("#ai-launchers-bar"),
+            ],
+            "AI launchers bar ([data-testid='ai-launchers-bar'])",
+        )
+
+    def is_ai_launchers_ready(self) -> bool:
+        """Return True iff the persistent AI launchers bar or pills indicate .is-ready state."""
+        bar = self.get_ai_launchers_bar()
+        return bool(
+            bar.evaluate(
+                """el => el.classList.contains('is-ready') ||
+                    Boolean(el.querySelector('.ai-launcher-pill.is-ready, [data-ready="true"]'))"""
+            )
+        )
+
+    # -----------------------------------------------------------------------
+    # R2: Pro License Modal, Badge & Pricing Activation CTA
+    # -----------------------------------------------------------------------
+
+    def get_pricing_activate_pro_btn(self) -> Locator:
+        """Locate the 'Already have a key • Activate' CTA inside #pricing-card-pro."""
+        pricing_scope = self.page.locator("[data-testid='pricing-card-pro'], #pricing-section")
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='pricing-activate-pro-btn']"),
+                self.page.locator("#pricing-activate-pro-btn"),
+                pricing_scope.get_by_role(
+                    "button",
+                    name=re.compile(
+                        r"уже\s+есть\s+ключ|активировать\s+pro|already\s+have\s+a\s+key|activate\s+pro",
+                        re.I,
+                    ),
+                ),
+            ],
+            "Pricing Activate Pro button ([data-testid='pricing-activate-pro-btn'])",
+        )
+
+    def open_pro_license_modal(self, via: Literal["header", "pricing"] = "header") -> Locator:
+        """Open #modal-pro-license via header badge or pricing card button."""
+        modal_candidates = [
+            self.page.locator("[data-testid='modal-pro-license']"),
+            self.page.locator("#modal-pro-license"),
+        ]
+        if via == "pricing":
+            trigger = self.get_pricing_activate_pro_btn()
+            trigger.scroll_into_view_if_needed()
+        else:
+            trigger = self._first_visible_or_none(
+                [
+                    self.page.locator("[data-testid='open-pro-license-btn']"),
+                    self.page.locator("#open-pro-license-btn"),
+                    self.page.locator("header, nav").locator("button").filter(
+                        has_text=re.compile(r"^\s*(?:free|pro\s*активен|pro\s*active|owner\s*pro)\s*$", re.I)
+                    ),
+                ]
+            )
+            if trigger is None:
+                more_btn = self._first_visible_or_none(
+                    [
+                        self.page.locator("[data-testid='mobile-more-btn']"),
+                        self.page.locator("#mobile-more-btn"),
+                    ]
+                )
+                if more_btn is not None:
+                    menu = self.open_mobile_more_menu()
+                    trigger = self._first_visible(
+                        [
+                            menu.locator(
+                                "[data-testid='open-pro-license-btn'], "
+                                "[data-testid='mobile-open-pro-license-btn'], "
+                                "#mobile-open-pro-license-btn"
+                            ),
+                            menu.locator("button, a").filter(
+                                has_text=re.compile(r"\b(?:free|pro|лиценз|license)\b", re.I)
+                            ),
+                        ],
+                        "Pro License trigger inside mobile overflow menu",
+                    )
+            if trigger is None:
+                raise LocatorLookupError(
+                    self.dump_diagnostics("Pro License trigger ([data-testid='open-pro-license-btn']) not found")
+                )
+
+        trigger.click()
+        self.page.wait_for_timeout(120)
+        return self._first_visible(
+            modal_candidates,
+            "Pro License modal ([data-testid='modal-pro-license'])",
+        )
+
+    def get_pro_badge_text(self) -> str:
+        """Read visible Pro status badge text ('Free', 'Pro Активен', 'Pro Active', 'Owner Pro')."""
+        trigger = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='open-pro-license-btn']"),
+                self.page.locator("#open-pro-license-btn"),
+            ]
+        )
+        if trigger is not None:
+            return (trigger.inner_text() or "").strip()
+        attached = self._first_attached(
+            [
+                self.page.locator("[data-testid='open-pro-license-btn']"),
+                self.page.locator("#open-pro-license-btn"),
+                self.page.locator("[data-testid='mobile-open-pro-license-btn']"),
+                self.page.locator("#mobile-open-pro-license-btn"),
+            ],
+            "Pro status badge ([data-testid='open-pro-license-btn'])",
+        )
+        return str(attached.evaluate("el => el.textContent || ''")).strip()
+
+    def _ensure_pro_license_modal(self) -> Locator:
+        """Return visible #modal-pro-license, opening it via header if needed."""
+        modal = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='modal-pro-license']"),
+                self.page.locator("#modal-pro-license"),
+            ]
+        )
+        return modal if modal is not None else self.open_pro_license_modal("header")
+
+    def activate_pro_key(self, token: str) -> None:
+        """Paste a PV1.* token into #pro-license-key-input and click #pro-license-activate-btn."""
+        modal = self._ensure_pro_license_modal()
+        key_input = self._first_visible_editable_input(
+            [
+                modal.locator("[data-testid='pro-license-key-input']"),
+                modal.locator("#pro-license-key-input"),
+                modal.get_by_placeholder(re.compile(r"PV1\.|ключ|key|token", re.I)),
+                modal.locator("textarea, input[type='text']"),
+            ],
+            "Pro license key input (#pro-license-key-input)",
+        )
+        self._set_textarea_with_events(key_input, token)
+        activate_btn = self._first_visible(
+            [
+                modal.locator("[data-testid='pro-license-activate-btn']"),
+                modal.locator("#pro-license-activate-btn"),
+                modal.get_by_role("button", name=re.compile(r"активировать|activate", re.I)),
+            ],
+            "Pro license activate button (#pro-license-activate-btn)",
+        )
+        activate_btn.click()
+        # Allow async WebCrypto Ed25519 verification and UI state update to settle.
+        self.page.wait_for_timeout(200)
+
+    def remove_pro_key(self) -> None:
+        """Deactivate/remove the active Pro license key inside #modal-pro-license."""
+        modal = self._ensure_pro_license_modal()
+        remove_btn = self._first_visible(
+            [
+                modal.locator("[data-testid='pro-license-remove-btn']"),
+                modal.locator("#pro-license-remove-btn"),
+                modal.get_by_role(
+                    "button",
+                    name=re.compile(r"удалить|деактивир|сброс|remove|deactivate|clear", re.I),
+                ),
+            ],
+            "Pro license remove button (#pro-license-remove-btn)",
+        )
+        if remove_btn.is_disabled():
+            return
+        remove_btn.click()
+        self.page.wait_for_timeout(150)
+
+    def get_pro_status_card_text(self) -> str:
+        """Return visible text inside #pro-license-status-card."""
+        modal = self._ensure_pro_license_modal()
+        card = self._first_visible(
+            [
+                modal.locator("[data-testid='pro-license-status-card']"),
+                modal.locator("#pro-license-status-card"),
+            ],
+            "Pro license status card (#pro-license-status-card)",
+        )
+        return (card.inner_text() or "").strip()
+
+    # -----------------------------------------------------------------------
+    # R3: Batch & Office/PDF Document Scrubber (Pro)
+    # -----------------------------------------------------------------------
+
+    def upload_files(self, file_paths: list[Path] | tuple[Path, ...]) -> None:
+        """Upload one or multiple local files into #file-upload-input for batch/document scrubbing."""
+        if self._active_mode != "sanitize":
+            self.switch_mode("sanitize")
+        file_input = self.get_workbench_file_input()
+        file_input.set_input_files([str(p) for p in file_paths])
+        loading = self.page.locator("#file-loading-indicator")
+        try:
+            if loading.count() > 0 and loading.first.is_visible():
+                loading.first.wait_for(state="hidden", timeout=self.timeout_ms)
+        except Exception:  # noqa: BLE001
+            pass
+        self.page.wait_for_timeout(300)
+
+    def get_file_pro_upgrade_banner(self) -> Locator:
+        """Locate visible Free-tier document/size Pro upgrade banner (#file-pro-upgrade-banner)."""
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='file-pro-upgrade-banner']"),
+                self.page.locator("#file-pro-upgrade-banner"),
+                self.page.locator("[data-testid='panel-sanitize'] [role='alert'], #input-error-banner").filter(
+                    has_text=re.compile(r"\bpro\b|тариф|активир|upgrade|license", re.I)
+                ),
+            ],
+            "File Pro upgrade banner (#file-pro-upgrade-banner)",
+        )
+
+    def get_batch_queue_panel(self) -> Locator:
+        """Locate visible batch queue panel (#batch-queue-panel)."""
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='batch-queue-panel']"),
+                self.page.locator("#batch-queue-panel"),
+            ],
+            "Batch queue panel (#batch-queue-panel)",
+        )
+
+    def get_batch_queue_items(self) -> list[Locator]:
+        """Return list of visible item locators inside #batch-queue-list (empty list if panel hidden)."""
+        panel = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='batch-queue-panel']"),
+                self.page.locator("#batch-queue-panel"),
+            ]
+        )
+        if panel is None:
+            return []
+        candidates = [
+            panel.locator("[data-testid='batch-queue-item']"),
+            panel.locator("[data-testid='batch-queue-list'] > li:not([data-empty]), #batch-queue-list > li:not([data-empty])"),
+            panel.locator("[data-testid='batch-queue-list'] > *:not(.empty-state):not([data-empty])"),
+        ]
+        for loc in candidates:
+            try:
+                count = loc.count()
+            except Exception:  # noqa: BLE001
+                continue
+            visible_items: list[Locator] = []
+            for idx in range(count):
+                item = loc.nth(idx)
+                try:
+                    if item.is_visible():
+                        visible_items.append(item)
+                except Exception:  # noqa: BLE001
+                    continue
+            if visible_items:
+                return visible_items
+        return []
+
+    def clear_batch_queue(self) -> None:
+        """Click 'Очистить все (батч)' / 'Clear all (batch)' inside #batch-queue-panel."""
+        panel = self.get_batch_queue_panel()
+        btn = self._first_visible(
+            [
+                panel.locator("[data-testid='batch-clear-btn']"),
+                panel.locator("#batch-clear-btn"),
+                panel.get_by_role("button", name=re.compile(r"очистить\s+все|clear\s+all", re.I)),
+            ],
+            "Batch clear button (#batch-clear-btn)",
+        )
+        btn.click()
+        self.page.wait_for_timeout(120)
+
+    def download_batch_txt(self, target_dir: Path) -> Path:
+        """Click #batch-download-txt-btn inside #batch-queue-panel and save downloaded .txt."""
+        panel = self.get_batch_queue_panel()
+        btn = self._first_visible(
+            [
+                panel.locator("[data-testid='batch-download-txt-btn']"),
+                panel.locator("#batch-download-txt-btn"),
+                panel.get_by_role("button", name=re.compile(r"\.txt|объедин|combined", re.I)),
+            ],
+            "Batch download .txt button (#batch-download-txt-btn)",
+        )
+        with self.page.expect_download(timeout=self.timeout_ms) as dl_info:
+            btn.click()
+        download: Download = dl_info.value
+        dest = target_dir / (download.suggested_filename or "promptveil-batch.txt")
+        download.save_as(str(dest))
+        return dest
+
+    def download_batch_zip(self, target_dir: Path) -> Path:
+        """Click #batch-download-zip-btn inside #batch-queue-panel and save downloaded .zip."""
+        panel = self.get_batch_queue_panel()
+        btn = self._first_visible(
+            [
+                panel.locator("[data-testid='batch-download-zip-btn']"),
+                panel.locator("#batch-download-zip-btn"),
+                panel.get_by_role("button", name=re.compile(r"\.zip|архив|zip", re.I)),
+            ],
+            "Batch download .zip button (#batch-download-zip-btn)",
+        )
+        with self.page.expect_download(timeout=self.timeout_ms) as dl_info:
+            btn.click()
+        download: Download = dl_info.value
+        dest = target_dir / (download.suggested_filename or "promptveil-batch.zip")
+        download.save_as(str(dest))
+        return dest
+
+    def click_batch_rehydrate(self) -> None:
+        """Click #batch-rehydrate-btn inside #batch-queue-panel and sync active mode if Step 2 opens."""
+        panel = self.get_batch_queue_panel()
+        btn = self._first_visible(
+            [
+                panel.locator("[data-testid='batch-rehydrate-btn']"),
+                panel.locator("#batch-rehydrate-btn"),
+                panel.get_by_role("button", name=re.compile(r"вернуть|шаг\s*2|re-?hydrate", re.I)),
+            ],
+            "Batch rehydrate button (#batch-rehydrate-btn)",
+        )
+        btn.click()
+        self.page.wait_for_timeout(150)
+        rehydrate_panel = self.page.locator("[data-testid='panel-rehydrate']")
+        if rehydrate_panel.count() > 0 and rehydrate_panel.first.is_visible():
+            self._active_mode = "rehydrate"
+
+    # -----------------------------------------------------------------------
+    # R4: Manifest V3 Browser Extension & Pro Downloads Modal
+    # -----------------------------------------------------------------------
+
+    def open_pro_downloads_modal(self) -> Locator:
+        """Open #modal-pro-downloads via #open-pro-downloads-btn (with mobile menu fallback)."""
+        modal_candidates = [
+            self.page.locator("[data-testid='modal-pro-downloads']"),
+            self.page.locator("#modal-pro-downloads"),
+        ]
+        existing = self._first_visible_or_none(modal_candidates)
+        if existing is not None:
+            return existing
+
+        trigger = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='open-pro-downloads-btn']"),
+                self.page.locator("#open-pro-downloads-btn"),
+                self.page.locator("header, nav, main, [data-testid='modal-pro-license'], #pricing-section")
+                .get_by_role("button", name=re.compile(r"расширен|extension|pro\s+downloads", re.I)),
+            ]
+        )
+        if trigger is None:
+            more_btn = self._first_visible_or_none(
+                [
+                    self.page.locator("[data-testid='mobile-more-btn']"),
+                    self.page.locator("#mobile-more-btn"),
+                ]
+            )
+            if more_btn is not None:
+                menu = self.open_mobile_more_menu()
+                trigger = self._first_visible(
+                    [
+                        menu.locator(
+                            "[data-testid='open-pro-downloads-btn'], "
+                            "[data-testid='mobile-open-pro-downloads-btn'], "
+                            "#mobile-open-pro-downloads-btn"
+                        ),
+                        menu.locator("button, a").filter(
+                            has_text=re.compile(r"расширен|extension|pro\s+downloads", re.I)
+                        ),
+                    ],
+                    "Pro Downloads trigger inside mobile overflow menu",
+                )
+        if trigger is None:
+            raise LocatorLookupError(
+                self.dump_diagnostics("Pro Downloads trigger ([data-testid='open-pro-downloads-btn']) not found")
+            )
+        trigger.click()
+        self.page.wait_for_timeout(120)
+        return self._first_visible(
+            modal_candidates,
+            "Pro Downloads modal ([data-testid='modal-pro-downloads'])",
+        )
+
+    def download_extension_zip(self, target_dir: Path) -> Path:
+        """Click #download-extension-zip-btn inside #modal-pro-downloads and save the .zip."""
+        modal = self.open_pro_downloads_modal()
+        btn = self._first_visible(
+            [
+                modal.locator("[data-testid='download-extension-zip-btn']"),
+                modal.locator("#download-extension-zip-btn"),
+                modal.locator("a[href*='promptveil-pro-extension.zip']"),
+                modal.locator("a, button").filter(
+                    has_text=re.compile(r"скачать.*\.zip|download.*\.zip|расширен|extension", re.I)
+                ),
+            ],
+            "Extension ZIP download link/button (#download-extension-zip-btn)",
+        )
+        with self.page.expect_download(timeout=self.timeout_ms) as dl_info:
+            btn.click()
+        download: Download = dl_info.value
+        dest = target_dir / (download.suggested_filename or "promptveil-pro-extension.zip")
+        download.save_as(str(dest))
+        return dest
+
+    # -----------------------------------------------------------------------
+    # R5: Multi-Project Rulebook Profiles & Anonymized Prompt Templates
+    # -----------------------------------------------------------------------
+
+    def _get_profile_select(self, drawer: Locator) -> Locator:
+        """Locate #profile-select inside the open Rulebook drawer."""
+        return self._first_visible(
+            [
+                drawer.locator("[data-testid='profile-select']"),
+                drawer.locator("#profile-select"),
+                drawer.get_by_label(re.compile(r"профил|проект|profile", re.I)),
+            ],
+            "Rulebook profile select (#profile-select)",
+        )
+
+    def get_rulebook_profile_options(self) -> list[str]:
+        """Return list of visible option labels from #profile-select inside Rulebook drawer."""
+        drawer = self.open_rulebook_drawer()
+        sel = self._get_profile_select(drawer)
+        options: list[str] = sel.evaluate(
+            "sel => Array.from(sel.options).map(o => (o.textContent || '').trim()).filter(Boolean)"
+        )
+        return options
+
+    def select_rulebook_profile(self, name_or_id: str) -> None:
+        """Select a rulebook profile by value or display text inside #profile-select."""
+        drawer = self.open_rulebook_drawer()
+        sel = self._get_profile_select(drawer)
+        options: list[dict[str, str]] = sel.evaluate(
+            "sel => Array.from(sel.options).map(o => ({ value: o.value, text: (o.textContent || '').trim() }))"
+        )
+        target = name_or_id.strip()
+        target_low = target.lower()
+        chosen_val: str | None = None
+        for opt in options:
+            if opt["value"] == target or opt["text"] == target:
+                chosen_val = opt["value"]
+                break
+        if chosen_val is None:
+            for opt in options:
+                if opt["value"].lower() == target_low or opt["text"].lower() == target_low:
+                    chosen_val = opt["value"]
+                    break
+        if chosen_val is None:
+            for opt in options:
+                if target_low in opt["value"].lower() or target_low in opt["text"].lower():
+                    chosen_val = opt["value"]
+                    break
+        if chosen_val is None:
+            raise LocatorLookupError(
+                self.dump_diagnostics(f"Rulebook profile '{name_or_id}' not found in options={options}")
+            )
+        sel.select_option(value=chosen_val)
+        sel.evaluate("el => el.dispatchEvent(new Event('change', { bubbles: true }))")
+        self.page.wait_for_timeout(120)
+
+    def create_rulebook_profile(self, name: str) -> None:
+        """Create a new rulebook profile using #profile-name-input and #profile-create-btn."""
+        drawer = self.open_rulebook_drawer()
+        create_btn = self._first_visible(
+            [
+                drawer.locator("[data-testid='profile-create-btn']"),
+                drawer.locator("#profile-create-btn"),
+                drawer.get_by_role("button", name=re.compile(r"создать|новый\s+профил|create\s+profile|new\s+profile", re.I)),
+            ],
+            "Create profile button (#profile-create-btn)",
+        )
+        name_input = self._first_visible_or_none(
+            [
+                drawer.locator("[data-testid='profile-name-input']"),
+                drawer.locator("#profile-name-input"),
+            ]
+        )
+        if name_input is not None:
+            self._set_textarea_with_events(name_input, name)
+            create_btn.click()
+        else:
+            create_btn.click()
+            self.page.wait_for_timeout(80)
+            name_input = self._first_visible_editable_input(
+                [
+                    drawer.locator("[data-testid='profile-name-input']"),
+                    drawer.locator("#profile-name-input"),
+                ],
+                "Profile name input (#profile-name-input)",
+            )
+            self._set_textarea_with_events(name_input, name)
+            save_btn = self._first_visible_or_none(
+                [
+                    drawer.locator("[data-testid='profile-save-btn']"),
+                    drawer.locator("#profile-save-btn"),
+                ]
+            )
+            if save_btn is not None:
+                save_btn.click()
+            else:
+                name_input.press("Enter")
+        self.page.wait_for_timeout(150)
+
+    def rename_rulebook_profile(self, new_name: str) -> None:
+        """Rename the active rulebook profile via #profile-name-input and #profile-rename-btn."""
+        drawer = self.open_rulebook_drawer()
+        rename_btn = self._first_visible(
+            [
+                drawer.locator("[data-testid='profile-rename-btn']"),
+                drawer.locator("#profile-rename-btn"),
+                drawer.get_by_role("button", name=re.compile(r"переименов|rename", re.I)),
+            ],
+            "Rename profile button (#profile-rename-btn)",
+        )
+        name_input = self._first_visible_or_none(
+            [
+                drawer.locator("[data-testid='profile-name-input']"),
+                drawer.locator("#profile-name-input"),
+            ]
+        )
+        if name_input is not None:
+            self._set_textarea_with_events(name_input, new_name)
+            rename_btn.click()
+        else:
+            rename_btn.click()
+            self.page.wait_for_timeout(80)
+            name_input = self._first_visible_editable_input(
+                [
+                    drawer.locator("[data-testid='profile-name-input']"),
+                    drawer.locator("#profile-name-input"),
+                ],
+                "Profile name input (#profile-name-input)",
+            )
+            self._set_textarea_with_events(name_input, new_name)
+            save_btn = self._first_visible_or_none(
+                [
+                    drawer.locator("[data-testid='profile-save-btn']"),
+                    drawer.locator("#profile-save-btn"),
+                ]
+            )
+            if save_btn is not None:
+                save_btn.click()
+            else:
+                name_input.press("Enter")
+        self.page.wait_for_timeout(150)
+
+    def delete_rulebook_profile(self) -> None:
+        """Delete the currently selected rulebook profile via #profile-delete-btn."""
+        drawer = self.open_rulebook_drawer()
+        del_btn = self._first_visible(
+            [
+                drawer.locator("[data-testid='profile-delete-btn']"),
+                drawer.locator("#profile-delete-btn"),
+                drawer.get_by_role("button", name=re.compile(r"удалить\s+профил|delete\s+profile", re.I)),
+            ],
+            "Delete profile button (#profile-delete-btn)",
+        )
+        if del_btn.is_disabled():
+            return
+        del_btn.click()
+        self.page.wait_for_timeout(150)
+
+    def get_prompt_templates_bar(self) -> Locator:
+        """Locate the anonymized prompt templates bar (#prompt-templates-bar)."""
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='prompt-templates-bar']"),
+                self.page.locator("#prompt-templates-bar"),
+            ],
+            "Prompt templates bar ([data-testid='prompt-templates-bar'])",
+        )
+
+    def click_prompt_template(self, template_id: str) -> None:
+        """Click an anonymized prompt template button inside #prompt-templates-bar."""
+        bar = self.get_prompt_templates_bar()
+        btn = self._first_visible(
+            [
+                bar.locator(f"[data-testid='prompt-template-{template_id}']"),
+                bar.locator(f"[data-template-id='{template_id}']"),
+                bar.locator(f"[data-template='{template_id}']"),
+                bar.locator(".prompt-template-btn, button").filter(
+                    has_text=re.compile(re.escape(template_id), re.I)
+                ),
+            ],
+            f"Prompt template '{template_id}'",
+        )
+        btn.click()
+        self.page.wait_for_timeout(150)

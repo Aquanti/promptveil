@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import base64
 import functools
 import http.server
 import importlib.util
 import json
 import mimetypes
 import os
+import re
+import shutil
 import socketserver
 import subprocess
 import sys
@@ -18,10 +21,17 @@ import urllib.parse
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Any, Callable, Iterator
 
 import pytest
-from playwright.sync_api import Browser, BrowserContext, Page, Playwright, sync_playwright
+from playwright.sync_api import (
+    Browser,
+    BrowserContext,
+    Page,
+    Playwright,
+    Route,
+    sync_playwright,
+)
 
 from locators import PromptVeilUI
 from monitors import (
@@ -82,6 +92,7 @@ class _StaticAppRequestHandler(http.server.SimpleHTTPRequestHandler):
         ".xml": "application/xml; charset=utf-8",
         ".txt": "text/plain; charset=utf-8",
         ".html": "text/html; charset=utf-8",
+        ".zip": "application/zip",
     }
 
     def guess_type(self, path: str) -> str:
@@ -110,6 +121,7 @@ class _StaticAppRequestHandler(http.server.SimpleHTTPRequestHandler):
             or req_path.startswith("/js/")
             or req_path.startswith("/css/")
             or req_path.startswith("/fonts/")
+            or (req_path.startswith("/downloads/") and req_path.lower().endswith(".zip"))
         ):
             self.send_header("Cache-Control", "public, max-age=300")
         super().end_headers()
@@ -164,6 +176,7 @@ def start_static_dir_server(
     if not (target / "index.html").is_file():
         raise RuntimeError(f"Static app directory is missing index.html: {target}")
     mimetypes.add_type("font/woff2", ".woff2")
+    mimetypes.add_type("application/zip", ".zip")
     handler = functools.partial(_StaticAppRequestHandler, directory=str(target))
     server = _ThreadingStaticServer((host, port), handler)
     setattr(server, "sw_body_provider", sw_body_provider)
@@ -472,3 +485,323 @@ def e2e_session(raw_session: E2ESession) -> E2ESession:
     raw_session.net.assert_clean_load()
     raw_session.net.start_interactive_phase()
     return raw_session
+
+
+# ---------------------------------------------------------------------------
+# Ephemeral Ed25519 Pro License Test Harness (zero secrets, zero globalThis)
+# ---------------------------------------------------------------------------
+
+_ED25519_SPKI_PREFIX = bytes.fromhex("302a300506032b6570032100")
+_PRO_PUBLIC_KEY_RE = re.compile(
+    r"""export\s+const\s+PRO_PUBLIC_KEY_B64U\s*=\s*(['"`])([A-Za-z0-9_-]{43,59})\1"""
+)
+
+_NODE_KEYGEN_SCRIPT = (
+    "const c = require('node:crypto');"
+    "const { publicKey, privateKey } = c.generateKeyPairSync('ed25519');"
+    "const spki = publicKey.export({ type: 'spki', format: 'der' });"
+    "const raw32 = spki.subarray(spki.length - 32).toString('base64url');"
+    "const pkcs8 = privateKey.export({ type: 'pkcs8', format: 'pem' });"
+    "process.stdout.write(JSON.stringify({ raw32, spkiB64u: spki.toString('base64url'), pkcs8 }));"
+)
+
+_NODE_SIGN_SCRIPT = (
+    "const fs = require('node:fs');"
+    "const c = require('node:crypto');"
+    "const { pem, payload } = JSON.parse(fs.readFileSync(0, 'utf8'));"
+    "const pk = c.createPrivateKey(pem);"
+    "const p = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');"
+    "const sig = c.sign(null, Buffer.from('PV1.' + p, 'utf8'), pk).toString('base64url');"
+    "process.stdout.write('PV1.' + p + '.' + sig);"
+)
+
+
+def _resolve_node_exe() -> Path:
+    """Locate Node.js binary via NODE_EXE, standard Windows install path, or PATH."""
+    env_node = os.environ.get("NODE_EXE", "").strip()
+    if env_node:
+        candidate = Path(env_node)
+        if candidate.is_file():
+            return candidate
+    if os.name == "nt":
+        for win_candidate in (
+            Path(r"C:\Program Files\nodejs\node.exe"),
+            Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "nodejs" / "node.exe",
+        ):
+            if win_candidate.is_file():
+                return win_candidate
+    which_node = shutil.which("node")
+    if which_node:
+        candidate = Path(which_node)
+        if candidate.is_file():
+            return candidate
+    raise RuntimeError(
+        "Node.js binary not found (checked NODE_EXE, C:\\Program Files\\nodejs\\node.exe, and PATH)."
+    )
+
+
+def _b64u_decode(data: str) -> bytes:
+    """Decode unpadded base64url string to raw bytes."""
+    pad = "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode(data + pad)
+
+
+def _b64u_encode(raw: bytes) -> str:
+    """Encode raw bytes to unpadded base64url string."""
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def sign_pv1_token(
+    private_key_pkcs8_pem: str,
+    payload: dict[str, Any],
+    *,
+    node_exe: Path | None = None,
+) -> str:
+    """Sign an arbitrary payload dict into PV1.<payloadB64U>.<sigB64U> via node:crypto."""
+    exe = node_exe if node_exe is not None else _resolve_node_exe()
+    stdin_data = json.dumps({"pem": private_key_pkcs8_pem, "payload": payload})
+    proc = subprocess.run(
+        [str(exe), "-e", _NODE_SIGN_SCRIPT],
+        input=stdin_data,
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"Node Ed25519 sign failed ({proc.returncode}): {proc.stderr.strip()}")
+    return proc.stdout.strip()
+
+
+@dataclass(frozen=True)
+class EphemeralProKeys:
+    """Ephemeral per-test-session Ed25519 keypair generated via node:crypto."""
+
+    node_exe: Path
+    public_key_b64u: str
+    public_key_spki_b64u: str
+    private_key_pkcs8_pem: str
+
+    def sign_raw_payload(self, payload: dict[str, Any]) -> str:
+        """Sign an arbitrary payload dict as a PV1.* token."""
+        return sign_pv1_token(
+            self.private_key_pkcs8_pem,
+            payload,
+            node_exe=self.node_exe,
+        )
+
+    def issue_token(
+        self,
+        *,
+        tier: str = "pro",
+        key_id: str = "PV-E2E-01",
+        label: str = "PromptVeil E2E Test",
+        issued_at: str = "2026-11-21T00:00:00.000Z",
+        exp: str | int | None = None,
+    ) -> str:
+        """Issue a valid PV1.* license token signed by this ephemeral keypair."""
+        payload: dict[str, Any] = {
+            "v": 1,
+            "tier": tier,
+            "keyId": key_id,
+            "label": label,
+            "issuedAt": issued_at,
+        }
+        if exp is not None:
+            payload["exp"] = exp
+        return self.sign_raw_payload(payload)
+
+
+def generate_ephemeral_pro_keys() -> EphemeralProKeys:
+    """Generate a fresh in-memory Ed25519 keypair via Node.js node:crypto."""
+    node_exe = _resolve_node_exe()
+    proc = subprocess.run(
+        [str(node_exe), "-e", _NODE_KEYGEN_SCRIPT],
+        text=True,
+        encoding="utf-8",
+        capture_output=True,
+        check=False,
+        timeout=15,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"Node Ed25519 keygen failed ({proc.returncode}): {proc.stderr.strip()}")
+    parsed = json.loads(proc.stdout)
+    return EphemeralProKeys(
+        node_exe=node_exe,
+        public_key_b64u=str(parsed["raw32"]),
+        public_key_spki_b64u=str(parsed["spkiB64u"]),
+        private_key_pkcs8_pem=str(parsed["pkcs8"]),
+    )
+
+
+def _adapt_public_key_format(ephemeral_pub_b64u: str, target_len: int) -> str:
+    """Convert between 43-char raw 32-byte key and 59-char SPKI DER base64url to match JS literal."""
+    decoded = _b64u_decode(ephemeral_pub_b64u)
+    if len(decoded) == 44 and decoded.startswith(_ED25519_SPKI_PREFIX):
+        raw32 = decoded[len(_ED25519_SPKI_PREFIX) :]
+    elif len(decoded) == 32:
+        raw32 = decoded
+    else:
+        raise ValueError(f"Unsupported Ed25519 public key length ({len(decoded)} bytes)")
+
+    if target_len == 43:
+        return _b64u_encode(raw32)
+    if target_len == 59:
+        return _b64u_encode(_ED25519_SPKI_PREFIX + raw32)
+    raise ValueError(f"Unsupported PRO_PUBLIC_KEY_B64U target literal length: {target_len}")
+
+
+def install_pro_key_route(browser_context: BrowserContext, ephemeral_pub_b64u: str) -> bool:
+    """Swap PRO_PUBLIC_KEY_B64U literal in served JS bundles on browser_context.
+
+    NOTE: Callers creating a custom BrowserContext that performs page.reload() must set
+    service_workers='block' so Service Worker CacheStorage does not serve unpatched JS.
+    """
+    pro_license_js = STATIC_APP_DIR / "js" / "pro-license.js"
+    if not pro_license_js.is_file():
+        return False
+    source_text = pro_license_js.read_text(encoding="utf-8")
+    match = _PRO_PUBLIC_KEY_RE.search(source_text)
+    if match is None:
+        return False
+
+    prod_pub = match.group(2)
+    target_pub = _adapt_public_key_format(ephemeral_pub_b64u, len(prod_pub))
+
+    def _swap_pro_key(route: Route) -> None:
+        try:
+            resp = route.fetch()
+        except Exception:  # noqa: BLE001
+            try:
+                route.continue_()
+            except Exception:  # noqa: BLE001
+                pass
+            return
+        body_bytes = resp.body()
+        if resp.status == 200:
+            text = body_bytes.decode("utf-8", errors="replace")
+            if prod_pub in text:
+                body_bytes = text.replace(prod_pub, target_pub).encode("utf-8")
+        headers = {
+            k: v
+            for k, v in resp.headers.items()
+            if k.lower() not in ("content-length", "content-encoding")
+        }
+        try:
+            route.fulfill(status=resp.status, headers=headers, body=body_bytes)
+        except Exception:  # noqa: BLE001
+            pass
+
+    browser_context.route("**/dist/*.js", _swap_pro_key)
+    browser_context.route("**/js/pro-license.js", _swap_pro_key)
+    return True
+
+
+@dataclass(frozen=True)
+class ProLicenseEnv:
+    """Per-test ephemeral Ed25519 helper for custom BrowserContexts (e.g. mobile 390x844)."""
+
+    keys: EphemeralProKeys
+
+    def sign_token(self, payload: dict[str, Any]) -> str:
+        """Sign an arbitrary payload dict into a PV1.* token."""
+        return self.keys.sign_raw_payload(payload)
+
+    def issue_token(
+        self,
+        *,
+        tier: str = "pro",
+        key_id: str = "PV-E2E-01",
+        label: str = "PromptVeil E2E Test",
+        issued_at: str = "2026-11-21T00:00:00.000Z",
+        exp: str | int | None = None,
+    ) -> str:
+        """Issue a valid PV1.* license token signed by the session ephemeral keypair."""
+        return self.keys.issue_token(
+            tier=tier,
+            key_id=key_id,
+            label=label,
+            issued_at=issued_at,
+            exp=exp,
+        )
+
+    def install_route(self, browser_context: BrowserContext) -> bool:
+        """Install public-key swap route on browser_context (use service_workers='block' for reloads)."""
+        return install_pro_key_route(browser_context, self.keys.public_key_b64u)
+
+
+@pytest.fixture(scope="session")
+def ephemeral_pro_keys() -> EphemeralProKeys:
+    """Session-scoped ephemeral Ed25519 keypair (never touches .secrets/ or repo files)."""
+    return generate_ephemeral_pro_keys()
+
+
+@pytest.fixture()
+def pro_license_env(ephemeral_pro_keys: EphemeralProKeys) -> ProLicenseEnv:
+    """Per-test ephemeral Ed25519 signer and BrowserContext route installer."""
+    return ProLicenseEnv(keys=ephemeral_pro_keys)
+
+
+@pytest.fixture()
+def pro_browser_context(
+    playwright_browser: Browser,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> Iterator[BrowserContext]:
+    """Fresh incognito BrowserContext with service_workers='block' and ephemeral Pro public key route."""
+    try:
+        ctx = playwright_browser.new_context(
+            accept_downloads=True,
+            viewport={"width": 1440, "height": 900},
+            permissions=["clipboard-read", "clipboard-write"],
+            service_workers="block",
+        )
+    except Exception:  # noqa: BLE001
+        ctx = playwright_browser.new_context(
+            accept_downloads=True,
+            viewport={"width": 1440, "height": 900},
+            service_workers="block",
+        )
+    install_pro_key_route(ctx, ephemeral_pro_keys.public_key_b64u)
+    try:
+        yield ctx
+    finally:
+        ctx.close()
+
+
+@pytest.fixture()
+def pro_raw_session(
+    pro_browser_context: BrowserContext,
+    base_url: str,
+    temp_io_dir: TempIODirs,
+) -> Iterator[E2ESession]:
+    """Provide a fresh Page + monitors with ephemeral Pro public-key route (pre-navigation)."""
+    page = pro_browser_context.new_page()
+    net = NetworkMonitor(page=page)
+    console = ConsoleErrorMonitor(page=page)
+    net.attach()
+    console.attach()
+    session = E2ESession(
+        page=page,
+        ui=PromptVeilUI(page),
+        net=net,
+        console=console,
+        base_url=base_url,
+        io=temp_io_dir,
+    )
+    try:
+        yield session
+        console.assert_no_errors()
+    finally:
+        console.detach()
+        net.detach()
+        page.close()
+
+
+@pytest.fixture()
+def pro_e2e_session(pro_raw_session: E2ESession) -> E2ESession:
+    """Navigate to base_url with ephemeral Pro key active, verify clean load, start interactive phase."""
+    pro_raw_session.page.goto(f"{pro_raw_session.base_url}/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    return pro_raw_session
