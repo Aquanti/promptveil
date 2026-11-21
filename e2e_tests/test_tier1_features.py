@@ -1,16 +1,22 @@
-"""Tier 1: Isolated Happy-Path E2E Feature Coverage (63 Tests: T1-F1-01..T1-F8-10)."""
+"""Tier 1: Isolated Happy-Path E2E Feature Coverage (93 Tests: T1-F1-01..T1-F13-05)."""
 
 from __future__ import annotations
 
+import io
 import json
 import re
+import urllib.request
 from typing import Any
+import zipfile
 
 import pytest
 
-from conftest import E2ESession
+from conftest import E2ESession, EphemeralProKeys
+from doc_fixtures import make_synthetic_docx, make_synthetic_pdf, make_synthetic_xlsx
 from monitors import (
     fetch_http_response,
+    verify_ai_launcher_links,
+    verify_allowed_local_storage_keys,
     verify_csp_and_security_headers,
     verify_health_endpoint,
     verify_russian_purity,
@@ -966,3 +972,932 @@ def test_T1_F8_10_stage_e_copy_open_ai_telegram_cta_and_how_limits_sections(
         page.context.unroute("https://t.me/**")
 
     e2e_session.net.assert_zero_egress(["stagee@example.com"])
+
+
+# ---------------------------------------------------------------------------
+# F9: Persistent AI Launchers (Step 1 & 2) + Gemini (R1 — 5 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T1_F9_01_all_six_ai_launchers_including_gemini_contract(e2e_session: E2ESession) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+    bar = ui.get_ai_launchers_bar()
+    assert bar.is_visible()
+
+    links = verify_ai_launcher_links(page)
+    assert set(links.keys()) == {
+        "ai-launcher-chatgpt",
+        "ai-launcher-claude",
+        "ai-launcher-gemini",
+        "ai-launcher-deepseek",
+        "ai-launcher-gigachat",
+        "ai-launcher-alice",
+    }
+    gemini = ui.get_ai_launcher("gemini")
+    assert gemini.is_visible()
+    assert gemini.get_attribute("href") == "https://gemini.google.com/app"
+    assert gemini.get_attribute("target") == "_blank"
+    assert "noopener" in (gemini.get_attribute("rel") or "").lower()
+    assert gemini.inner_text().strip() == "Gemini"
+
+
+def test_T1_F9_02_launcher_bar_persistent_across_step1_and_step2(e2e_session: E2ESession) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    is_outside_panels = page.evaluate(
+        """() => {
+            const bar = document.querySelector('#ai-launchers-bar, [data-testid="ai-launchers-bar"]');
+            const s1 = document.querySelector('#panel-sanitize, [data-testid="panel-sanitize"]');
+            const s2 = document.querySelector('#panel-rehydrate, [data-testid="panel-rehydrate"]');
+            return Boolean(bar && s1 && s2 && !s1.contains(bar) && !s2.contains(bar));
+        }"""
+    )
+    assert is_outside_panels is True
+
+    masked = ui.sanitize_text("Send to gemini.step@example.com")
+    assert "[EMAIL_1]" in masked
+    assert ui.get_ai_launchers_bar().is_visible()
+    assert ui.is_ai_launchers_ready() is True
+
+    ui.click_go_rehydrate()
+    assert page.locator("[data-testid='panel-rehydrate']").is_visible()
+    assert ui.get_ai_launchers_bar().is_visible()
+    assert ui.is_ai_launchers_ready() is True
+    assert ui.get_ai_launcher("gemini").is_visible()
+
+    ui.switch_mode("sanitize")
+    assert page.locator("[data-testid='panel-sanitize']").is_visible()
+    ui.switch_mode("rehydrate")
+    assert page.locator("[data-testid='panel-rehydrate']").is_visible()
+    assert ui.get_ai_launchers_bar().is_visible()
+    assert ui.is_ai_launchers_ready() is True
+
+
+def test_T1_F9_03_click_gemini_on_step1_copies_sanitized_and_opens_popup(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+    masked = ui.sanitize_text("alice@example.com")
+    assert masked == "[EMAIL_1]"
+
+    page.context.route("https://gemini.google.com/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("gemini")
+        pop_info.value.close()
+        assert ui.read_clipboard_text() == "[EMAIL_1]"
+        banner = ui.get_status_banner_text()
+        assert banner and re.search(r"скопирован|copied", banner, re.I)
+    finally:
+        page.context.unroute("https://gemini.google.com/**")
+
+    e2e_session.net.assert_zero_egress(["alice@example.com"])
+
+
+def test_T1_F9_04_click_launcher_on_step2_flushes_and_copies_sanitized_text(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+    ui.get_prompt_input().fill("Draft for step2.flush@example.com")
+    ui.switch_mode("rehydrate")
+    assert page.locator("[data-testid='panel-rehydrate']").is_visible()
+
+    page.context.route("https://claude.ai/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("claude")
+        pop_info.value.close()
+        copied = ui.read_clipboard_text() or ""
+        assert "[EMAIL_1]" in copied
+        assert "step2.flush@example.com" not in copied
+        assert ui.get_status_banner_text()
+    finally:
+        page.context.unroute("https://claude.ai/**")
+
+    e2e_session.net.assert_zero_egress(["step2.flush@example.com"])
+
+
+def test_T1_F9_05_copy_goto_step2_preserves_sanitized_text_for_step2_launchers(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+    masked = ui.sanitize_text("Contact deepseek.flow@example.com and +79991234567")
+    assert "[EMAIL_1]" in masked
+
+    ui.click_copy_goto_step2()
+    assert page.locator("[data-testid='panel-rehydrate']").is_visible()
+    assert ui.is_ai_launchers_ready() is True
+
+    page.evaluate("async () => navigator.clipboard.writeText('SENTINEL_STEP2')")
+    page.context.route("https://chat.deepseek.com/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("deepseek")
+        pop_info.value.close()
+        assert ui.read_clipboard_text() == masked
+        assert re.search(r"скопирован|copied", ui.get_status_banner_text(), re.I)
+    finally:
+        page.context.unroute("https://chat.deepseek.com/**")
+
+    e2e_session.net.assert_zero_egress(["deepseek.flow@example.com", "+79991234567"])
+
+
+# ---------------------------------------------------------------------------
+# F10: Ed25519 Pro License System & Pricing (R2 — 5 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T1_F10_01_initial_free_badge_pricing_cards_and_ru_en_labels(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    assert ui.get_pro_badge_text() == "Free"
+    ui.open_pricing()
+
+    free_card = page.locator("[data-testid='pricing-card-free']")
+    free_txt = free_card.inner_text()
+    assert "Старт (Free)" in free_txt
+    assert re.search(r"0\s*₽\s*/\s*навсегда", free_txt)
+
+    assert page.locator("#pricing-pro-badge, [data-testid='pricing-pro-badge']").inner_text().strip() == "Доступ по ключу"
+    assert page.locator("[data-testid='open-pro-modal-btn']").inner_text().strip() == "Получить ключ (Telegram / Почта)"
+    assert ui.get_pricing_activate_pro_btn().inner_text().strip() == "Уже есть ключ • Активировать"
+    assert page.locator("[data-testid='price-team-value'], #price-team-value").inner_text().strip() == "Лист ожидания"
+    assert page.locator("[data-testid='open-team-modal-btn']").inner_text().strip() == "Оставить заявку на пилот"
+
+    ui.switch_language("en")
+    assert ui.get_pro_badge_text() == "Free"
+    assert page.locator("#pricing-pro-badge, [data-testid='pricing-pro-badge']").inner_text().strip() == "Key-Activated"
+    assert page.locator("[data-testid='open-pro-modal-btn']").inner_text().strip() == "Get Key (Telegram / Email)"
+    assert ui.get_pricing_activate_pro_btn().inner_text().strip() == "Have a key? • Activate"
+    assert page.locator("[data-testid='price-team-value'], #price-team-value").inner_text().strip() == "Waitlist"
+    assert page.locator("[data-testid='open-team-modal-btn']").inner_text().strip() == "Request Pilot"
+
+
+def test_T1_F10_02_activate_pro_key_updates_badge_pricing_and_persists_reload(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    token = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-PRO-02", label="Acme Legal")
+
+    ui.open_pro_license_modal("header")
+    ui.activate_pro_key(token)
+    status_txt = ui.get_pro_status_card_text()
+    assert "PV-E2E-PRO-02" in status_txt
+    assert "Pro" in status_txt
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") == token
+    ui.close_active_modal()
+
+    ui.open_pricing()
+    assert page.locator("#pricing-pro-badge, [data-testid='pricing-pro-badge']").inner_text().strip() == "Pro Активен"
+    assert page.locator("[data-testid='pricing-pro-unlocked-note']").is_visible()
+
+    ui.switch_language("en")
+    assert ui.get_pro_badge_text() == "Pro Active"
+    assert page.locator("#pricing-pro-badge, [data-testid='pricing-pro-badge']").inner_text().strip() == "Pro Active"
+
+    ui.switch_language("ru")
+    page.reload(wait_until="networkidle")
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") == token
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T1_F10_03_activate_owner_master_key_displays_owner_pro_badge(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    owner_token = ephemeral_pro_keys.issue_token(
+        tier="owner", key_id="PV-OWNER-E2E", label="PromptVeil Owner"
+    )
+
+    ui.activate_pro_key(owner_token)
+    assert ui.get_pro_badge_text() == "Owner Pro"
+    assert "PV-OWNER-E2E" in ui.get_pro_status_card_text()
+    ui.close_active_modal()
+
+    ui.open_pricing()
+    assert page.locator("#pricing-pro-badge, [data-testid='pricing-pro-badge']").inner_text().strip() == "Owner Pro"
+
+    ui.switch_language("en")
+    assert ui.get_pro_badge_text() == "Owner Pro"
+    assert page.locator("#pricing-pro-badge, [data-testid='pricing-pro-badge']").inner_text().strip() == "Owner Pro"
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T1_F10_04_deactivate_remove_pro_key_reverts_to_free(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    token = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-DEL")
+
+    ui.activate_pro_key(token)
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    ui.remove_pro_key()
+    assert ui.get_pro_badge_text() == "Free"
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+    ui.close_active_modal()
+
+    page.reload(wait_until="networkidle")
+    assert ui.get_pro_badge_text() == "Free"
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T1_F10_05_privacy_proof_reports_zero_unknown_keys_with_pro_active(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-PROOF"))
+    ui.close_active_modal()
+
+    modal = ui.open_privacy_proof_modal("header")
+    ui.run_privacy_proof_check()
+    ru_txt = modal.inner_text()
+    assert "неизвестные ключи: 0" in ru_txt
+    assert "0 байт" in ru_txt
+    assert "0 запросов" in ru_txt
+    ui.close_active_modal()
+
+    ui.switch_language("en")
+    modal_en = ui.open_privacy_proof_modal("header")
+    ui.run_privacy_proof_check()
+    en_txt = modal_en.inner_text()
+    assert "unknown keys: 0" in en_txt
+    assert "0 bytes" in en_txt
+    assert "0 requests" in en_txt
+    ui.close_active_modal()
+    pro_e2e_session.console.assert_no_errors()
+
+
+# ---------------------------------------------------------------------------
+# F11: Local Batch & .docx/.xlsx/.pdf Document Scrubber (R3 — 5 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T1_F11_01_pro_upload_docx_extracts_paragraphs_tables_headers_and_masks(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-DOCX"))
+    ui.close_active_modal()
+
+    docx_path = make_synthetic_docx(
+        pro_e2e_session.io.uploads / "nda_contract.docx",
+        paragraphs=["Contact legal.lead@acme.test regarding settlement."],
+        table_rows=[["Counterparty", "INN 7707083893"], ["Card", "4276 3800 1234 5678"]],
+        header_text="Confidential owner header@acme.test",
+    )
+    ui.upload_files([docx_path])
+
+    panel = ui.get_batch_queue_panel()
+    assert panel.is_visible()
+    items = ui.get_batch_queue_items()
+    assert len(items) == 1
+    item_txt = items[0].inner_text()
+    assert "nda_contract.docx" in item_txt
+    for raw_secret in ("legal.lead@acme.test", "7707083893", "4276 3800 1234 5678", "header@acme.test"):
+        assert raw_secret not in panel.inner_text()
+        assert raw_secret not in ui.get_sanitize_output_text()
+
+    pro_e2e_session.net.assert_zero_egress(
+        ["legal.lead@acme.test", "7707083893", "4276 3800 1234 5678", "header@acme.test"]
+    )
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T1_F11_02_pro_upload_xlsx_extracts_shared_strings_and_sheet_cells(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-XLSX"))
+    ui.close_active_modal()
+
+    xlsx_path = make_synthetic_xlsx(
+        pro_e2e_session.io.uploads / "registry.xlsx",
+        shared_strings=["Client Email", "Phone", "IBAN"],
+        rows=[
+            ["Client Email", "Phone", "IBAN"],
+            ["xlsx.user@example.org", "+7 916 555-01-22", "DE89370400440532013000"],
+        ],
+    )
+    ui.upload_files([xlsx_path])
+
+    panel = ui.get_batch_queue_panel()
+    assert panel.is_visible()
+    items = ui.get_batch_queue_items()
+    assert len(items) == 1
+    panel_txt = panel.inner_text()
+    assert "registry.xlsx" in panel_txt
+    for raw_secret in ("xlsx.user@example.org", "+7 916 555-01-22", "DE89370400440532013000"):
+        assert raw_secret not in panel_txt
+    assert re.search(r"\[(?:EMAIL|PHONE|IBAN)_1\]", panel_txt + "\n" + ui.get_sanitize_output_text())
+    pro_e2e_session.net.assert_zero_egress(["xlsx.user@example.org", "DE89370400440532013000"])
+
+
+def test_T1_F11_03_pro_upload_pdf_flate_tounicode_extracts_and_masks(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-PDF"))
+    ui.close_active_modal()
+
+    pdf_path = make_synthetic_pdf(
+        pro_e2e_session.io.uploads / "brief_tounicode.pdf",
+        text_lines=[
+            "Applicant email pdf.client@example.com",
+            "Taxpayer SSN 123-45-6789",
+        ],
+        compressed=True,
+        use_tounicode=True,
+    )
+    ui.upload_files([pdf_path])
+
+    panel = ui.get_batch_queue_panel()
+    assert panel.is_visible()
+    items = ui.get_batch_queue_items()
+    assert len(items) == 1
+    combined_visible = panel.inner_text() + "\n" + ui.get_sanitize_output_text()
+    assert "pdf.client@example.com" not in combined_visible
+    assert "123-45-6789" not in combined_visible
+    assert "[EMAIL_1]" in combined_visible
+    assert "[SSN_1]" in combined_visible
+    pro_e2e_session.net.assert_zero_egress(["pdf.client@example.com", "123-45-6789"])
+
+
+def test_T1_F11_04_pro_multi_file_batch_queue_download_txt_and_zip(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-BATCH"))
+    ui.close_active_modal()
+
+    txt_path = pro_e2e_session.io.uploads / "a_notes.txt"
+    txt_path.write_text("Note for batch.a@example.com", encoding="utf-8")
+    docx_path = make_synthetic_docx(
+        pro_e2e_session.io.uploads / "b_memo.docx",
+        paragraphs=["Memo for batch.b@example.com"],
+    )
+    xlsx_path = make_synthetic_xlsx(
+        pro_e2e_session.io.uploads / "c_sheet.xlsx",
+        shared_strings=["Contact"],
+        rows=[["Contact"], ["batch.c@example.com"]],
+    )
+
+    ui.upload_files([txt_path, docx_path, xlsx_path])
+    items = ui.get_batch_queue_items()
+    assert len(items) == 3
+
+    txt_dl = ui.download_batch_txt(pro_e2e_session.io.downloads)
+    txt_content = txt_dl.read_text(encoding="utf-8")
+    assert "[EMAIL_1]" in txt_content
+    for raw_email in ("batch.a@example.com", "batch.b@example.com", "batch.c@example.com"):
+        assert raw_email not in txt_content
+
+    zip_dl = ui.download_batch_zip(pro_e2e_session.io.downloads)
+    with zipfile.ZipFile(zip_dl, "r") as zf:
+        assert zf.testzip() is None
+        names = zf.namelist()
+        assert len(names) >= 3
+        archive_text = "\n".join(zf.read(n).decode("utf-8", errors="replace") for n in names)
+        assert "[EMAIL_1]" in archive_text
+        for raw_email in ("batch.a@example.com", "batch.b@example.com", "batch.c@example.com"):
+            assert raw_email not in archive_text
+
+    pro_e2e_session.net.assert_zero_egress(
+        ["batch.a@example.com", "batch.b@example.com", "batch.c@example.com"]
+    )
+
+
+def test_T1_F11_05_pro_batch_rehydrate_and_clear_all_batch(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-REHYD"))
+    ui.close_active_modal()
+
+    docx_path = make_synthetic_docx(
+        pro_e2e_session.io.uploads / "rehyd.docx",
+        paragraphs=["Send invoice to rehyd.batch@example.com"],
+    )
+    ui.upload_files([docx_path])
+    assert len(ui.get_batch_queue_items()) == 1
+
+    ui.click_batch_rehydrate()
+    restored = ui.rehydrate_text("Approved for [EMAIL_1].")
+    assert "rehyd.batch@example.com" in restored
+
+    ui.switch_mode("sanitize")
+    ui.clear_batch_queue()
+    assert ui.get_batch_queue_items() == []
+    pro_e2e_session.console.assert_no_errors()
+
+
+# ---------------------------------------------------------------------------
+# F12: Pro Downloads Modal, /downloads/*.zip & MV3 Extension Contract (R4 — 5 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T1_F12_01_downloads_zip_endpoint_mime_cache_and_contents(e2e_session: E2ESession) -> None:
+    zip_url = f"{e2e_session.base_url.rstrip('/')}/downloads/promptveil-pro-extension.zip"
+    with urllib.request.urlopen(zip_url, timeout=5.0) as resp:
+        status = int(resp.status)
+        headers = {k.lower(): v for k, v in resp.headers.items()}
+        payload = resp.read()
+
+    assert status == 200
+    assert "application/zip" in headers.get("content-type", "").lower()
+    assert headers.get("x-content-type-options", "").lower() == "nosniff"
+    assert headers.get("cross-origin-resource-policy", "").lower() == "same-origin"
+
+    with zipfile.ZipFile(io.BytesIO(payload), "r") as zf:
+        assert zf.testzip() is None
+        names = set(zf.namelist())
+        assert "manifest.json" in names
+        assert "popup.html" in names
+        assert "content.js" in names
+        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+        assert manifest.get("manifest_version") == 3
+        all_hosts = " ".join(
+            list(manifest.get("host_permissions", []))
+            + [m for cs in manifest.get("content_scripts", []) for m in cs.get("matches", [])]
+        )
+        for domain in (
+            "chatgpt.com",
+            "claude.ai",
+            "gemini.google.com",
+            "chat.deepseek.com",
+            "giga.chat",
+            "alice.yandex.ru",
+        ):
+            assert domain in all_hosts
+
+
+def test_T1_F12_02_free_user_cannot_use_pro_downloads_while_pro_unlocks_modal(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    free_btn = page.locator("[data-testid='open-pro-downloads-btn'], #open-pro-downloads-btn")
+    if free_btn.count() > 0 and free_btn.first.is_visible() and free_btn.first.is_enabled():
+        free_btn.first.click()
+        page.wait_for_timeout(120)
+        assert not page.locator("[data-testid='modal-pro-downloads'], #modal-pro-downloads").is_visible()
+        ui.close_active_modal()
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-DL"))
+    ui.close_active_modal()
+
+    modal = ui.open_pro_downloads_modal()
+    assert modal.is_visible()
+    ui.close_active_modal()
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T1_F12_03_pro_downloads_modal_1click_zip_download(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-ZIP"))
+    ui.close_active_modal()
+
+    zip_path = ui.download_extension_zip(pro_e2e_session.io.downloads)
+    assert zip_path.exists()
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        assert zf.testzip() is None
+        assert "manifest.json" in zf.namelist()
+    pro_e2e_session.net.assert_zero_egress()
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T1_F12_04_pro_downloads_modal_browser_guides_and_ru_en_parity(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-GUIDE"))
+    ui.close_active_modal()
+
+    modal_ru = ui.open_pro_downloads_modal()
+    ru_txt = modal_ru.inner_text()
+    assert "Chrome" in ru_txt
+    assert "Edge" in ru_txt
+    assert re.search(r"Яндекс|Yandex", ru_txt, re.I)
+    verify_russian_purity(page)
+    ui.close_active_modal()
+
+    ui.switch_language("en")
+    modal_en = ui.open_pro_downloads_modal()
+    en_txt = modal_en.inner_text()
+    assert "Chrome" in en_txt
+    assert "Edge" in en_txt
+    assert re.search(r"Yandex", en_txt, re.I)
+    ui.close_active_modal()
+
+
+def test_T1_F12_05_sw_precaches_and_serves_extension_zip_metadata_cleanly(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    status, _, sw_body = fetch_http_response(f"{pro_e2e_session.base_url.rstrip('/')}/sw.js")
+    assert status == 200
+    assert "/downloads/promptveil-pro-extension.zip" in sw_body
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-SW"))
+    ui.close_active_modal()
+    zip_path = ui.download_extension_zip(pro_e2e_session.io.downloads)
+    assert zip_path.stat().st_size > 100
+    pro_e2e_session.console.assert_no_errors()
+    pro_e2e_session.net.assert_zero_egress()
+
+
+# ---------------------------------------------------------------------------
+# F13: Multi-Project Rulebook Profiles, Extended Pro Packs & Templates (R5 — 5 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T1_F13_01_default_profile_osnovnoi_in_free_and_pro_create_switch_persist(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    free_opts = ui.get_rulebook_profile_options()
+    assert any("Основной" in opt for opt in free_opts)
+    ui.close_open_drawer()
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-PROF"))
+    ui.close_active_modal()
+
+    ui.create_rulebook_profile("Клиент А")
+    ui.add_custom_rule("AlphaSecret")
+    ui.close_open_drawer()
+
+    assert "[CUSTOM_1]" in ui.sanitize_text("Use AlphaSecret in brief")
+
+    ui.select_rulebook_profile("Основной")
+    assert "AlphaSecret" not in ui.get_rulebook_text()
+    ui.close_open_drawer()
+    assert "AlphaSecret" in ui.sanitize_text("Use AlphaSecret in brief")
+
+    ui.select_rulebook_profile("Клиент А")
+    ui.close_open_drawer()
+    assert "[CUSTOM_1]" in ui.sanitize_text("Use AlphaSecret in brief")
+
+    stored_profiles = page.evaluate("() => localStorage.getItem('promptveil_profiles_v1') || ''")
+    assert "Клиент А" in stored_profiles
+    assert "AlphaSecret" in stored_profiles
+
+    page.reload(wait_until="networkidle")
+    assert any("Клиент А" in opt for opt in ui.get_rulebook_profile_options())
+    ui.select_rulebook_profile("Клиент А")
+    ui.close_open_drawer()
+    assert "[CUSTOM_1]" in ui.sanitize_text("Reload AlphaSecret check")
+
+
+def test_T1_F13_02_pro_profile_rename_and_delete(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-REN"))
+    ui.close_active_modal()
+
+    ui.create_rulebook_profile("NDA Альфа")
+    ui.rename_rulebook_profile("NDA Бета")
+    opts_after_rename = ui.get_rulebook_profile_options()
+    assert any("NDA Бета" in o for o in opts_after_rename)
+    assert not any("NDA Альфа" in o for o in opts_after_rename)
+
+    ui.delete_rulebook_profile()
+    opts_after_del = ui.get_rulebook_profile_options()
+    assert not any("NDA Бета" in o for o in opts_after_del)
+    assert any("Основной" in o for o in opts_after_del)
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T1_F13_03_per_profile_json_export_and_import_isolation(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-PJSON"))
+    ui.close_active_modal()
+
+    ui.create_rulebook_profile("Клиент А")
+    ui.add_custom_rule("IsolatedClientToken")
+    exported = ui.export_rules_json(pro_e2e_session.io.downloads)
+    assert "IsolatedClientToken" in exported.read_text(encoding="utf-8")
+
+    ui.delete_custom_rule("IsolatedClientToken")
+    ui.create_rulebook_profile("Клиент Б")
+    ui.import_rules_json(exported)
+    assert "IsolatedClientToken" in ui.get_rulebook_text()
+
+    ui.select_rulebook_profile("Основной")
+    assert "IsolatedClientToken" not in ui.get_rulebook_text()
+    ui.close_open_drawer()
+    assert "IsolatedClientToken" in ui.sanitize_text("Check IsolatedClientToken")
+
+
+def test_T1_F13_04_pro_extended_industry_word_packs_apply_and_mask(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-PACKS"))
+    ui.close_active_modal()
+
+    drawer = ui.open_rulebook_drawer()
+    for pack_key in ("corporate_ma", "devsecops", "banking_fintech", "crossborder_nda"):
+        pack_btn = drawer.locator(f"[data-testid='word-pack-{pack_key}'], [data-pack='{pack_key}']")
+        assert pack_btn.count() >= 1 and pack_btn.first.is_visible()
+        assert not pack_btn.first.is_disabled()
+
+    before = ui.get_rulebook_badge_count()
+    ui.apply_industry_word_pack("devsecops")
+    after_dev = ui.get_rulebook_badge_count()
+    assert after_dev > before
+
+    ui.apply_industry_word_pack("corporate_ma")
+    assert ui.get_rulebook_badge_count() > after_dev
+
+    first_term = (
+        drawer.locator(
+            "[data-testid='rules-list'] .rule-term-text, "
+            "[data-testid='rules-list'] [data-term], "
+            "[data-testid='rules-list'] .rule-term"
+        )
+        .first.inner_text()
+        .strip()
+    )
+    assert first_term
+    ui.close_open_drawer()
+
+    out = ui.sanitize_text(f"Internal note covers {first_term} today.")
+    assert re.search(r"\[[A-Z_]+_1\]", out)
+    assert first_term not in out
+
+
+def test_T1_F13_05_pro_prompt_templates_1click_insert_and_mask_ru_en(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-TPL"))
+    ui.close_active_modal()
+
+    bar = ui.get_prompt_templates_bar()
+    assert bar.is_visible()
+    first_btn = bar.locator(".prompt-template-btn, button").first
+    tid = (
+        first_btn.get_attribute("data-template-id")
+        or first_btn.get_attribute("data-template")
+        or first_btn.inner_text().strip()
+    )
+    ui.click_prompt_template(tid)
+    raw_ru = ui.get_prompt_input().input_value()
+    assert len(raw_ru.strip()) > 10
+    assert ui.get_sanitize_output_text().strip()
+
+    ui.switch_language("en")
+    bar_en = ui.get_prompt_templates_bar()
+    first_btn_en = bar_en.locator(".prompt-template-btn, button").first
+    tid_en = (
+        first_btn_en.get_attribute("data-template-id")
+        or first_btn_en.get_attribute("data-template")
+        or first_btn_en.inner_text().strip()
+    )
+    ui.click_prompt_template(tid_en)
+    raw_en = ui.get_prompt_input().input_value()
+    assert len(raw_en.strip()) > 10
+
+    stored_profiles = page.evaluate("() => localStorage.getItem('promptveil_profiles_v1') || ''")
+    assert raw_ru[:24] not in stored_profiles
+    assert raw_en[:24] not in stored_profiles
+
+
+# ---------------------------------------------------------------------------
+# F8 Additions: Spark Admin Themes, CSP, RU Purity & Privacy Proof (R6 — 5 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T1_F8_11_pro_modals_and_batch_panel_spark_admin_dark_light_themes(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-THEME"))
+    ui.close_active_modal()
+
+    docx_a = make_synthetic_docx(pro_e2e_session.io.uploads / "theme_a.docx", paragraphs=["a@example.com"])
+    docx_b = make_synthetic_docx(pro_e2e_session.io.uploads / "theme_b.docx", paragraphs=["b@example.com"])
+    ui.upload_files([docx_a, docx_b])
+
+    theme_btn = page.locator("[data-testid='theme-toggle-btn']")
+    theme_btn.click()
+    assert page.evaluate("() => document.documentElement.dataset.theme") == "dark"
+    assert page.evaluate("() => localStorage.getItem('promptveil_theme_v1')") == "dark"
+
+    assert ui.get_batch_queue_panel().is_visible()
+    assert ui.get_prompt_templates_bar().is_visible()
+    ui.open_pro_license_modal("header")
+    ui.close_active_modal()
+    ui.open_pro_downloads_modal()
+    ui.close_active_modal()
+    ui.open_rulebook_drawer()
+    ui.close_open_drawer()
+
+    theme_btn.click()
+    assert page.evaluate("() => document.documentElement.dataset.theme") == "light"
+    assert page.evaluate("() => localStorage.getItem('promptveil_theme_v1')") == "light"
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T1_F8_12_strict_csp_no_eval_no_inline_handlers_on_all_new_templates(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    assert page.locator("template").count() >= 6
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-CSP"))
+    ui.close_active_modal()
+
+    for opener in (
+        lambda: ui.open_pro_license_modal("header"),
+        ui.open_pro_downloads_modal,
+        lambda: ui.open_plan_request_modal("pro"),
+        lambda: ui.open_privacy_proof_modal("header"),
+    ):
+        opener()
+        ui.close_active_modal()
+
+    violations = page.evaluate(
+        """() => {
+            const bad = [];
+            const checkRoot = (root, label) => {
+                for (const el of root.querySelectorAll('*')) {
+                    if (el.tagName === 'SCRIPT' && (!el.hasAttribute('src') || (el.textContent || '').trim())) {
+                        bad.push(`${label}:SCRIPT`);
+                    }
+                    if (el.tagName === 'STYLE') {
+                        bad.push(`${label}:STYLE`);
+                    }
+                    for (const attr of el.attributes) {
+                        const n = attr.name.toLowerCase();
+                        if (n === 'style' || n.startsWith('on')) bad.push(`${label}:${n}`);
+                        if ((n === 'href' || n === 'src') && attr.value.trim().toLowerCase().startsWith('javascript:')) {
+                            bad.push(`${label}:js-url`);
+                        }
+                    }
+                }
+            };
+            checkRoot(document, 'dom');
+            for (const tpl of document.querySelectorAll('template')) {
+                checkRoot(tpl.content, tpl.id || 'template');
+            }
+            return bad;
+        }"""
+    )
+    assert violations == []
+
+    proof = ui.open_privacy_proof_modal("header")
+    assert "нарушений CSP в документе приложения: 0" in proof.inner_text()
+    ui.close_active_modal()
+
+
+def test_T1_F8_13_full_ru_purity_across_all_new_r2_to_r5_ui_surfaces(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    ui.open_pro_license_modal("header")
+    verify_russian_purity(page)
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-RU"))
+    verify_russian_purity(page)
+    ui.close_active_modal()
+
+    ui.open_pro_downloads_modal()
+    verify_russian_purity(page)
+    ui.close_active_modal()
+
+    ui.open_rulebook_drawer()
+    verify_russian_purity(page)
+    ui.close_open_drawer()
+
+    docx_path = make_synthetic_docx(
+        pro_e2e_session.io.uploads / "ru_purity.docx",
+        paragraphs=["Почта ru.purity@example.com"],
+    )
+    ui.upload_files([docx_path])
+    assert ui.get_batch_queue_panel().is_visible()
+    assert ui.get_prompt_templates_bar().is_visible()
+    verify_russian_purity(page)
+
+
+def test_T1_F8_14_zero_egress_across_full_pro_workflow(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-EGRESS"))
+    ui.close_active_modal()
+
+    ui.create_rulebook_profile("Сделка Зеро")
+    ui.add_custom_rule("ZeroEgressSecret")
+    ui.apply_industry_word_pack("banking_fintech")
+    ui.close_open_drawer()
+
+    docx_p = make_synthetic_docx(
+        pro_e2e_session.io.uploads / "egress_a.docx",
+        paragraphs=["Contact egress.docx@example.com with ZeroEgressSecret"],
+    )
+    pdf_p = make_synthetic_pdf(
+        pro_e2e_session.io.uploads / "egress_b.pdf",
+        text_lines=["Contact egress.pdf@example.com"],
+    )
+    ui.upload_files([docx_p, pdf_p])
+
+    bar = ui.get_prompt_templates_bar()
+    tpl_btn = bar.locator(".prompt-template-btn, button").first
+    tid = (
+        tpl_btn.get_attribute("data-template-id")
+        or tpl_btn.get_attribute("data-template")
+        or tpl_btn.inner_text().strip()
+    )
+    ui.click_prompt_template(tid)
+
+    ui.download_batch_zip(pro_e2e_session.io.downloads)
+    ui.click_batch_rehydrate()
+    ui.rehydrate_text("Done [EMAIL_1]")
+
+    pro_e2e_session.net.assert_zero_egress(
+        ["egress.docx@example.com", "egress.pdf@example.com", "ZeroEgressSecret"]
+    )
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T1_F8_15_privacy_proof_zero_bytes_user_text_with_profiles_and_pro(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-PRIV"))
+    ui.close_active_modal()
+
+    ui.create_rulebook_profile("СекретПроект")
+    ui.add_custom_rule("SecretRuleKeyword")
+    ui.close_open_drawer()
+
+    ui.sanitize_text("Sensitive prompt text for proof.user@example.com and SecretRuleKeyword")
+
+    allowed_keys = verify_allowed_local_storage_keys(page)
+    assert "promptveil_pro_license_v1" in allowed_keys
+    assert "promptveil_profiles_v1" in allowed_keys
+
+    all_storage_values = page.evaluate(
+        "() => Object.keys(localStorage).map(k => localStorage.getItem(k) || '').join('\\n')"
+    )
+    assert "proof.user@example.com" not in all_storage_values
+    assert "Sensitive prompt text" not in all_storage_values
+
+    modal = ui.open_privacy_proof_modal("header")
+    ui.run_privacy_proof_check()
+    txt = modal.inner_text()
+    assert "неизвестные ключи: 0" in txt
+    assert "0 байт" in txt
+    assert "0 запросов" in txt
+    ui.close_active_modal()

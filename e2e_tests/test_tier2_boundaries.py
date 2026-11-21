@@ -1,17 +1,35 @@
-"""Tier 2: Boundary & Corner Cases (49 Tests: T2-F1-01..T2-F8-07)."""
+"""Tier 2: Boundary & Corner Cases (81 Tests: T2-F1-01..T2-F13-05)."""
 
 from __future__ import annotations
 
+import base64
 from collections import Counter
+import io
 import json
 import re
 import time
 from typing import Any
+import urllib.request
+import zipfile
 
 import pytest
 
-from conftest import E2ESession
-from monitors import fetch_http_response
+from conftest import E2ESession, EphemeralProKeys
+from doc_fixtures import (
+    make_corrupted_docx,
+    make_corrupted_pdf,
+    make_oversized_file,
+    make_scanned_image_pdf,
+    make_synthetic_docx,
+    make_synthetic_pdf,
+    make_synthetic_xlsx,
+)
+from monitors import (
+    fetch_http_response,
+    verify_ai_launcher_links,
+    verify_csp_and_security_headers,
+    verify_responsive_layout,
+)
 
 
 pytestmark = [pytest.mark.tier2]
@@ -631,3 +649,1028 @@ def test_T2_F8_07_query_string_fragment_isolation(raw_session: E2ESession) -> No
     )
     assert raw_session.ui.get_prompt_input().is_visible()
     raw_session.console.assert_no_errors()
+
+
+# ---------------------------------------------------------------------------
+# F9 Boundaries: Persistent AI Launchers & Gemini (R1 — 5 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T2_F9_01_launchers_empty_input_and_clipboard_denied_fallback(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    assert ui.is_ai_launchers_ready() is False
+    ui.sanitize_text("temp.clear@example.com")
+    assert ui.is_ai_launchers_ready() is True
+    ui.click_clear_input()
+    assert ui.is_ai_launchers_ready() is False
+
+    ui.sanitize_text("clip.fail@example.com")
+    page.evaluate(
+        """() => {
+            Object.defineProperty(navigator, 'clipboard', {
+                configurable: true,
+                value: { writeText: () => Promise.reject(new Error('blocked')) },
+            });
+            document.execCommand = () => false;
+        }"""
+    )
+
+    page.context.route("https://gemini.google.com/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("gemini")
+        pop_info.value.close()
+        page.wait_for_timeout(120)
+        alert_text = ""
+        alert_loc = page.locator("[data-testid='status-banner'][role='alert'], [role='alert']")
+        if alert_loc.count() > 0 and alert_loc.first.is_visible():
+            alert_text = alert_loc.first.inner_text().strip()
+        else:
+            alert_text = ui.get_visible_error_notice()
+        assert alert_text
+    finally:
+        page.context.unroute("https://gemini.google.com/**")
+
+    e2e_session.console.assert_no_errors()
+
+
+def test_T2_F9_02_fast_click_launcher_under_debounce_flushes_latest_input(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    ui.sanitize_text("old.prompt@example.com")
+    inp = ui.get_prompt_input()
+    inp.fill("fast.gemini@example.com")
+
+    page.context.route("https://gemini.google.com/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("gemini")
+        pop_info.value.close()
+        copied = ui.read_clipboard_text() or ""
+        assert copied == "[EMAIL_2]"
+        assert "[EMAIL_1]" not in copied
+        assert "fast.gemini@example.com" not in copied
+        assert "old.prompt@example.com" not in copied
+    finally:
+        page.context.unroute("https://gemini.google.com/**")
+
+    restored = ui.rehydrate_text(copied)
+    assert "fast.gemini@example.com" in restored
+    assert "old.prompt@example.com" not in restored
+
+    e2e_session.net.assert_zero_egress(["fast.gemini@example.com", "old.prompt@example.com"])
+
+
+def test_T2_F9_03_launcher_on_step2_with_auto_sanitize_off_still_masks(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    ui.set_auto_sanitize(False)
+    ui.get_prompt_input().fill("Send manual.ai@example.com safely")
+    ui.switch_mode("rehydrate")
+
+    page.evaluate("async () => navigator.clipboard.writeText('SENTINEL_STEP2')")
+    page.context.route("https://chatgpt.com/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("chatgpt")
+        pop_info.value.close()
+        copied = ui.read_clipboard_text() or ""
+        assert copied == "Send [EMAIL_1] safely"
+        assert "manual.ai@example.com" not in copied
+        assert re.search(r"скопирован|copied", ui.get_status_banner_text(), re.I)
+    finally:
+        page.context.unroute("https://chatgpt.com/**")
+
+    e2e_session.net.assert_zero_egress(["manual.ai@example.com"])
+
+
+def test_T2_F9_04_launcher_after_clear_and_reset_clears_ready_state(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    ui.sanitize_text("clear.leak@example.com")
+    assert ui.is_ai_launchers_ready() is True
+    ui.click_clear_input()
+    ui.switch_mode("rehydrate")
+    assert ui.is_ai_launchers_ready() is False
+
+    ui.switch_mode("sanitize")
+    ui.sanitize_text("reset.leak@example.com")
+    assert ui.is_ai_launchers_ready() is True
+    ui.click_reset_session_to_zero("workbench")
+    ui.switch_mode("rehydrate")
+    assert ui.is_ai_launchers_ready() is False
+
+    page.evaluate("() => navigator.clipboard.writeText('SENTINEL_CLEAN')")
+    page.context.route("https://gemini.google.com/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("gemini")
+        pop_info.value.close()
+        clipboard_now = ui.read_clipboard_text() or ""
+        assert clipboard_now == "SENTINEL_CLEAN"
+        assert "reset.leak@example.com" not in clipboard_now
+    finally:
+        page.context.unroute("https://gemini.google.com/**")
+
+
+def test_T2_F9_05_mobile_390x844_launchers_step1_and_step2_tap_targets_and_overflow(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    verify_responsive_layout(page, 390, 844)
+    ui.sanitize_text("mobile.launcher@example.com")
+    verify_ai_launcher_links(page)
+
+    pills = page.locator("#ai-launchers-bar .ai-launcher-pill")
+    assert pills.count() == 6
+    for idx in range(6):
+        box = pills.nth(idx).bounding_box()
+        assert box is not None
+        assert box["height"] >= 43.5
+        assert box["width"] >= 43.5
+
+    ui.switch_mode("rehydrate")
+    verify_responsive_layout(page, 390, 844)
+    assert ui.is_ai_launchers_ready() is True
+    for idx in range(6):
+        pill = pills.nth(idx)
+        assert pill.is_visible()
+        box = pill.bounding_box()
+        assert box is not None
+        assert box["height"] >= 43.5
+        assert box["width"] >= 43.5
+
+
+# ---------------------------------------------------------------------------
+# F10 Boundaries: Ed25519 Pro License System & Pricing (R2 — 6 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T2_F10_01_reject_malformed_empty_and_wrong_prefix_pro_keys(
+    pro_e2e_session: E2ESession,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    bad_payload_b64 = base64.urlsafe_b64encode(b"not-json").decode("ascii").rstrip("=")
+    dummy_sig_b64 = base64.urlsafe_b64encode(b"\x01" * 64).decode("ascii").rstrip("=")
+
+    invalid_tokens = [
+        "",
+        "   \t\n  ",
+        f"PV2.{bad_payload_b64}.{dummy_sig_b64}",
+        "PV1.onlytwo",
+        "PV1.not!b64!.sig!",
+        f"PV1.{bad_payload_b64}.{dummy_sig_b64}",
+    ]
+    ui.open_pro_license_modal("header")
+    for token in invalid_tokens:
+        ui.activate_pro_key(token)
+        alert = page.locator("#pro-license-alert, [data-testid='pro-license-alert']")
+        assert alert.is_visible()
+        assert ui.get_pro_badge_text() == "Free"
+        assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    ui.close_active_modal()
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T2_F10_02_reject_tampered_payload_or_invalid_ed25519_signature(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    valid = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-TAMPER")
+    prefix, payload_b64, sig_b64 = valid.split(".")
+    assert prefix == "PV1"
+
+    # Tamper payload: escalate tier from "pro" to "owner" while keeping original signature
+    padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+    payload_obj = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    payload_obj["tier"] = "owner"
+    tampered_payload_b64 = (
+        base64.urlsafe_b64encode(json.dumps(payload_obj, separators=(",", ":")).encode("utf-8"))
+        .decode("ascii")
+        .rstrip("=")
+    )
+    tampered_payload_token = f"PV1.{tampered_payload_b64}.{sig_b64}"
+
+    # Tamper signature: flip first character cleanly
+    flipped_char = "B" if sig_b64[0] != "B" else "C"
+    tampered_sig_token = f"PV1.{payload_b64}.{flipped_char}{sig_b64[1:]}"
+
+    ui.open_pro_license_modal("header")
+    for bad_token in (tampered_payload_token, tampered_sig_token):
+        ui.activate_pro_key(bad_token)
+        alert = page.locator("#pro-license-alert, [data-testid='pro-license-alert']")
+        assert alert.is_visible()
+        assert "Ed25519" in alert.inner_text()
+        assert ui.get_pro_badge_text() == "Free"
+        assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    ui.close_active_modal()
+
+
+def test_T2_F10_03_reject_expired_pro_token_exp_boundary(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    expired_token = ephemeral_pro_keys.issue_token(
+        tier="pro", key_id="PV-E2E-EXP", exp="2020-01-01T00:00:00.000Z"
+    )
+    ui.open_pro_license_modal("header")
+    ui.activate_pro_key(expired_token)
+    alert = page.locator("#pro-license-alert, [data-testid='pro-license-alert']")
+    assert alert.is_visible()
+    assert re.search(r"ист[её]к|expired", alert.inner_text(), re.I)
+    assert ui.get_pro_badge_text() == "Free"
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    future_token = ephemeral_pro_keys.issue_token(
+        tier="pro", key_id="PV-E2E-FUT", exp="2099-12-31T23:59:59.000Z"
+    )
+    ui.activate_pro_key(future_token)
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    ui.remove_pro_key()
+    assert ui.get_pro_badge_text() == "Free"
+
+    lifetime_token = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-LIFE", exp=None)
+    ui.activate_pro_key(lifetime_token)
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    ui.close_active_modal()
+
+
+def test_T2_F10_04_corrupted_localstorage_pro_license_recovery(
+    pro_raw_session: E2ESession,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    page.goto(f"{pro_raw_session.base_url}/", wait_until="networkidle")
+
+    for corrupt_val in ("{broken_json", "PV1.bad.sig"):
+        page.evaluate(
+            "val => localStorage.setItem('promptveil_pro_license_v1', val)",
+            corrupt_val,
+        )
+        page.reload(wait_until="networkidle")
+        assert ui.get_pro_badge_text() == "Free"
+        assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    assert "[EMAIL_1]" in ui.sanitize_text("Recover free@example.com")
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T2_F10_05_pure_js_ed25519_fallback_when_webcrypto_ed25519_unavailable(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    page.evaluate(
+        """() => {
+            const failVerify = () => Promise.reject(
+                new DOMException('Ed25519 is not supported', 'NotSupportedError')
+            );
+            if (globalThis.SubtleCrypto && SubtleCrypto.prototype) {
+                SubtleCrypto.prototype.verify = failVerify;
+            }
+            if (globalThis.crypto && globalThis.crypto.subtle) {
+                try {
+                    globalThis.crypto.subtle.verify = failVerify;
+                } catch {
+                    Object.defineProperty(globalThis.crypto.subtle, 'verify', {
+                        configurable: true,
+                        value: failVerify,
+                    });
+                }
+            }
+        }"""
+    )
+
+    valid_token = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-PUREJS")
+    ui.activate_pro_key(valid_token)
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    assert "PV-E2E-PUREJS" in ui.get_pro_status_card_text()
+
+    ui.remove_pro_key()
+    assert ui.get_pro_badge_text() == "Free"
+
+    prefix, payload_b64, sig_b64 = valid_token.split(".")
+    flipped = "B" if sig_b64[0] != "B" else "C"
+    tampered_token = f"{prefix}.{payload_b64}.{flipped}{sig_b64[1:]}"
+    ui.activate_pro_key(tampered_token)
+    assert page.locator("#pro-license-alert, [data-testid='pro-license-alert']").is_visible()
+    assert ui.get_pro_badge_text() == "Free"
+    ui.close_active_modal()
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T2_F10_06_mobile_390x844_pro_badge_modal_and_pricing_layout(
+    pro_e2e_session: E2ESession,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    verify_responsive_layout(page, 390, 844)
+    badge = page.locator("[data-testid='open-pro-license-btn'], #open-pro-license-btn").first
+    assert badge.is_visible()
+    badge_box = badge.bounding_box()
+    assert badge_box is not None and badge_box["height"] >= 43.5 and badge_box["width"] >= 43.5
+
+    modal = ui.open_pro_license_modal("header")
+    assert modal.is_visible()
+    verify_responsive_layout(page, 390, 844)
+    act_box = page.locator("[data-testid='pro-license-activate-btn']").bounding_box()
+    assert act_box is not None and act_box["height"] >= 43.5
+    ui.close_active_modal()
+
+    ui.open_pricing()
+    verify_responsive_layout(page, 390, 844)
+    for testid in ("pricing-card-free", "pricing-card-pro", "pricing-card-team"):
+        card = page.locator(f"[data-testid='{testid}']")
+        assert card.is_visible()
+        cbox = card.bounding_box()
+        assert cbox is not None and cbox["x"] >= -0.5 and (cbox["x"] + cbox["width"]) <= 390.5
+
+
+# ---------------------------------------------------------------------------
+# F11 Boundaries: Local Batch & .docx/.xlsx/.pdf Scrubber (R3 — 6 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T2_F11_01_free_user_docx_pdf_xlsx_and_over_2mb_show_upgrade_prompt(
+    e2e_session: E2ESession,
+) -> None:
+    ui = e2e_session.ui
+    ui.get_prompt_input().fill("Baseline safe text")
+
+    docx_p = make_synthetic_docx(e2e_session.io.uploads / "free_block.docx", paragraphs=["x@example.com"])
+    pdf_p = make_synthetic_pdf(e2e_session.io.uploads / "free_block.pdf", text_lines=["y@example.com"])
+    xlsx_p = make_synthetic_xlsx(
+        e2e_session.io.uploads / "free_block.xlsx",
+        shared_strings=["Mail"],
+        rows=[["Mail"], ["z@example.com"]],
+    )
+    over_2mb = make_oversized_file(
+        e2e_session.io.uploads / "free_over_2mb.txt", 2 * 1024 * 1024 + 4096, ext=".txt"
+    )
+
+    for doc_path in (docx_p, pdf_p, xlsx_p):
+        ui.upload_files([doc_path])
+        banner = ui.get_file_pro_upgrade_banner()
+        assert banner.is_visible()
+        assert ui.get_prompt_input().input_value() == "Baseline safe text"
+
+    ui.upload_files([over_2mb])
+    notice = ui.get_visible_error_notice()
+    assert re.search(r"2\s*(?:mb|мб)", notice, re.I)
+    assert ui.get_prompt_input().input_value() == "Baseline safe text"
+    e2e_session.net.assert_zero_egress(["x@example.com", "y@example.com", "z@example.com"])
+
+
+def test_T2_F11_02_corrupted_docx_xlsx_and_encrypted_pdf_rejected_cleanly(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-CORRUPT"))
+    ui.close_active_modal()
+
+    bad_docx = make_corrupted_docx(pro_e2e_session.io.uploads / "broken.docx")
+    bad_xlsx = pro_e2e_session.io.uploads / "missing_sheets.xlsx"
+    with zipfile.ZipFile(bad_xlsx, "w") as zf:
+        zf.writestr("[Content_Types].xml", "<Types/>")
+    bad_pdf = make_corrupted_pdf(pro_e2e_session.io.uploads / "broken.pdf")
+    encrypted_pdf = pro_e2e_session.io.uploads / "encrypted.pdf"
+    encrypted_pdf.write_bytes(
+        b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+        b"2 0 obj\n<< /Filter /Standard /V 2 /R 3 >>\nendobj\ntrailer\n<< /Encrypt 2 0 R >>\n%%EOF\n"
+    )
+
+    for bad_path in (bad_docx, bad_xlsx, bad_pdf, encrypted_pdf):
+        ui.upload_files([bad_path])
+        err = ui.get_visible_error_notice() or ui.get_status_banner_text()
+        assert err
+
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T2_F11_03_scanned_image_only_pdf_shows_honest_ru_en_notice(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-SCAN"))
+    ui.close_active_modal()
+
+    scan_pdf = make_scanned_image_pdf(pro_e2e_session.io.uploads / "scan_only.pdf")
+    ui.upload_files([scan_pdf])
+    ru_notice = ui.get_visible_error_notice() or ui.get_status_banner_text()
+    if not ru_notice:
+        batch_panel = pro_e2e_session.page.locator("[data-testid='batch-queue-panel'], #batch-queue-panel").first
+        if batch_panel.count() > 0 and batch_panel.is_visible():
+            ru_notice = ui.get_batch_queue_panel().inner_text()
+    assert re.search(r"скан|изображ|ocr|текст\w*\s+не\s+найден|без\s+текст", ru_notice, re.I)
+
+    ui.switch_language("en")
+    ui.upload_files([scan_pdf])
+    en_notice = ui.get_visible_error_notice() or ui.get_status_banner_text()
+    if not en_notice:
+        batch_panel = pro_e2e_session.page.locator("[data-testid='batch-queue-panel'], #batch-queue-panel").first
+        if batch_panel.count() > 0 and batch_panel.is_visible():
+            en_notice = ui.get_batch_queue_panel().inner_text()
+    assert re.search(r"scan|image|ocr|no\s+(?:extractable\s+)?text", en_notice, re.I)
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T2_F11_04_pro_50mb_boundary_accepted_and_over_50mb_rejected(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-50MB"))
+    ui.close_active_modal()
+
+    over_50mb = make_oversized_file(
+        pro_e2e_session.io.uploads / "too_large_50mb.txt",
+        50 * 1024 * 1024 + 1024,
+        ext=".txt",
+    )
+    ui.upload_files([over_50mb])
+    err = ui.get_visible_error_notice() or ui.get_status_banner_text()
+    assert re.search(r"50\s*(?:mb|мб)", err, re.I)
+
+    valid_3mb = make_oversized_file(
+        pro_e2e_session.io.uploads / "valid_3mb.txt",
+        3 * 1024 * 1024,
+        ext=".txt",
+    )
+    ui.upload_files([valid_3mb])
+    assert len(ui.get_prompt_input().input_value()) >= 1024 or len(ui.get_batch_queue_items()) >= 1
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T2_F11_05_mixed_valid_and_invalid_batch_plus_cyrillic_filenames(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-MIX"))
+    ui.close_active_modal()
+
+    valid_docx = make_synthetic_docx(
+        pro_e2e_session.io.uploads / "договор_клиента.docx",
+        paragraphs=["Contact cyr.batch@example.com"],
+    )
+    corrupt_pdf = make_corrupted_pdf(pro_e2e_session.io.uploads / "повреждённый.pdf")
+    valid_csv = pro_e2e_session.io.uploads / "клиенты.csv"
+    valid_csv.write_text("email\ncsv.batch@example.com\n", encoding="utf-8")
+
+    ui.upload_files([valid_docx, corrupt_pdf, valid_csv])
+    panel_txt = ui.get_batch_queue_panel().inner_text()
+    assert "договор_клиента.docx" in panel_txt
+    assert "клиенты.csv" in panel_txt
+    assert "\ufffd" not in panel_txt
+    assert "cyr.batch@example.com" not in panel_txt
+    assert "csv.batch@example.com" not in panel_txt
+    assert len(ui.get_batch_queue_items()) >= 2
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T2_F11_06_mobile_390x844_batch_queue_and_upgrade_banner_layout(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    verify_responsive_layout(page, 390, 844)
+    docx_a = make_synthetic_docx(pro_e2e_session.io.uploads / "mob_a.docx", paragraphs=["m1@example.com"])
+    xlsx_b = make_synthetic_xlsx(
+        pro_e2e_session.io.uploads / "mob_b.xlsx",
+        shared_strings=["Mail"],
+        rows=[["Mail"], ["m2@example.com"]],
+    )
+    ui.upload_files([docx_a])
+    assert ui.get_file_pro_upgrade_banner().is_visible()
+    verify_responsive_layout(page, 390, 844)
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-MOBBATCH"))
+    ui.close_active_modal()
+    ui.upload_files([docx_a, xlsx_b])
+
+    panel = ui.get_batch_queue_panel()
+    assert panel.is_visible()
+    verify_responsive_layout(page, 390, 844)
+    for btn_sel in (
+        "[data-testid='batch-clear-btn'], #batch-clear-btn",
+        "[data-testid='batch-download-txt-btn'], #batch-download-txt-btn",
+        "[data-testid='batch-download-zip-btn'], #batch-download-zip-btn",
+        "[data-testid='batch-rehydrate-btn'], #batch-rehydrate-btn",
+    ):
+        btn = panel.locator(btn_sel).first
+        if btn.is_visible():
+            box = btn.bounding_box()
+            assert box is not None and box["height"] >= 43.5
+
+
+# ---------------------------------------------------------------------------
+# F12 Boundaries: Pro Downloads Modal, /downloads/*.zip & MV3 Extension (R4 — 5 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T2_F12_01_downloads_missing_or_path_traversal_returns_404(
+    raw_session: E2ESession,
+) -> None:
+    base = raw_session.base_url.rstrip("/")
+    st_missing, _, _ = fetch_http_response(f"{base}/downloads/nonexistent.zip")
+    assert st_missing == 404
+
+    st_trav, _, body_trav = fetch_http_response(f"{base}/downloads/..%2F..%2Fapp/main.py")
+    assert st_trav != 200
+    assert "FastAPI" not in body_trav
+
+
+def test_T2_F12_02_pro_downloads_modal_blocked_after_key_removal(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-REM"))
+    ui.close_active_modal()
+    modal = ui.open_pro_downloads_modal()
+    assert modal.is_visible()
+    ui.close_active_modal()
+
+    ui.remove_pro_key()
+    ui.close_active_modal()
+    assert ui.get_pro_badge_text() == "Free"
+
+    dl_trigger = page.locator("[data-testid='open-pro-downloads-btn'], #open-pro-downloads-btn")
+    if dl_trigger.count() > 0 and dl_trigger.first.is_visible() and dl_trigger.first.is_enabled():
+        dl_trigger.first.click()
+        page.wait_for_timeout(120)
+        assert not page.locator("[data-testid='modal-pro-downloads'], #modal-pro-downloads").is_visible()
+
+
+def test_T2_F12_03_pro_downloads_modal_reopen_idempotency_and_escape_focus(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-REOPEN"))
+    ui.close_active_modal()
+
+    modal = ui.open_pro_downloads_modal()
+    assert modal.is_visible()
+    assert page.locator("[data-testid='modal-pro-downloads'], #modal-pro-downloads").count() == 1
+
+    page.keyboard.press("Tab")
+    in_modal = page.evaluate(
+        """() => {
+            const m = document.querySelector("[data-testid='modal-pro-downloads'], #modal-pro-downloads");
+            return Boolean(m && m.contains(document.activeElement));
+        }"""
+    )
+    assert in_modal is True
+
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(120)
+    assert not modal.is_visible()
+
+    reopened = ui.open_pro_downloads_modal()
+    assert reopened.is_visible()
+    assert page.locator("[data-testid='modal-pro-downloads'], #modal-pro-downloads").count() == 1
+    ui.close_active_modal()
+
+
+def test_T2_F12_04_extension_zip_contains_zero_secrets_and_exact_six_ai_hosts(
+    e2e_session: E2ESession,
+) -> None:
+    zip_url = f"{e2e_session.base_url.rstrip('/')}/downloads/promptveil-pro-extension.zip"
+    with urllib.request.urlopen(zip_url, timeout=5.0) as resp:
+        assert int(resp.status) == 200
+        payload = resp.read()
+
+    expected_domains = {
+        "chatgpt.com",
+        "claude.ai",
+        "gemini.google.com",
+        "chat.deepseek.com",
+        "giga.chat",
+        "alice.yandex.ru",
+    }
+    with zipfile.ZipFile(io.BytesIO(payload), "r") as zf:
+        assert zf.testzip() is None
+        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+        host_perms = list(manifest.get("host_permissions", []))
+        cs_matches = [m for cs in manifest.get("content_scripts", []) for m in cs.get("matches", [])]
+        assert "<all_urls>" not in " ".join(host_perms + cs_matches)
+
+        for pattern_list in (host_perms, cs_matches):
+            found = {
+                dom
+                for dom in expected_domains
+                if any(dom in entry for entry in pattern_list)
+            }
+            assert found == expected_domains
+
+        for member in zf.namelist():
+            if member.endswith((".js", ".json", ".html", ".css", ".txt")):
+                content = zf.read(member).decode("utf-8", errors="replace")
+                for secret_marker in ("BEGIN PRIVATE KEY", "PV-CLIENT-"):
+                    assert secret_marker not in content
+                assert re.search(r"PV1\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}", content) is None
+
+
+def test_T2_F12_05_mobile_390x844_pro_downloads_modal_and_cta_tap_targets(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-MOBDL"))
+    ui.close_active_modal()
+    ui.close_open_drawer()
+
+    verify_responsive_layout(page, 390, 844)
+    modal = ui.open_pro_downloads_modal()
+    assert modal.is_visible()
+    verify_responsive_layout(page, 390, 844)
+
+    dl_btn = modal.locator("[data-testid='download-extension-zip-btn'], #download-extension-zip-btn").first
+    box = dl_btn.bounding_box()
+    assert box is not None and box["height"] >= 43.5
+    ui.close_active_modal()
+
+
+# ---------------------------------------------------------------------------
+# F13 Boundaries: Multi-Project Rulebook Profiles, Packs & Templates (R5 — 5 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T2_F13_01_free_user_cannot_create_custom_profile_or_apply_pro_packs(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    drawer = ui.open_rulebook_drawer()
+    before_storage = page.evaluate("() => localStorage.getItem('promptveil_profiles_v1')")
+    create_btn = drawer.locator("[data-testid='profile-create-btn'], #profile-create-btn").first
+    if create_btn.is_visible() and not create_btn.is_disabled():
+        name_input = drawer.locator("[data-testid='profile-name-input'], #profile-name-input")
+        if name_input.count() > 0 and name_input.first.is_visible():
+            name_input.first.fill("ShouldNotCreate")
+        create_btn.click()
+        page.wait_for_timeout(120)
+        assert "ShouldNotCreate" not in (
+            page.evaluate("() => localStorage.getItem('promptveil_profiles_v1') || ''")
+        )
+
+    before_rules = ui.get_rulebook_badge_count()
+    for pack_key in ("corporate_ma", "devsecops", "banking_fintech", "crossborder_nda"):
+        pack_btn = drawer.locator(f"[data-testid='word-pack-{pack_key}'], [data-pack='{pack_key}']").first
+        if pack_btn.is_visible() and not pack_btn.is_disabled():
+            pack_btn.click()
+            page.wait_for_timeout(100)
+    assert ui.get_rulebook_badge_count() == before_rules
+    assert page.evaluate("() => localStorage.getItem('promptveil_profiles_v1')") == before_storage
+    ui.close_open_drawer()
+
+
+def test_T2_F13_02_empty_duplicate_and_xss_profile_name_rejected_inert(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-PROFVAL"))
+    ui.close_active_modal()
+
+    drawer = ui.open_rulebook_drawer()
+    initial_opts = ui.get_rulebook_profile_options()
+
+    for bad_name in ("", "   ", "Основной"):
+        ui.create_rulebook_profile(bad_name)
+        assert ui.get_rulebook_profile_options() == initial_opts
+        alert = drawer.locator("#rulebook-alert, [role='alert']")
+        assert alert.count() >= 1 and alert.first.is_visible()
+
+    ui.create_rulebook_profile("Клиент А")
+    after_create = ui.get_rulebook_profile_options()
+    assert len(after_create) == len(initial_opts) + 1
+    ui.create_rulebook_profile("Клиент А")
+    assert ui.get_rulebook_profile_options() == after_create
+
+    xss_name = "<img src=x onerror=window.__xssProf=1>"
+    ui.create_rulebook_profile(xss_name)
+    assert page.evaluate("() => window.__xssProf === undefined") is True
+    assert page.evaluate("() => document.querySelectorAll('img[src=\"x\"]').length") == 0
+    ui.close_open_drawer()
+
+
+def test_T2_F13_03_cannot_delete_default_osnovnoi_profile(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-DELDEF"))
+    ui.close_active_modal()
+
+    ui.open_rulebook_drawer()
+    ui.delete_rulebook_profile()
+    opts = ui.get_rulebook_profile_options()
+    assert any("Основной" in o for o in opts)
+    ui.close_open_drawer()
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T2_F13_04_corrupted_localstorage_profiles_recovery(
+    pro_raw_session: E2ESession,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    page.goto(f"{pro_raw_session.base_url}/", wait_until="networkidle")
+
+    for bad_json in ("{broken", "[null, {}]"):
+        page.evaluate("val => localStorage.setItem('promptveil_profiles_v1', val)", bad_json)
+        page.reload(wait_until="networkidle")
+        opts = ui.get_rulebook_profile_options()
+        assert any("Основной" in o for o in opts)
+        ui.close_open_drawer()
+
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T2_F13_05_mobile_390x844_rulebook_profiles_packs_and_templates_fit(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-MOBPROF"))
+    ui.close_active_modal()
+
+    ui.create_rulebook_profile("Клиент А")
+    ui.create_rulebook_profile("NDA Бета")
+    ui.close_open_drawer()
+
+    verify_responsive_layout(page, 390, 844)
+    tpl_bar = ui.get_prompt_templates_bar()
+    assert tpl_bar.is_visible()
+    tpl_btns = tpl_bar.locator(".prompt-template-btn, button")
+    for idx in range(tpl_btns.count()):
+        b = tpl_btns.nth(idx)
+        if b.is_visible():
+            box = b.bounding_box()
+            assert box is not None and box["height"] >= 43.5
+
+    drawer = ui.open_rulebook_drawer()
+    verify_responsive_layout(page, 390, 844)
+    dbox = drawer.bounding_box()
+    assert dbox is not None and dbox["x"] >= -0.5 and (dbox["x"] + dbox["width"]) <= 390.5
+    ui.close_open_drawer()
+
+
+# ---------------------------------------------------------------------------
+# F8 Boundary Additions: CSP, Retranslation, Quota & Mobile 390x844 (R6 — 5 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T2_F8_08_csp_blocks_fetch_and_eval_even_when_pro_unlocked(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-CSPUNLOCK"))
+    ui.close_active_modal()
+    ui.create_rulebook_profile("CSP Профиль")
+    ui.add_custom_rule("CspRuleSecret")
+    ui.close_open_drawer()
+
+    with pro_e2e_session.console.allow_expected_csp_errors():
+        blocked = page.evaluate(
+            """async () => {
+                const cspEvents = [];
+                const onViolation = (e) => {
+                    cspEvents.push({
+                        effectiveDirective: e.effectiveDirective || '',
+                        violatedDirective: e.violatedDirective || '',
+                    });
+                };
+                document.addEventListener('securitypolicyviolation', onViolation);
+                try {
+                    const s = document.createElement('script');
+                    s.textContent = 'window.__cspInlineProbe = 1;';
+                    document.head.appendChild(s);
+                    s.remove();
+
+                    try {
+                        setTimeout('window.__cspTimerEvalProbe = 1;', 0);
+                    } catch {
+                        // Ignore synchronous CSP throw if any
+                    }
+
+                    let fetchBlocked = false;
+                    try {
+                        await fetch('https://example.com/csp-probe');
+                    } catch {
+                        fetchBlocked = true;
+                    }
+
+                    await new Promise((resolve) => setTimeout(resolve, 150));
+
+                    return {
+                        inlineProbeUndefined: window.__cspInlineProbe === undefined,
+                        timerEvalProbeUndefined: window.__cspTimerEvalProbe === undefined,
+                        fetchBlocked,
+                        cspEvents,
+                        inlineHandlerCount: document.querySelectorAll('[onclick], [onerror], [onload]').length,
+                    };
+                } finally {
+                    document.removeEventListener('securitypolicyviolation', onViolation);
+                }
+            }"""
+        )
+    assert blocked["inlineProbeUndefined"] is True
+    assert blocked["timerEvalProbeUndefined"] is True
+    assert blocked["fetchBlocked"] is True
+    assert len(blocked["cspEvents"]) >= 2
+    directives = [
+        (ev.get("effectiveDirective") or ev.get("violatedDirective") or "").lower()
+        for ev in blocked["cspEvents"]
+    ]
+    assert any(d.startswith("script-src") for d in directives)
+    assert any(d.startswith("connect-src") for d in directives)
+    assert blocked["inlineHandlerCount"] == 0
+
+
+def test_T2_F8_09_banner_retranslation_ru_en_for_pro_and_batch_notices(
+    e2e_session: E2ESession,
+) -> None:
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    docx_p = make_synthetic_docx(e2e_session.io.uploads / "retrans.docx", paragraphs=["x@example.com"])
+    ui.upload_files([docx_p])
+    ru_banner = ui.get_file_pro_upgrade_banner()
+    ru_txt = ru_banner.inner_text().strip()
+    assert ru_txt
+
+    ui.switch_language("en")
+    en_banner = ui.get_file_pro_upgrade_banner()
+    assert en_banner.is_visible()
+    en_txt = en_banner.inner_text().strip()
+    assert en_txt and en_txt != ru_txt
+
+    ui.open_pro_license_modal("header")
+    ui.activate_pro_key("PV1.bad.sig")
+    en_alert = page.locator("#pro-license-alert, [data-testid='pro-license-alert']").inner_text()
+    assert re.search(r"ed25519|malformed|invalid", en_alert, re.I)
+    ui.close_active_modal()
+
+    ui.switch_language("ru")
+    ui.open_pro_license_modal("header")
+    ui.activate_pro_key("PV1.bad.sig")
+    ru_alert = page.locator("#pro-license-alert, [data-testid='pro-license-alert']").inner_text()
+    assert re.search(r"подпис|поврежд", ru_alert, re.I)
+    ui.close_active_modal()
+
+
+def test_T2_F8_10_404_page_and_en_route_csp_headers_preserved(
+    raw_session: E2ESession,
+) -> None:
+    base = raw_session.base_url.rstrip("/")
+    verify_csp_and_security_headers(f"{base}/en/")
+    verify_csp_and_security_headers(f"{base}/404.html")
+
+    st_missing, headers_missing, _ = fetch_http_response(f"{base}/nonexistent-csp-route")
+    assert st_missing == 404
+    csp_missing = headers_missing.get("content-security-policy", "").lower()
+    assert "script-src 'self'" in csp_missing
+    assert "connect-src 'self'" in csp_missing
+
+    raw_session.page.goto(f"{base}/en/", wait_until="networkidle")
+    assert raw_session.ui.get_document_lang().lower() == "en"
+    raw_session.page.goto(f"{base}/404.html", wait_until="networkidle")
+    raw_session.console.assert_no_errors()
+
+
+def test_T2_F8_11_quota_exceeded_during_pro_activation_or_profile_save(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    page.evaluate(
+        """() => {
+            Storage.prototype.setItem = function() {
+                throw new DOMException('QuotaExceededError', 'QuotaExceededError');
+            };
+        }"""
+    )
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-QUOTA"))
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    ui.close_active_modal()
+
+    ui.add_custom_rule("QuotaRuleInRam")
+    ui.close_open_drawer()
+    alert = page.locator("[data-testid='status-banner'][role='alert'], [role='alert']").first
+    assert alert.is_visible()
+    assert "[CUSTOM_1]" in ui.sanitize_text("Keep QuotaRuleInRam working in RAM")
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T2_F8_12_mobile_390x844_all_new_interactive_controls_44px_and_zero_overflow(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-MOBALL"))
+    ui.close_active_modal()
+
+    docx_a = make_synthetic_docx(pro_e2e_session.io.uploads / "mob_all_a.docx", paragraphs=["a@example.com"])
+    xlsx_b = make_synthetic_xlsx(
+        pro_e2e_session.io.uploads / "mob_all_b.xlsx",
+        shared_strings=["Mail"],
+        rows=[["Mail"], ["b@example.com"]],
+    )
+    ui.upload_files([docx_a, xlsx_b])
+
+    def _assert_44px(loc_str: str) -> None:
+        loc = page.locator(loc_str)
+        for idx in range(loc.count()):
+            el = loc.nth(idx)
+            if el.is_visible():
+                box = el.bounding_box()
+                assert box is not None and box["height"] >= 43.5, f"{loc_str}[{idx}] height={box}"
+
+    for theme in ("light", "dark"):
+        cur_theme = page.evaluate("() => document.documentElement.dataset.theme || 'light'")
+        if cur_theme != theme:
+            page.locator("[data-testid='theme-toggle-btn']").click()
+        for lang in ("ru", "en"):
+            if ui.get_document_lang().lower() != lang:
+                ui.switch_language(lang)
+
+            verify_responsive_layout(page, 390, 844)
+            _assert_44px("#ai-launchers-bar .ai-launcher-pill")
+            _assert_44px("#batch-queue-panel button")
+            _assert_44px("#prompt-templates-bar button")
+
+            ui.switch_mode("rehydrate")
+            verify_responsive_layout(page, 390, 844)
+            _assert_44px("#ai-launchers-bar .ai-launcher-pill")
+            ui.switch_mode("sanitize")
+
+            ui.open_pricing()
+            verify_responsive_layout(page, 390, 844)
+
+            ui.open_pro_license_modal("header")
+            verify_responsive_layout(page, 390, 844)
+            _assert_44px("#modal-pro-license .pro-license-form button, #modal-pro-license .modal-footer button")
+            ui.close_active_modal()
+
+            ui.open_pro_downloads_modal()
+            verify_responsive_layout(page, 390, 844)
+            _assert_44px(
+                "#modal-pro-downloads .modal-footer button, "
+                "#download-extension-zip-btn, "
+                "#modal-pro-downloads button:not(.drawer-close)"
+            )
+            ui.close_active_modal()
+
+            ui.open_rulebook_drawer()
+            verify_responsive_layout(page, 390, 844)
+            ui.close_open_drawer()
