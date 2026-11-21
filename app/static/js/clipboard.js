@@ -11,6 +11,15 @@ import {
   showCopyFeedback,
 } from "./dom.js";
 import { t } from "./i18n.js";
+import {
+  FREE_EXTENSIONS,
+  FREE_MAX_FILE_BYTES,
+  PRO_DOCUMENT_EXTENSIONS,
+  getDocumentErrorI18nKey,
+  getFileExtension,
+  parseDocumentFile,
+  validateBatchFiles,
+} from "./pro-documents.js";
 import { importRulesJson } from "./storage.js";
 
 export {
@@ -20,8 +29,8 @@ export {
   showCopyFeedback,
 };
 
-export const MAX_FILE_BYTES = 2 * 1024 * 1024;
-export const ALLOWED_EXTENSIONS = new Set([".txt", ".md", ".csv", ".json", ".log", ".env"]);
+export const MAX_FILE_BYTES = FREE_MAX_FILE_BYTES;
+export const ALLOWED_EXTENSIONS = FREE_EXTENSIONS;
 
 export function translateImportError() {
   return "rulebook.importBadJson";
@@ -45,12 +54,17 @@ export async function copyWithFeedback({
 
 export function createFileController({
   getRules,
+  isProActive = () => false,
+  isBatchActive = () => false,
   showStatusBanner,
   showInlineAlert,
   hideInlineAlert,
+  showProUpgradePrompt = null,
+  hideProUpgradePrompt = null,
   cancelPendingLiveSanitize,
   cancelPendingLiveAudit,
   onPromptFileLoaded,
+  onBatchFilesLoaded = null,
   onRulesImported,
 }) {
   let activeFileReadId = 0;
@@ -61,24 +75,59 @@ export function createFileController({
     if (loading) loading.hidden = true;
   }
 
-  function handleLocalFile(file) {
+  function readPlainTextFallback(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || "").replace(/^\uFEFF/, ""));
+      reader.onerror = () => reject(new Error("FILE_READ_ERROR"));
+      reader.readAsText(file, "UTF-8");
+    });
+  }
+
+  async function handleLocalFiles(fileList) {
     hideInlineAlert("input-error-banner");
-    if (!file) return;
+    hideProUpgradePrompt?.();
 
-    const lowerName = file.name.toLowerCase();
-    const dotIdx = lowerName.lastIndexOf(".");
-    const ext = dotIdx >= 0 ? lowerName.slice(dotIdx) : "";
-    if (!ALLOWED_EXTENSIONS.has(ext)) {
-      showInlineAlert("input-error-banner", "banner.fileUnsupported", {
-        ext: ext || "—",
-      });
+    const files = Array.from(fileList || []).filter(Boolean);
+    if (files.length === 0) return;
+
+    const isPro = Boolean(isProActive?.());
+    const { accepted, rejection } = validateBatchFiles(files, { isPro });
+    if (rejection) {
+      if (rejection.code === "free_too_large") {
+        showInlineAlert("input-error-banner", "banner.fileTooLarge", { name: rejection.fileName });
+        showProUpgradePrompt?.("size", rejection);
+      } else if (rejection.code === "pro_format") {
+        showInlineAlert("input-error-banner", "banner.fileProFormatRequired", {
+          ext: rejection.ext || "—",
+        });
+        showProUpgradePrompt?.("format", rejection);
+      } else if (rejection.code === "pro_multi_file") {
+        showInlineAlert("input-error-banner", "banner.fileProBatchRequired", {
+          count: rejection.count || files.length,
+        });
+        showProUpgradePrompt?.("batch", rejection);
+      } else if (rejection.code === "pro_too_large") {
+        showInlineAlert("input-error-banner", "banner.fileTooLargePro", {
+          name: rejection.fileName,
+        });
+      } else {
+        showInlineAlert(
+          "input-error-banner",
+          isPro ? "banner.fileUnsupportedPro" : "banner.fileUnsupported",
+          { ext: rejection.ext || "—" }
+        );
+      }
       return;
     }
 
-    if (file.size > MAX_FILE_BYTES) {
-      showInlineAlert("input-error-banner", "banner.fileTooLarge", { name: file.name });
-      return;
-    }
+    const firstExt = getFileExtension(accepted[0]?.name || "");
+    const useBatch =
+      isPro &&
+      typeof onBatchFilesLoaded === "function" &&
+      (accepted.length > 1 ||
+        PRO_DOCUMENT_EXTENSIONS.has(firstExt) ||
+        Boolean(isBatchActive?.()));
 
     cancelPendingLiveSanitize();
     cancelPendingLiveAudit();
@@ -86,26 +135,80 @@ export function createFileController({
     const loading = getEl("file-loading-indicator");
     if (loading) loading.hidden = false;
 
-    const reader = new FileReader();
-    reader.onload = () => {
+    try {
+      if (!useBatch) {
+        const file = accepted[0];
+        const text =
+          typeof file.arrayBuffer === "function"
+            ? (await parseDocumentFile(file)).text
+            : await readPlainTextFallback(file);
+        if (readId !== activeFileReadId) return;
+        onPromptFileLoaded(text, file.name);
+        return;
+      }
+
+      const parsedItems = [];
+      for (const file of accepted) {
+        if (readId !== activeFileReadId) return;
+        const ext = getFileExtension(file.name);
+        try {
+          const parsed = await parseDocumentFile(file);
+          parsedItems.push({
+            name: file.name,
+            ext: parsed.ext || ext,
+            size: Number(file.size || parsed.size || 0),
+            status: "ok",
+            text: parsed.text || "",
+            isScannedPdf: Boolean(parsed.isScannedPdf),
+            errorCode: "",
+          });
+        } catch (err) {
+          parsedItems.push({
+            name: file.name,
+            ext,
+            size: Number(file.size || 0),
+            status: "error",
+            text: "",
+            isScannedPdf: false,
+            errorCode: err?.code || "DOCUMENT_PARSE_ERROR",
+          });
+        }
+      }
+
       if (readId !== activeFileReadId) return;
-      if (loading) loading.hidden = true;
-      onPromptFileLoaded(String(reader.result || ""), file.name);
-    };
-    reader.onerror = () => {
+      if (parsedItems.every((item) => item.status === "error")) {
+        const firstErr = parsedItems[0];
+        if (parsedItems.length === 1) {
+          showInlineAlert("input-error-banner", getDocumentErrorI18nKey(firstErr.errorCode));
+        } else {
+          showInlineAlert("input-error-banner", "banner.fileCorrupt", { name: firstErr.name });
+        }
+      }
+      onBatchFilesLoaded(parsedItems);
+    } catch {
       if (readId !== activeFileReadId) return;
-      if (loading) loading.hidden = true;
-      showInlineAlert("input-error-banner", "banner.fileReadError", { name: file.name });
-    };
-    reader.readAsText(file, "UTF-8");
+      showInlineAlert("input-error-banner", "banner.fileReadError", {
+        name: accepted[0]?.name || "",
+      });
+    } finally {
+      if (readId === activeFileReadId && loading) {
+        loading.hidden = true;
+      }
+    }
+  }
+
+  function handleLocalFile(file) {
+    return handleLocalFiles(file ? [file] : []);
   }
 
   function bindFileAndRuleImportEvents() {
     const fileInput = getEl("file-upload-input");
     getEl("upload-file-btn")?.addEventListener("click", () => fileInput?.click());
     fileInput?.addEventListener("change", (event) => {
-      const file = event.target.files?.[0];
-      if (file) handleLocalFile(file);
+      const files = event.target.files;
+      if (files && files.length > 0) {
+        void handleLocalFiles(files);
+      }
       event.target.value = "";
     });
 
@@ -120,8 +223,10 @@ export function createFileController({
     dropzone?.addEventListener("drop", (event) => {
       event.preventDefault();
       dropzone.classList.remove("is-dragover");
-      const file = event.dataTransfer?.files?.[0];
-      if (file) handleLocalFile(file);
+      const files = event.dataTransfer?.files;
+      if (files && files.length > 0) {
+        void handleLocalFiles(files);
+      }
     });
 
     const importInput = getEl("import-rules-input");
@@ -166,6 +271,7 @@ export function createFileController({
   return {
     cancelPendingFileRead,
     handleLocalFile,
+    handleLocalFiles,
     bindFileAndRuleImportEvents,
   };
 }

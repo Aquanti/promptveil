@@ -798,6 +798,23 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
         'id="pro-license-key-input"',
         'id="pro-license-activate-btn"',
         'id="pro-license-remove-btn"',
+        'id="file-pro-upgrade-banner"',
+        'data-testid="file-pro-upgrade-banner"',
+        'id="file-pro-upgrade-btn"',
+        'data-testid="file-pro-upgrade-btn"',
+        'id="batch-queue-panel"',
+        'data-testid="batch-queue-panel"',
+        'id="batch-queue-list"',
+        'data-testid="batch-queue-list"',
+        'id="batch-clear-btn"',
+        'data-testid="batch-clear-btn"',
+        'id="batch-download-txt-btn"',
+        'data-testid="batch-download-txt-btn"',
+        'id="batch-download-zip-btn"',
+        'data-testid="batch-download-zip-btn"',
+        'id="batch-rehydrate-btn"',
+        'data-testid="batch-rehydrate-btn"',
+        'accept=".txt,.md,.csv,.json,.log,.env,.docx,.pdf,.xlsx"',
     ):
         assert hook in index_html, f"Missing required hook {hook} in index.html"
         assert hook in en_html, f"Missing required hook {hook} in en/index.html"
@@ -827,8 +844,11 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
 
     assert (STATIC_DIR / "js" / "notifications.js").is_file()
     assert (STATIC_DIR / "js" / "pipeline.js").is_file()
+    assert (STATIC_DIR / "js" / "pro-documents.js").is_file()
     assert "./notifications.js" in app_js and "./pipeline.js" in app_js
     assert len(app_js.splitlines()) < 750
+    assert "Очистить все (батч)" in index_html
+    assert "Clear all (batch)" in en_html
 
     assert "0 логов ваших текстов" in index_html
     assert "0 Text Logs" in en_html

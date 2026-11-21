@@ -36,9 +36,9 @@
     content="Free client-side masking and restoration workspace for AI prompts with zero data retention."
   />
   <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
-  <link rel="stylesheet" href="/dist/styles.5VHNHVGD.css" />
-  <script type="module" src="/dist/app.ZUAQO7SB.js"></script>
-  <link rel="modulepreload" href="/dist/i18n-ru-ZBLCURFE.js" />
+  <link rel="stylesheet" href="/dist/styles.INK2U5LN.css" />
+  <script type="module" src="/dist/app.XL4QMF2W.js"></script>
+  <link rel="modulepreload" href="/dist/i18n-ru-H4CUTFCT.js" />
 </head>
 <body>
   <a href="#main-workbench" class="skip-link" data-i18n="a11y.skipLink">Skip to workbench</a>
@@ -427,7 +427,8 @@
           <input
             type="file"
             id="file-upload-input"
-            accept=".txt,.md,.csv,.json,.log,.env"
+            accept=".txt,.md,.csv,.json,.log,.env,.docx,.pdf,.xlsx"
+            multiple
             hidden
             data-testid="file-upload-input"
           />
@@ -452,6 +453,22 @@
             data-i18n="step1.fileLoading"
           >Reading file...</div>
           <div id="input-error-banner" class="inline-alert inline-alert--error" role="alert" hidden></div>
+          <div
+            id="file-pro-upgrade-banner"
+            class="inline-alert inline-alert--warn file-pro-upgrade-banner"
+            role="status"
+            hidden
+            data-testid="file-pro-upgrade-banner"
+          >
+            <span id="file-pro-upgrade-text" data-i18n="pro.fileUpgradeFormat">Batch uploads and .docx, .pdf, .xlsx files up to 50 MB are unlocked in PromptVeil Pro.</span>
+            <button
+              type="button"
+              id="file-pro-upgrade-btn"
+              class="btn-lime btn-sm"
+              data-testid="file-pro-upgrade-btn"
+              data-i18n="pro.fileUpgradeBtn"
+            >Activate Pro</button>
+          </div>
 
           <div class="pane-footer">
             <div class="pane-footer-actions">
@@ -578,6 +595,57 @@
           </div>
         </section>
       </div>
+
+      <section
+        id="batch-queue-panel"
+        class="batch-queue-panel"
+        hidden
+        data-testid="batch-queue-panel"
+        aria-labelledby="batch-queue-title"
+      >
+        <div class="pane-header batch-queue-header">
+          <div class="pane-title-group">
+            <h2 id="batch-queue-title" class="pane-title" data-i18n="batch.heading">Batch Queue</h2>
+            <span id="batch-queue-meta" class="pane-meta tabular-nums"></span>
+          </div>
+          <div class="pane-actions batch-queue-header-actions">
+            <button
+              type="button"
+              id="batch-clear-btn"
+              class="btn-ghost-sm"
+              data-testid="batch-clear-btn"
+              data-i18n="batch.clearBtn"
+            >Clear all (batch)</button>
+          </div>
+        </div>
+        <ul id="batch-queue-list" class="batch-queue-list" data-testid="batch-queue-list"></ul>
+        <div class="pane-footer batch-queue-footer">
+          <span class="pane-hint" data-i18n="batch.footerHint">All files are processed locally in volatile tab RAM; filenames are never sent to AI.</span>
+          <div class="pane-footer-actions batch-queue-actions">
+            <button
+              type="button"
+              id="batch-download-txt-btn"
+              class="btn-secondary"
+              data-testid="batch-download-txt-btn"
+              data-i18n="batch.downloadTxtBtn"
+            >Download .txt</button>
+            <button
+              type="button"
+              id="batch-download-zip-btn"
+              class="btn-secondary"
+              data-testid="batch-download-zip-btn"
+              data-i18n="batch.downloadZipBtn"
+            >Download .zip</button>
+            <button
+              type="button"
+              id="batch-rehydrate-btn"
+              class="btn-lime"
+              data-testid="batch-rehydrate-btn"
+              data-i18n="batch.rehydrateBtn"
+            >Re-hydrate batch (Step 2)</button>
+          </div>
+        </div>
+      </section>
 
       <section id="vault-section" class="vault-section is-mobile-collapsed" aria-labelledby="vault-title">
         <div class="vault-header">
@@ -845,8 +913,8 @@
           <p class="limits-card-body" data-i18n="limits.item1Body">In Normal mode, rare surnames, nicknames, and internal project codenames are not auto-masked to avoid false positives.</p>
         </article>
         <article class="limits-card">
-          <h3 class="limits-card-title" data-i18n="limits.item2Title">Scans, images, .pdf, .docx &amp; spreadsheets</h3>
-          <p class="limits-card-body" data-i18n="limits.item2Body">Only plain-text formats (.txt, .md, .csv, .json, .log, .env) up to 2 MB are supported; OCR and binary office files are not parsed.</p>
+          <h3 class="limits-card-title" data-i18n="limits.item2Title">Scans, photos &amp; image-only PDFs (OCR)</h3>
+          <p class="limits-card-body" data-i18n="limits.item2Body">The Free tier handles plain-text files up to 2 MB; Pro adds .docx, .xlsx, and text-layer .pdf files up to 50 MB, while image OCR is not performed locally.</p>
         </article>
         <article class="limits-card">
           <h3 class="limits-card-title" data-i18n="limits.item3Title">Typos, transliteration &amp; split digits</h3>

@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-21T14:06+03:00  
-**Session Status:** PRO UPGRADE M1 COMPLETE — Persistent AI Launchers + Gemini + Ed25519 Offline Pro Licensing  
-**Exact Stop Point:** Completed Milestone M1 (R1 + R2): `#ai-launchers-bar` hoisted outside `#panel-sanitize` / `#panel-rehydrate` with Gemini (`https://gemini.google.com/app`), `.gitignore` updated before keygen (`.secrets/`, `*.pem`, `pro_keys*.json`), `scripts/issue-pro-key.mjs` generated 1 Owner + 20 Client Ed25519 keys into gitignored `.secrets/pro_keys_bundle.json`, `app/static/js/pro-license.js` (WebCrypto Ed25519 + pure-JS Ed25519/SHA-512 fallback, `PRO_PUBLIC_KEY_B64U` only), `privacy-proof.js` allowlist (`promptveil_pro_license_v1`), `#open-pro-license-btn` header badge, `<template id="tpl-modal-pro-license">` (`#modal-pro-license`), updated `#pricing-section` + `i18n-{ru,en}.js`, `tests/js/pro-license.test.mjs`, and `tests/test_server.py`. Next: Milestone M2 (Local Batch & Office/PDF Document Scrubber).
+**Checkpoint Date:** 2026-11-21T14:30+03:00  
+**Session Status:** PRO UPGRADE M2 COMPLETE — Local Batch & Office/PDF Document Scrubber (R3)  
+**Exact Stop Point:** Completed Milestone M2 (R3): `app/static/js/pro-documents.js` (100% browser-local ZIP/CRC32 + `DecompressionStream` & RFC 1951/1950 pure-JS inflate fallback + `.docx`/`.xlsx` XML & pure-JS XML fallback + `.pdf` binary/`FlateDecode`/`ToUnicode`/UTF-16BE/WinAnsi/PDFDocEncoding + scanned-PDF detection + local `.zip` generator), Free 2 MB / single-text guardrails + `#file-pro-upgrade-banner`, Pro 50 MB multi-file `#batch-queue-panel` (`.txt`/`.zip` download + Step 2 batch rehydrate + `#batch-clear-btn`), RU/EN i18n + Spark CSS, `tests/js/pro-documents.test.mjs`, and `tests/test_server.py`. Next: Milestone M3 (Multi-Project Rulebook Profiles, Extended Packs & Templates).
 
 ---
 
@@ -289,3 +289,13 @@ git push -u origin master
   - Protected `.secrets/`, `*.pem`, `pro_keys*.json` in `.gitignore` prior to key generation; generated Ed25519 keypair + 1 Owner Master Key + 20 Client Pro keys strictly into `.secrets/pro_keys_bundle.json` (plus external scratch backup).
   - Implemented `pro-license.js` (`WebCrypto Ed25519` + pure-JS RFC 8032 Ed25519 & SHA-512 fallback), allowlisted `promptveil_pro_license_v1` in `privacy-proof.js`, added `#open-pro-license-btn` header badge (`>= 44px` mobile, `0` overflow), `<template id="tpl-modal-pro-license">` (`#modal-pro-license`), and key-activated `#pricing-section` Pro card (`#open-pro-modal-btn` + `#pricing-activate-pro-btn`).
 - **Verification:** `npm run build` (`878c8c93ef`), `node --test tests\js\*.test.mjs` (`55/55` across `14` suites), `pytest tests\test_server.py -v` (`25/25`), Playwright Chrome smoke check across `1440×900` and `390×844` (`/` & `/en/`), and secret hygiene audit (`0` leaked keys/tokens in Git or `app/static/`).
+
+---
+
+## 10. PromptVeil Pro Upgrade — Milestone M2 (R3)
+- **Local Document Parsers & ZIP Engine (`app/static/js/pro-documents.js`):**
+  - 100% browser-local ES2022 module (`0` network calls, `0` unsafe HTML sinks, `0` `http(s)://` literals): IEEE 802.3 `crc32`, `DecompressionStream("deflate-raw"|"deflate")` with pure-JS RFC 1951 `inflateRawPureJs` and RFC 1950 `inflateZlibPureJs` fallbacks, PKZIP reader (`readZipEntries` with EOCD/CD/LFH/UTF-8/CRC32/zip-bomb checks) and deterministic Store `.zip` builder (`buildZipArchive`), `.docx` extractor (`word/header*.xml`, `word/document.xml`, `word/footer*.xml` via `DOMParser` + `parseXmlPureJs` fallback), `.xlsx` extractor (`xl/sharedStrings.xml` including rich-text excluding `<rPh>`, `xl/workbook.xml` sheet ordering, `t="s"/"inlineStr"/"b"/numeric`), and binary-safe `.pdf` extractor (`FlateDecode`, `ToUnicode` CMap `bfchar`/`bfrange`, UTF-16BE BOM, WinAnsi/PDFDocEncoding, `BT...ET` `Tj`/`TJ`/`'`/`"`, `/Encrypt` rejection, and `isScannedPdf` detection).
+- **Free vs. Pro Limits, Batch Queue & Step 2 Rehydrate (`clipboard.js`, `pipeline.js`, `render-workbench.js`, `app.js`, `index.html`, `en/index.html`, `i18n-{ru,en}.js`, `css/components.css`):**
+  - Updated `#file-upload-input` (`accept=".txt,.md,.csv,.json,.log,.env,.docx,.pdf,.xlsx" multiple`), added `#file-pro-upgrade-banner` (`role="status"`, `#file-pro-upgrade-btn` opening `#modal-pro-license`) while preserving Free `> 2 MB` `role="alert"` (`"2 МБ"` / `"2 MB"`) and `.png` unsupported format contracts, and kept `app.js` under `< 750` lines (`728` lines).
+  - Added `#batch-queue-panel` (`#batch-queue-list`, `#batch-clear-btn`, `#batch-download-txt-btn`, `#batch-download-zip-btn`, `#batch-rehydrate-btn`) with shared `SessionVault` (`{ resetOnEmpty: false }`), masked previews, honest scanned-PDF notices, and `MutationObserver` sync on `#open-pro-license-btn[data-pro-state]`.
+- **Verification:** `npm run build` (`9e9f991fbb`), `node --test tests\js\*.test.mjs` (`64/64` across `17` suites), `pytest tests\test_server.py -v` (`25/25`).

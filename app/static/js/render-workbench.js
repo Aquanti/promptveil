@@ -3,7 +3,8 @@
  */
 
 import { CATEGORIES } from "./detector.js";
-import { clearCopyFeedback, clearEl, createEl } from "./dom.js";
+import { clearCopyFeedback, clearEl, createEl, getEl } from "./dom.js";
+import { getDocumentErrorI18nKey } from "./pro-documents.js";
 import {
   getCategoryLabel,
   getCustomRuleTagLabel,
@@ -462,4 +463,115 @@ export function renderRehydrateView(
   if (downloadBtn) {
     downloadBtn.disabled = !hasRestoredText;
   }
+}
+
+export function renderBatchQueuePanel(
+  els = {},
+  { batchItems = [], isPro = false, lang = "ru" } = {}
+) {
+  const panelEl = els.panelEl || getEl("batch-queue-panel");
+  const listEl = els.listEl || getEl("batch-queue-list");
+  const metaEl = els.metaEl || getEl("batch-queue-meta");
+  const downloadTxtBtn = els.downloadTxtBtn || getEl("batch-download-txt-btn");
+  const downloadZipBtn = els.downloadZipBtn || getEl("batch-download-zip-btn");
+  const rehydrateBtn = els.rehydrateBtn || getEl("batch-rehydrate-btn");
+
+  if (!panelEl || !listEl) return;
+  const items = Array.isArray(batchItems) ? batchItems : [];
+  if (!isPro || items.length === 0) {
+    panelEl.hidden = true;
+    clearEl(listEl);
+    if (metaEl) metaEl.textContent = "";
+    if (downloadTxtBtn) downloadTxtBtn.disabled = true;
+    if (downloadZipBtn) downloadZipBtn.disabled = true;
+    if (rehydrateBtn) rehydrateBtn.disabled = true;
+    return;
+  }
+
+  panelEl.hidden = false;
+  clearEl(listEl);
+
+  let totalMasked = 0;
+  let hasDownloadable = false;
+
+  for (const item of items) {
+    const isErr = item.status === "error";
+    const isScanned = Boolean(item.isScannedPdf);
+    const maskedCount = Number(item.maskedCount || 0);
+    if (!isErr) totalMasked += maskedCount;
+    if (!isErr && !isScanned && String(item.sanitizedText || "").trim().length > 0) {
+      hasDownloadable = true;
+    }
+
+    const rowClasses = ["batch-queue-item"];
+    if (isErr) rowClasses.push("is-error");
+    else if (isScanned) rowClasses.push("is-warning");
+
+    const li = createEl("li", rowClasses.join(" "), null, {
+      "data-testid": "batch-queue-item",
+      "data-status": isErr ? "error" : isScanned ? "scanned" : "ok",
+    });
+
+    const head = createEl("div", "batch-queue-item-head");
+    const titleGroup = createEl("div", "batch-queue-item-title-group");
+    titleGroup.appendChild(createEl("span", "batch-queue-name", item.name || ""));
+    const extBadge = String(item.ext || "").replace(/^\./, "").toUpperCase() || "FILE";
+    titleGroup.appendChild(createEl("span", "batch-queue-ext", extBadge));
+    head.appendChild(titleGroup);
+
+    if (isErr) {
+      const reason = t(getDocumentErrorI18nKey(item.errorCode), {}, lang);
+      head.appendChild(
+        createEl(
+          "span",
+          "batch-queue-badge batch-queue-badge--error",
+          t("batch.itemError", { reason }, lang)
+        )
+      );
+    } else if (isScanned) {
+      head.appendChild(
+        createEl(
+          "span",
+          "batch-queue-badge batch-queue-badge--warn",
+          t("batch.itemScannedPdf", {}, lang)
+        )
+      );
+    } else {
+      head.appendChild(
+        createEl(
+          "span",
+          "batch-queue-badge tabular-nums",
+          t("batch.itemMasked", { count: maskedCount }, lang)
+        )
+      );
+    }
+    li.appendChild(head);
+
+    let previewText = "";
+    if (isErr) {
+      previewText = t(getDocumentErrorI18nKey(item.errorCode), {}, lang);
+    } else if (isScanned) {
+      previewText = t("batch.itemScannedPdf", {}, lang);
+    } else {
+      const collapsed = String(item.sanitizedText || "").replace(/\s+/g, " ").trim();
+      previewText = collapsed
+        ? collapsed.length > 180
+          ? `${collapsed.slice(0, 177)}...`
+          : collapsed
+        : t("batch.itemEmpty", {}, lang);
+    }
+    li.appendChild(createEl("p", "batch-queue-preview", previewText));
+    listEl.appendChild(li);
+  }
+
+  if (metaEl) {
+    metaEl.textContent = t(
+      "batch.metaSummary",
+      { files: items.length, masked: totalMasked },
+      lang
+    );
+  }
+  if (downloadTxtBtn) downloadTxtBtn.disabled = !hasDownloadable;
+  if (downloadZipBtn) downloadZipBtn.disabled = !hasDownloadable;
+  if (rehydrateBtn) rehydrateBtn.disabled = !hasDownloadable;
 }

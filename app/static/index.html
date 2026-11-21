@@ -36,9 +36,9 @@
     content="Бесплатная защита текстов, реквизитов РФ и ключей перед отправкой в нейросети с нулевым хранением данных."
   />
   <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
-  <link rel="stylesheet" href="/dist/styles.5VHNHVGD.css" />
-  <script type="module" src="/dist/app.ZUAQO7SB.js"></script>
-  <link rel="modulepreload" href="/dist/i18n-en-B7IXK3LE.js" />
+  <link rel="stylesheet" href="/dist/styles.INK2U5LN.css" />
+  <script type="module" src="/dist/app.XL4QMF2W.js"></script>
+  <link rel="modulepreload" href="/dist/i18n-en-DDB37XIX.js" />
 </head>
 <body>
   <a href="#main-workbench" class="skip-link" data-i18n="a11y.skipLink">Перейти к работе с текстом</a>
@@ -427,7 +427,8 @@
           <input
             type="file"
             id="file-upload-input"
-            accept=".txt,.md,.csv,.json,.log,.env"
+            accept=".txt,.md,.csv,.json,.log,.env,.docx,.pdf,.xlsx"
+            multiple
             hidden
             data-testid="file-upload-input"
           />
@@ -452,6 +453,22 @@
             data-i18n="step1.fileLoading"
           >Читаем файл...</div>
           <div id="input-error-banner" class="inline-alert inline-alert--error" role="alert" hidden></div>
+          <div
+            id="file-pro-upgrade-banner"
+            class="inline-alert inline-alert--warn file-pro-upgrade-banner"
+            role="status"
+            hidden
+            data-testid="file-pro-upgrade-banner"
+          >
+            <span id="file-pro-upgrade-text" data-i18n="pro.fileUpgradeFormat">Пакетная загрузка и форматы .docx, .pdf, .xlsx до 50 МБ доступны в PromptVeil Pro.</span>
+            <button
+              type="button"
+              id="file-pro-upgrade-btn"
+              class="btn-lime btn-sm"
+              data-testid="file-pro-upgrade-btn"
+              data-i18n="pro.fileUpgradeBtn"
+            >Активировать Pro</button>
+          </div>
 
           <div class="pane-footer">
             <div class="pane-footer-actions">
@@ -578,6 +595,57 @@
           </div>
         </section>
       </div>
+
+      <section
+        id="batch-queue-panel"
+        class="batch-queue-panel"
+        hidden
+        data-testid="batch-queue-panel"
+        aria-labelledby="batch-queue-title"
+      >
+        <div class="pane-header batch-queue-header">
+          <div class="pane-title-group">
+            <h2 id="batch-queue-title" class="pane-title" data-i18n="batch.heading">Пакетная очередь документов</h2>
+            <span id="batch-queue-meta" class="pane-meta tabular-nums"></span>
+          </div>
+          <div class="pane-actions batch-queue-header-actions">
+            <button
+              type="button"
+              id="batch-clear-btn"
+              class="btn-ghost-sm"
+              data-testid="batch-clear-btn"
+              data-i18n="batch.clearBtn"
+            >Очистить все (батч)</button>
+          </div>
+        </div>
+        <ul id="batch-queue-list" class="batch-queue-list" data-testid="batch-queue-list"></ul>
+        <div class="pane-footer batch-queue-footer">
+          <span class="pane-hint" data-i18n="batch.footerHint">Все файлы обработаны локально в памяти вкладки; имена файлов не отправляются в ИИ.</span>
+          <div class="pane-footer-actions batch-queue-actions">
+            <button
+              type="button"
+              id="batch-download-txt-btn"
+              class="btn-secondary"
+              data-testid="batch-download-txt-btn"
+              data-i18n="batch.downloadTxtBtn"
+            >Скачать .txt</button>
+            <button
+              type="button"
+              id="batch-download-zip-btn"
+              class="btn-secondary"
+              data-testid="batch-download-zip-btn"
+              data-i18n="batch.downloadZipBtn"
+            >Скачать .zip</button>
+            <button
+              type="button"
+              id="batch-rehydrate-btn"
+              class="btn-lime"
+              data-testid="batch-rehydrate-btn"
+              data-i18n="batch.rehydrateBtn"
+            >Вернуть все (Шаг 2)</button>
+          </div>
+        </div>
+      </section>
 
       <section id="vault-section" class="vault-section is-mobile-collapsed" aria-labelledby="vault-title">
         <div class="vault-header">
@@ -845,8 +913,8 @@
           <p class="limits-card-body" data-i18n="limits.item1Body">В обычном режиме редкие фамилии, псевдонимы и названия внутренних проектов не скрываются автоматически, чтобы не портить текст.</p>
         </article>
         <article class="limits-card">
-          <h3 class="limits-card-title" data-i18n="limits.item2Title">Сканы, фото, .pdf, .docx и таблицы</h3>
-          <p class="limits-card-body" data-i18n="limits.item2Body">Сейчас обрабатываются только текстовые форматы (.txt, .md, .csv, .json, .log, .env) до 2 МБ; распознавание изображений и офисных файлов не встроено.</p>
+          <h3 class="limits-card-title" data-i18n="limits.item2Title">Сканы, фото и PDF без текстового слоя (OCR)</h3>
+          <p class="limits-card-body" data-i18n="limits.item2Body">Бесплатный тариф принимает текстовые файлы до 2 МБ; в Pro доступны .docx, .xlsx и текстовые .pdf до 50 МБ, но распознавание изображений и сканов (OCR) локально не выполняется.</p>
         </article>
         <article class="limits-card">
           <h3 class="limits-card-title" data-i18n="limits.item3Title">Опечатки, транслит и разбитые цифры</h3>

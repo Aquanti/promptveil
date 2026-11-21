@@ -182,8 +182,23 @@ export const EN = Object.freeze({
   "banner.fileLoaded": 'Opened "{name}" in tab RAM.',
   "banner.fileUnsupported":
     'Unsupported format "{ext}". Allowed: .txt, .md, .csv, .json, .log, .env.',
+  "banner.fileUnsupportedPro":
+    'Unsupported format "{ext}". Allowed: .txt, .md, .csv, .json, .log, .env, .docx, .pdf, .xlsx.',
+  "banner.fileProFormatRequired":
+    'Format "{ext}" is unlocked in PromptVeil Pro (100% browser-local parsing).',
+  "banner.fileProBatchRequired":
+    "Batch upload ({count} files) requires PromptVeil Pro — Free opens 1 text file at a time.",
   "banner.fileTooLarge": 'File "{name}" exceeds the 2 MB limit.',
+  "banner.fileTooLargePro": 'File "{name}" exceeds the 50 MB per-document limit.',
   "banner.fileReadError": 'Failed to read "{name}".',
+  "banner.fileCorrupt": 'Failed to parse "{name}": archive or file structure is corrupted.',
+  "banner.pdfScannedNotice":
+    'File "{name}" is an image-only scanned PDF with no text layer; local OCR is not supported.',
+  "banner.batchLoaded": "Batch scrubbed locally: {count} file(s), {masked} item(s) masked.",
+  "banner.batchCleared": "Batch queue and replacement vault cleared.",
+  "banner.batchTxtDownloaded": "Combined sanitized .txt file saved locally.",
+  "banner.batchZipDownloaded": "Local sanitized .zip bundle saved locally.",
+  "banner.batchRehydrateReady": "Batch loaded into Step 2 — all tags ready for restoration.",
   "banner.storageWarning":
     "Device storage is full or blocked; keeping changes in tab RAM only.",
   "banner.auditWriteError": "Unable to store history entry.",
@@ -350,6 +365,34 @@ export const EN = Object.freeze({
   "pro.errorInvalid": "Key failed Ed25519 signature verification or is malformed.",
   "pro.activatedSuccess": "License activated ({tier}: {keyId}).",
   "pro.removedSuccess": "License key removed — switched back to Free.",
+  "pro.fileUpgradeFormat":
+    "Batch uploads and .docx, .pdf, .xlsx files up to 50 MB are unlocked in PromptVeil Pro.",
+  "pro.fileUpgradeSize":
+    "Free tier limits plain-text files to 2 MB. Activate a Pro key for files up to 50 MB.",
+  "pro.fileUpgradeBatch":
+    "Uploading multiple files at once is unlocked in PromptVeil Pro.",
+  "pro.fileUpgradeBtn": "Activate Pro",
+  "doc.errorEmpty": "File is empty.",
+  "doc.errorCorruptZip": "Corrupted document archive.",
+  "doc.errorInvalidDocx": "Invalid .docx file (missing word/document.xml).",
+  "doc.errorInvalidXlsx": "Invalid .xlsx file (missing worksheet XML).",
+  "doc.errorInvalidPdf": "Invalid or corrupted PDF file.",
+  "doc.errorEncryptedPdf": "Encrypted or password-protected PDFs are not supported.",
+  "doc.errorZipBomb": "Document exceeds safe decompression bounds.",
+  "doc.errorGeneric": "Failed to parse document.",
+  "batch.heading": "Batch Queue",
+  "batch.metaSummary": "Files: {files} • Masked: {masked}",
+  "batch.clearBtn": "Clear all (batch)",
+  "batch.footerHint":
+    "All files are processed locally in volatile tab RAM; filenames are never sent to AI.",
+  "batch.downloadTxtBtn": "Download .txt",
+  "batch.downloadZipBtn": "Download .zip",
+  "batch.rehydrateBtn": "Re-hydrate batch (Step 2)",
+  "batch.itemMasked": "Masked: {count}",
+  "batch.itemScannedPdf": "Image-only scanned PDF without text layer (no local OCR)",
+  "batch.itemEmpty": "No text extracted",
+  "batch.itemError": "Error: {reason}",
+  "batch.previewEmpty": "No extracted text to preview.",
   "footer.brandDesc":
     "Privacy-first masking and restoration workspace for everyday AI workflows.",
   "footer.navWorkbench": "Workbench",
@@ -416,8 +459,8 @@ export const EN = Object.freeze({
   "limits.subtitle": "Honest boundaries of client-side rules — so you know what to review manually or add to Custom Words.",
   "limits.item1Title": "Unlisted prose names & project codenames",
   "limits.item1Body": "In Normal mode, rare surnames, nicknames, and internal project codenames are not auto-masked to avoid false positives.",
-  "limits.item2Title": "Scans, images, .pdf, .docx & spreadsheets",
-  "limits.item2Body": "Only plain-text formats (.txt, .md, .csv, .json, .log, .env) up to 2 MB are supported; OCR and binary office files are not parsed.",
+  "limits.item2Title": "Scans, photos & image-only PDFs (OCR)",
+  "limits.item2Body": "The Free tier handles plain-text files up to 2 MB; Pro adds .docx, .xlsx, and text-layer .pdf files up to 50 MB, while image OCR is not performed locally.",
   "limits.item3Title": "Typos, transliteration & split digits",
   "limits.item3Body": "Card digits broken up with letters or extra spaces and unconventional address abbreviations may pass through unmasked.",
   "limits.item4Title": "Custom internal IDs & domain secrets",

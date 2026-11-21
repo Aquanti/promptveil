@@ -55,6 +55,7 @@ import {
 } from "./i18n.js";
 import { clearCopyFeedback, getEl } from "./dom.js";
 import {
+  renderBatchQueuePanel,
   renderCategoryChips,
   renderPresetRuleSuggestion,
   renderPresetsBar,
@@ -94,6 +95,7 @@ const state = {
   lastRequestSummary: "",
   theme: "light",
   proLicense: null,
+  batchItems: [],
 };
 
 let fileController = null;
@@ -107,12 +109,16 @@ const pipeline = createPipelineController({
 
 fileController = createFileController({
   getRules: () => state.rules,
+  isProActive: () => Boolean(state.proLicense?.isPro),
   showStatusBanner,
   showInlineAlert,
   hideInlineAlert,
+  showProUpgradePrompt: pipeline.showProUpgradePrompt,
+  hideProUpgradePrompt: pipeline.hideProUpgradePrompt,
   cancelPendingLiveSanitize: pipeline.cancelPendingLiveSanitize,
   cancelPendingLiveAudit: pipeline.cancelPendingLiveAudit,
   onPromptFileLoaded: (text, fileName) => {
+    state.batchItems = [];
     state.vault.reset();
     state.activePresetId = "";
     state.showAllCategories = false;
@@ -124,6 +130,7 @@ fileController = createFileController({
     pipeline.runSanitizePipeline(true);
     showStatusBanner("banner.fileLoaded", { name: fileName });
   },
+  onBatchFilesLoaded: pipeline.loadBatchFiles,
   onRulesImported: ({ rules, addedCount, skippedCount }) => {
     state.rules = rules;
     refreshDrawersUi();
@@ -139,20 +146,9 @@ fileController = createFileController({
 
 function refreshPresetsUi() {
   const lang = getLang();
-  renderPresetsBar(
-    getEl("preset-bar"),
-    PRESETS,
-    state.activePresetId,
-    lang,
-    pipeline.loadPresetById
-  );
+  renderPresetsBar(getEl("preset-bar"), PRESETS, state.activePresetId, lang, pipeline.loadPresetById);
   const preset = getPresetById(state.activePresetId);
-  renderPresetRuleSuggestion(
-    getEl("apply-preset-rules-btn"),
-    getEl("preset-rule-hint"),
-    getUnappliedPresetRules(preset, state.rules),
-    lang
-  );
+  renderPresetRuleSuggestion(getEl("apply-preset-rules-btn"), getEl("preset-rule-hint"), getUnappliedPresetRules(preset, state.rules), lang);
 }
 
 function refreshWorkbenchUi() {
@@ -217,13 +213,7 @@ function refreshWorkbenchUi() {
       copyGoStep2Btn: getEl("copy-goto-step2-btn"),
       toggleRevealBtn: getEl("toggle-reveal-btn"),
     },
-    {
-      rawText: state.rawText,
-      result,
-      maskedCount,
-      revealValues: state.revealVaultValues,
-      lang,
-    }
+    { rawText: state.rawText, result, maskedCount, revealValues: state.revealVaultValues, lang }
   );
   renderRehydrateView(
     {
@@ -234,15 +224,10 @@ function refreshWorkbenchUi() {
       copyBtn: getEl("copy-restored-btn"),
       downloadBtn: getEl("download-restored-btn"),
     },
-    {
-      llmReply: state.llmReply,
-      result: state.lastRehydrateResult,
-      maskedCount,
-      hasVaultEntries,
-      lang,
-    }
+    { llmReply: state.llmReply, result: state.lastRehydrateResult, maskedCount, hasVaultEntries, lang }
   );
   refreshPresetsUi();
+  renderBatchQueuePanel({}, { batchItems: state.batchItems, isPro: Boolean(state.proLicense?.isPro), lang });
   pipeline.renderVaultCollapseState(lang);
   const launchersBar = getEl("ai-launchers-bar");
   if (launchersBar) {
@@ -494,8 +479,10 @@ function bindEvents() {
     pipeline.cancelPendingLiveSanitize();
     pipeline.cancelPendingLiveAudit();
     hideInlineAlert("input-error-banner");
+    pipeline.hideProUpgradePrompt();
     clearCopyFeedback(getEl("copy-sanitized-btn"), () => t("step1.copyBtn"));
     clearCopyFeedback(getEl("mobile-sticky-copy-btn"), () => t("step1.mobileStickyCta"));
+    state.batchItems = [];
     state.rawText = "";
     state.activePresetId = "";
     state.showAllCategories = false;
@@ -515,6 +502,8 @@ function bindEvents() {
         pipeline.cancelPendingLiveSanitize();
         pipeline.cancelPendingLiveAudit();
         hideInlineAlert("input-error-banner");
+        pipeline.hideProUpgradePrompt();
+        state.batchItems = [];
         state.vault.reset();
         state.activePresetId = "";
         state.showAllCategories = false;
@@ -644,6 +633,7 @@ function bindEvents() {
   });
 
   pipeline.bindRulebookAndAuditEvents(downloadTextFile);
+  pipeline.bindBatchEvents({ downloadTextFile, switchMode, isProActive: () => Boolean(state.proLicense?.isPro) });
   fileController.bindFileAndRuleImportEvents();
 
   bindPricingEvents({

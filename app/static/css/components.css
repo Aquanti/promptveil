@@ -1436,13 +1436,159 @@ button:disabled {
   box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18);
 }
 
+/* M2: Free Pro Upgrade Prompt & Batch Document Queue */
+.file-pro-upgrade-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.file-pro-upgrade-banner[hidden],
+.batch-queue-panel[hidden] {
+  display: none;
+}
+
+.batch-queue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1.25rem;
+  border-radius: var(--radius-xxl);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.batch-queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.batch-queue-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.8rem 0.95rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-subtle);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.batch-queue-item.is-warning {
+  border-color: var(--warn-border);
+  background-color: var(--warn-bg);
+}
+
+.batch-queue-item.is-error {
+  border-color: var(--danger-border);
+  background-color: var(--danger-bg);
+}
+
+.batch-queue-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  min-width: 0;
+}
+
+.batch-queue-item-title-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.batch-queue-name {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.batch-queue-ext {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.48rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg-surface);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.batch-queue-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.16rem 0.58rem;
+  border-radius: var(--radius-pill);
+  background-color: var(--accent-safe-bg);
+  border: 1px solid var(--accent-safe-border);
+  color: var(--accent-safe-fg);
+  font-size: 0.75rem;
+  font-weight: 700;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.batch-queue-badge--warn {
+  background-color: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn-fg);
+}
+
+.batch-queue-badge--error {
+  background-color: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-fg);
+}
+
+.batch-queue-preview {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.42;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.batch-queue-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 @media (max-width: 639px) {
   .hero-main-card,
   .hero-preset-card,
   .ledger-pane,
-  .vault-section {
+  .vault-section,
+  .batch-queue-panel {
     padding: 1rem;
     border-radius: var(--radius-xl);
+  }
+
+  .file-pro-upgrade-banner button,
+  .batch-queue-header-actions button,
+  .batch-queue-actions button {
+    min-height: 44px;
   }
 
   .vault-row {

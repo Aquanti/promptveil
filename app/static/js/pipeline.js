@@ -6,6 +6,7 @@ import { clearCopyFeedback, getEl } from "./dom.js";
 import { getLang, t } from "./i18n.js";
 import { hideInlineAlert, showInlineAlert, showStatusBanner } from "./notifications.js";
 import { getLocalizedPreset, getLocalizedWordPack } from "./presets.js";
+import { buildZipArchive } from "./pro-documents.js";
 import {
   appendAuditReceipt,
   clearAuditLog,
@@ -80,9 +81,60 @@ export function createPipelineController({
     }
   }
 
+  function showProUpgradePrompt(reason = "format") {
+    const banner = getEl("file-pro-upgrade-banner");
+    const textEl = getEl("file-pro-upgrade-text");
+    const key =
+      reason === "size"
+        ? "pro.fileUpgradeSize"
+        : reason === "batch"
+          ? "pro.fileUpgradeBatch"
+          : "pro.fileUpgradeFormat";
+    if (textEl) {
+      textEl.setAttribute("data-i18n", key);
+      textEl.textContent = t(key, {}, getLang());
+    }
+    if (banner) {
+      banner.hidden = false;
+    }
+  }
+
+  function hideProUpgradePrompt() {
+    const banner = getEl("file-pro-upgrade-banner");
+    if (banner) {
+      banner.hidden = true;
+    }
+  }
+
+  function sanitizeBatchItems() {
+    if (!Array.isArray(state.batchItems) || state.batchItems.length === 0) {
+      return;
+    }
+    const opts = {
+      resetOnEmpty: false,
+      detectUuid: Boolean(state.detectUuid),
+      sensitivity: state.sensitivity === "strict" ? "strict" : "normal",
+    };
+    for (const item of state.batchItems) {
+      if (item.status === "ok" && !item.isScannedPdf && String(item.text || "").trim().length > 0) {
+        const itemRes = state.vault.sanitize(item.text, state.rules, opts);
+        item.sanitizedText = itemRes.sanitizedText;
+        item.maskedCount = itemRes.maskedCount;
+      } else {
+        item.sanitizedText = "";
+        item.maskedCount = 0;
+      }
+    }
+  }
+
   function runSanitizePipeline(recordAudit = false, { evolveTransient = false } = {}) {
+    const hasBatch = Array.isArray(state.batchItems) && state.batchItems.length > 0;
+    if (hasBatch) {
+      sanitizeBatchItems();
+    }
     const result = state.vault.sanitize(state.rawText, state.rules, {
       evolveTransient,
+      resetOnEmpty: !hasBatch,
       detectUuid: Boolean(state.detectUuid),
       sensitivity: state.sensitivity === "strict" ? "strict" : "normal",
     });
@@ -178,6 +230,8 @@ export function createPipelineController({
     cancelPendingLiveSanitize();
     cancelPendingLiveAudit();
     hideInlineAlert("input-error-banner");
+    hideProUpgradePrompt();
+    state.batchItems = [];
     state.vault.reset();
     state.showAllCategories = false;
     state.highlightedToken = "";
@@ -198,10 +252,12 @@ export function createPipelineController({
     cancelPendingLiveAudit();
     hideInlineAlert("input-error-banner");
     hideInlineAlert("rehydrate-error-banner");
+    hideProUpgradePrompt();
     clearCopyFeedback(getEl("copy-sanitized-btn"), () => t("step1.copyBtn"));
     clearCopyFeedback(getEl("mobile-sticky-copy-btn"), () => t("step1.mobileStickyCta"));
     clearCopyFeedback(getEl("copy-restored-btn"), () => t("step2.copyBtn"));
 
+    state.batchItems = [];
     state.rawText = "";
     state.llmReply = "";
     state.activePresetId = "";
@@ -435,6 +491,140 @@ export function createPipelineController({
     }
   }
 
+  function loadBatchFiles(parsedItems = []) {
+    cancelPendingLiveSanitize();
+    cancelPendingLiveAudit();
+    hideProUpgradePrompt();
+    state.vault.reset();
+    state.activePresetId = "";
+    state.showAllCategories = false;
+    state.highlightedToken = "";
+    state.pinnedToken = "";
+    state.batchItems = Array.isArray(parsedItems) ? parsedItems.map((it) => ({ ...it })) : [];
+    const combinedRaw = state.batchItems
+      .filter((it) => it.status === "ok" && !it.isScannedPdf && String(it.text || "").trim().length > 0)
+      .map((it) => it.text)
+      .join("\n\n");
+    state.rawText = combinedRaw;
+    const rawInput = getEl("raw-prompt-input");
+    if (rawInput) rawInput.value = combinedRaw;
+
+    const result = runSanitizePipeline(true);
+    const scannedItem = state.batchItems.find((it) => it.status === "ok" && it.isScannedPdf);
+    if (scannedItem) {
+      showInlineAlert(
+        "input-error-banner",
+        "banner.pdfScannedNotice",
+        { name: scannedItem.name },
+        "warn"
+      );
+    }
+    const totalMasked = state.batchItems.reduce(
+      (sum, it) => sum + Number(it.maskedCount || 0),
+      0
+    );
+    showStatusBanner("banner.batchLoaded", {
+      count: state.batchItems.length,
+      masked: totalMasked || result?.maskedCount || 0,
+    });
+  }
+
+  function clearBatchQueue({ silent = false } = {}) {
+    resetSessionToZero({ silent: true });
+    if (!silent) {
+      showStatusBanner("banner.batchCleared");
+    }
+  }
+
+  function buildBatchCombinedSanitizedText() {
+    if (!Array.isArray(state.batchItems) || state.batchItems.length === 0) {
+      return ensureFreshSanitizedOutput();
+    }
+    return state.batchItems
+      .filter((it) => it.status === "ok" && !it.isScannedPdf && String(it.sanitizedText || "").trim().length > 0)
+      .map((it) => `=== ${it.name} ===\n${it.sanitizedText}`)
+      .join("\n\n");
+  }
+
+  function downloadBatchCombinedTxt(downloadTextFile) {
+    ensureFreshSanitizedOutput();
+    const combined = buildBatchCombinedSanitizedText();
+    if (!combined) return;
+    downloadTextFile("promptveil-batch-sanitized.txt", combined, "text/plain;charset=utf-8");
+    showStatusBanner("banner.batchTxtDownloaded");
+  }
+
+  function downloadBatchZip(downloadTextFile) {
+    ensureFreshSanitizedOutput();
+    const okItems = (state.batchItems || []).filter(
+      (it) => it.status === "ok" && !it.isScannedPdf && String(it.sanitizedText || "").trim().length > 0
+    );
+    if (okItems.length === 0) return;
+
+    const usedNames = new Map();
+    const entries = okItems.map((it) => {
+      const base = String(it.name || "document.txt").replace(/[\\/]/g, "_");
+      const dotIdx = base.lastIndexOf(".");
+      const stem = dotIdx > 0 ? base.slice(0, dotIdx) : base;
+      let candidate = `${stem}.sanitized.txt`;
+      const seen = usedNames.get(candidate) || 0;
+      usedNames.set(candidate, seen + 1);
+      if (seen > 0) {
+        candidate = `${stem}.sanitized (${seen + 1}).txt`;
+      }
+      return { name: candidate, data: it.sanitizedText };
+    });
+
+    const zipBytes = buildZipArchive(entries);
+    downloadTextFile("promptveil-batch-sanitized.zip", zipBytes, "application/zip");
+    showStatusBanner("banner.batchZipDownloaded");
+  }
+
+  function rehydrateBatchAndOpenStep2(switchMode) {
+    ensureFreshSanitizedOutput();
+    const combined = buildBatchCombinedSanitizedText();
+    switchMode?.("rehydrate");
+    const llmInput = getEl("llm-reply-input");
+    const existingReply = llmInput ? llmInput.value : state.llmReply || "";
+    const targetReply = existingReply.trim().length > 0 ? existingReply : combined;
+    if (targetReply && targetReply.trim().length > 0) {
+      if (llmInput && existingReply.trim().length === 0) {
+        llmInput.value = targetReply;
+      }
+      runRehydratePipeline(targetReply);
+    }
+    showStatusBanner("banner.batchRehydrateReady");
+    llmInput?.focus();
+  }
+
+  function bindBatchEvents({ downloadTextFile, switchMode, isProActive } = {}) {
+    getEl("file-pro-upgrade-btn")?.addEventListener("click", () => {
+      getEl("open-pro-license-btn")?.click();
+    });
+    getEl("batch-clear-btn")?.addEventListener("click", () => clearBatchQueue());
+    getEl("batch-download-txt-btn")?.addEventListener("click", () =>
+      downloadBatchCombinedTxt(downloadTextFile)
+    );
+    getEl("batch-download-zip-btn")?.addEventListener("click", () =>
+      downloadBatchZip(downloadTextFile)
+    );
+    getEl("batch-rehydrate-btn")?.addEventListener("click", () =>
+      rehydrateBatchAndOpenStep2(switchMode)
+    );
+
+    const proBtn = getEl("open-pro-license-btn");
+    if (proBtn && typeof MutationObserver === "function") {
+      const observer = new MutationObserver(() => {
+        if (isProActive?.()) {
+          hideProUpgradePrompt();
+          hideInlineAlert("input-error-banner");
+        }
+        refreshWorkbenchUi();
+      });
+      observer.observe(proBtn, { attributes: true, attributeFilter: ["data-pro-state"] });
+    }
+  }
+
   return {
     cancelPendingLiveAudit,
     cancelPendingLiveSanitize,
@@ -452,5 +642,13 @@ export function createPipelineController({
     handleTokenHover,
     handleVaultItemBlur,
     scrollToVaultItem,
+    showProUpgradePrompt,
+    hideProUpgradePrompt,
+    loadBatchFiles,
+    clearBatchQueue,
+    downloadBatchCombinedTxt,
+    downloadBatchZip,
+    rehydrateBatchAndOpenStep2,
+    bindBatchEvents,
   };
 }

@@ -183,8 +183,23 @@ export const RU = Object.freeze({
   "banner.fileLoaded": "Файл «{name}» открыт в памяти вкладки.",
   "banner.fileUnsupported":
     "Формат «{ext}» не поддерживается. Выберите .txt, .md, .csv, .json, .log или .env.",
+  "banner.fileUnsupportedPro":
+    "Формат «{ext}» не поддерживается. Доступны .txt, .md, .csv, .json, .log, .env, .docx, .pdf и .xlsx.",
+  "banner.fileProFormatRequired":
+    "Формат «{ext}» доступен в PromptVeil Pro (локальный разбор без отправки на сервер).",
+  "banner.fileProBatchRequired":
+    "Пакетная загрузка ({count} ф.) доступна в PromptVeil Pro — на Free открывается 1 текстовый файл.",
   "banner.fileTooLarge": "Файл «{name}» превышает ограничение 2 МБ.",
+  "banner.fileTooLargePro": "Файл «{name}» превышает ограничение 50 МБ для одного документа.",
   "banner.fileReadError": "Не удалось прочитать файл «{name}».",
+  "banner.fileCorrupt": "Не удалось разобрать документ «{name}»: архив или структура файла повреждены.",
+  "banner.pdfScannedNotice":
+    "Файл «{name}» — PDF-скан без текстового слоя; распознавание текста с картинок (OCR) локально не поддерживается.",
+  "banner.batchLoaded": "Пакет обработан локально: файлов — {count}, скрыто элементов — {masked}.",
+  "banner.batchCleared": "Пакетная очередь и словарь замен очищены.",
+  "banner.batchTxtDownloaded": "Объединённый безопасный файл .txt сохранён на устройство.",
+  "banner.batchZipDownloaded": "Локальный .zip-архив с безопасными файлами сохранён на устройство.",
+  "banner.batchRehydrateReady": "Пакет загружен на шаг 2 — все метки готовы к возврату.",
   "banner.storageWarning":
     "Хранилище устройства заполнено или заблокировано — изменения сохраняются только в памяти вкладки.",
   "banner.auditWriteError": "Не удалось записать событие в журнал.",
@@ -351,6 +366,34 @@ export const RU = Object.freeze({
   "pro.errorInvalid": "Ключ не прошёл проверку подписи Ed25519 или повреждён.",
   "pro.activatedSuccess": "Лицензия активирована ({tier}: {keyId}).",
   "pro.removedSuccess": "Ключ удалён — включён режим Free.",
+  "pro.fileUpgradeFormat":
+    "Форматы .docx, .pdf, .xlsx и пакетная обработка до 50 МБ доступны в PromptVeil Pro.",
+  "pro.fileUpgradeSize":
+    "В бесплатном тарифе лимит 2 МБ на текстовый файл. Активируйте ключ Pro для файлов до 50 МБ.",
+  "pro.fileUpgradeBatch":
+    "Одновременная загрузка нескольких файлов доступна в PromptVeil Pro.",
+  "pro.fileUpgradeBtn": "Активировать Pro",
+  "doc.errorEmpty": "Файл пуст.",
+  "doc.errorCorruptZip": "Повреждённый архив документа.",
+  "doc.errorInvalidDocx": "Некорректный файл .docx (отсутствует word/document.xml).",
+  "doc.errorInvalidXlsx": "Некорректный файл .xlsx (отсутствуют листы таблицы).",
+  "doc.errorInvalidPdf": "Некорректный или повреждённый PDF-файл.",
+  "doc.errorEncryptedPdf": "Зашифрованные или защищённые паролем PDF не поддерживаются.",
+  "doc.errorZipBomb": "Документ превышает безопасный лимит распаковки.",
+  "doc.errorGeneric": "Ошибка разбора документа.",
+  "batch.heading": "Пакетная очередь документов",
+  "batch.metaSummary": "Файлов: {files} • Скрыто: {masked}",
+  "batch.clearBtn": "Очистить все (батч)",
+  "batch.footerHint":
+    "Все файлы обработаны локально в памяти вкладки; имена файлов не отправляются в ИИ.",
+  "batch.downloadTxtBtn": "Скачать .txt",
+  "batch.downloadZipBtn": "Скачать .zip",
+  "batch.rehydrateBtn": "Вернуть все (Шаг 2)",
+  "batch.itemMasked": "Скрыто: {count}",
+  "batch.itemScannedPdf": "PDF-скан без текстового слоя (OCR локально не поддерживается)",
+  "batch.itemEmpty": "Извлечённый текст пуст",
+  "batch.itemError": "Ошибка: {reason}",
+  "batch.previewEmpty": "Нет извлечённого текста для предпросмотра.",
   "footer.brandDesc":
     "Инструмент защиты персональных и корпоративных данных перед работой с нейросетями.",
   "footer.navWorkbench": "Рабочая область",
@@ -417,8 +460,8 @@ export const RU = Object.freeze({
   "limits.subtitle": "Честные границы клиентских правил — чтобы вы знали, что проверять вручную или добавлять в «Свои слова».",
   "limits.item1Title": "Необычные имена и кодовые названия в прозе",
   "limits.item1Body": "В обычном режиме редкие фамилии, псевдонимы и названия внутренних проектов не скрываются автоматически, чтобы не портить текст.",
-  "limits.item2Title": "Сканы, фото, .pdf, .docx и таблицы",
-  "limits.item2Body": "Сейчас обрабатываются только текстовые форматы (.txt, .md, .csv, .json, .log, .env) до 2 МБ; распознавание изображений и офисных файлов не встроено.",
+  "limits.item2Title": "Сканы, фото и PDF без текстового слоя (OCR)",
+  "limits.item2Body": "Бесплатный тариф принимает текстовые файлы до 2 МБ; в Pro доступны .docx, .xlsx и текстовые .pdf до 50 МБ, но распознавание изображений и сканов (OCR) локально не выполняется.",
   "limits.item3Title": "Опечатки, транслит и разбитые цифры",
   "limits.item3Body": "Номера карт с буквами вместо цифр или пробелом в каждом разряде и нестандартные сокращения адресов могут остаться без маски.",
   "limits.item4Title": "Специфические внутренние номера и секреты",
