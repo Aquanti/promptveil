@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-21T14:30+03:00  
-**Session Status:** PRO UPGRADE M2 COMPLETE — Local Batch & Office/PDF Document Scrubber (R3)  
-**Exact Stop Point:** Completed Milestone M2 (R3): `app/static/js/pro-documents.js` (100% browser-local ZIP/CRC32 + `DecompressionStream` & RFC 1951/1950 pure-JS inflate fallback + `.docx`/`.xlsx` XML & pure-JS XML fallback + `.pdf` binary/`FlateDecode`/`ToUnicode`/UTF-16BE/WinAnsi/PDFDocEncoding + scanned-PDF detection + local `.zip` generator), Free 2 MB / single-text guardrails + `#file-pro-upgrade-banner`, Pro 50 MB multi-file `#batch-queue-panel` (`.txt`/`.zip` download + Step 2 batch rehydrate + `#batch-clear-btn`), RU/EN i18n + Spark CSS, `tests/js/pro-documents.test.mjs`, and `tests/test_server.py`. Next: Milestone M3 (Multi-Project Rulebook Profiles, Extended Packs & Templates).
+**Checkpoint Date:** 2026-11-21T14:44+03:00  
+**Session Status:** PRO UPGRADE M2 ITERATION 2 FIXES COMPLETE — Local Batch & Office/PDF Document Scrubber (R3)  
+**Exact Stop Point:** Completed Milestone M2 (R3) Iteration 2 fixes (build `ffc2518889`, `69/69` JS tests, `25/25` pytest): fixed real browser `File.prototype.bytes()` handling in `parseDocumentFile`, `.docx` nested `<w:txbxContent><w:tbl>`/`<w:p>` separation, `.pdf` indirect `/Resources`/`/Font` resolution, `parseXmlPureJs` out-of-range numeric entity guard, `RU["banner.pdfScannedNotice"]` + `aria-live="polite"` on `#input-error-banner`, `MutationObserver` `attributeOldValue` guard in `pipeline.js`, `data-testid="batch-queue-preview"`, and static HTML parity. Next: M2 Gate re-verification & Milestone M3 (Multi-Project Rulebook Profiles, Extended Packs & Templates).
 
 ---
 

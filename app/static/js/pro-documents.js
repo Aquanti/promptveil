@@ -787,11 +787,15 @@ function decodeXmlEntities(text) {
     if (entity === "apos") return "'";
     if (entity.startsWith("#x")) {
       const code = Number.parseInt(entity.slice(2), 16);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+      return Number.isFinite(code) && code >= 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : m;
     }
     if (entity.startsWith("#")) {
       const code = Number.parseInt(entity.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : m;
+      return Number.isFinite(code) && code >= 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : m;
     }
     return m;
   });
@@ -1014,6 +1018,41 @@ function naturalSortStrings(a, b) {
 // .docx Extractor
 // ---------------------------------------------------------------------------
 
+function extractDocxRowText(trNode) {
+  const cellTexts = [];
+  for (const tc of getElementChildren(trNode)) {
+    if (getLocalName(tc) !== "tc") continue;
+    const cellBlocks = [];
+    collectDocxBlocks(tc, cellBlocks);
+    cellTexts.push(cellBlocks.join(" ").trim());
+  }
+  if (cellTexts.some((c) => c.length > 0)) {
+    return cellTexts.join("\t").trimEnd();
+  }
+  return "";
+}
+
+function extractDocxTableText(tblNode) {
+  const rowLines = [];
+  for (const tr of getElementChildren(tblNode)) {
+    if (getLocalName(tr) !== "tr") continue;
+    const line = extractDocxRowText(tr);
+    if (line) rowLines.push(line);
+  }
+  return rowLines.join("\n");
+}
+
+function appendDocxInlineBlock(outParts, blockText) {
+  if (!blockText) return;
+  if (outParts.length > 0) {
+    const last = outParts[outParts.length - 1];
+    if (last && !last.endsWith("\n") && !last.endsWith("\t")) {
+      outParts.push("\n");
+    }
+  }
+  outParts.push(blockText, "\n");
+}
+
 function extractDocxInline(node, outParts) {
   for (const child of node.childNodes || []) {
     if (child.nodeType !== 1) continue;
@@ -1026,6 +1065,25 @@ function extractDocxInline(node, outParts) {
       outParts.push("\n");
     } else if (name === "delText" || name === "instrText") {
       continue;
+    } else if (name === "tbl") {
+      appendDocxInlineBlock(outParts, extractDocxTableText(child));
+    } else if (name === "p") {
+      appendDocxInlineBlock(outParts, extractDocxParagraphText(child).trimEnd());
+    } else if (name === "tr") {
+      appendDocxInlineBlock(outParts, extractDocxRowText(child));
+    } else if (name === "tc") {
+      const cellBlocks = [];
+      collectDocxBlocks(child, cellBlocks);
+      const cellText = cellBlocks.join(" ").trim();
+      if (cellText) {
+        if (outParts.length > 0) {
+          const last = outParts[outParts.length - 1];
+          if (last && !last.endsWith("\t") && !last.endsWith("\n")) {
+            outParts.push("\t");
+          }
+        }
+        outParts.push(cellText);
+      }
     } else {
       extractDocxInline(child, outParts);
     }
@@ -1045,23 +1103,8 @@ function collectDocxBlocks(node, blocks) {
       const text = extractDocxParagraphText(child).trimEnd();
       if (text.length > 0) blocks.push(text);
     } else if (name === "tbl") {
-      const rowLines = [];
-      for (const tr of getElementChildren(child)) {
-        if (getLocalName(tr) !== "tr") continue;
-        const cellTexts = [];
-        for (const tc of getElementChildren(tr)) {
-          if (getLocalName(tc) !== "tc") continue;
-          const cellBlocks = [];
-          collectDocxBlocks(tc, cellBlocks);
-          cellTexts.push(cellBlocks.join(" ").trim());
-        }
-        if (cellTexts.some((c) => c.length > 0)) {
-          rowLines.push(cellTexts.join("\t").trimEnd());
-        }
-      }
-      if (rowLines.length > 0) {
-        blocks.push(rowLines.join("\n"));
-      }
+      const tblText = extractDocxTableText(child);
+      if (tblText) blocks.push(tblText);
     } else {
       collectDocxBlocks(child, blocks);
     }
@@ -1859,11 +1902,43 @@ export async function extractPdfText(bytesInput, options = {}) {
     pageCount += 1;
 
     const pageFontMap = new Map();
-    const fontRefRe = /\/([A-Za-z0-9_.-]+)\s+(\d+)\s+\d+\s+R/g;
-    let fm;
-    while ((fm = fontRefRe.exec(obj.dictStr)) !== null) {
-      const fObj = fontObjs.get(Number.parseInt(fm[2], 10));
-      if (fObj) pageFontMap.set(fm[1], fObj);
+    const collectFontRefsFromDict = (dictText) => {
+      if (!dictText) return;
+      const fontRefRe = /\/([A-Za-z0-9_.-]+)\s+(\d+)\s+\d+\s+R/g;
+      let fm;
+      while ((fm = fontRefRe.exec(dictText)) !== null) {
+        const fObj = fontObjs.get(Number.parseInt(fm[2], 10));
+        if (fObj) pageFontMap.set(fm[1], fObj);
+      }
+    };
+    const resolveResourcesFonts = (dictText) => {
+      if (!dictText) return;
+      collectFontRefsFromDict(dictText);
+      const resMatch = /\/Resources\s+(\d+)\s+\d+\s+R/.exec(dictText);
+      if (resMatch) {
+        const resObj = objects.get(Number.parseInt(resMatch[1], 10));
+        if (resObj) {
+          collectFontRefsFromDict(resObj.dictStr);
+          const nestedFontMatch = /\/Font\s+(\d+)\s+\d+\s+R/.exec(resObj.dictStr);
+          if (nestedFontMatch) {
+            const fontDictObj = objects.get(Number.parseInt(nestedFontMatch[1], 10));
+            if (fontDictObj) collectFontRefsFromDict(fontDictObj.dictStr);
+          }
+        }
+      }
+      const directFontMatch = /\/Font\s+(\d+)\s+\d+\s+R/.exec(dictText);
+      if (directFontMatch) {
+        const fontDictObj = objects.get(Number.parseInt(directFontMatch[1], 10));
+        if (fontDictObj) collectFontRefsFromDict(fontDictObj.dictStr);
+      }
+    };
+    resolveResourcesFonts(obj.dictStr);
+    if (pageFontMap.size === 0) {
+      const parentMatch = /\/Parent\s+(\d+)\s+\d+\s+R/.exec(obj.dictStr);
+      if (parentMatch) {
+        const parentObj = objects.get(Number.parseInt(parentMatch[1], 10));
+        if (parentObj) resolveResourcesFonts(parentObj.dictStr);
+      }
     }
 
     const contentRefs = [];
@@ -1995,16 +2070,20 @@ export async function parseDocumentFile(fileOrBytes, fileName = "", options = {}
   if (fileOrBytes instanceof Uint8Array || fileOrBytes instanceof ArrayBuffer) {
     return extractDocumentFromBytes(fileOrBytes, fileName, options);
   }
+  if (fileOrBytes && typeof fileOrBytes.arrayBuffer === "function") {
+    const buf = await fileOrBytes.arrayBuffer();
+    return extractDocumentFromBytes(new Uint8Array(buf), fileOrBytes.name || fileName, options);
+  }
+  if (fileOrBytes && typeof fileOrBytes.bytes === "function") {
+    const rawBytes = await fileOrBytes.bytes();
+    return extractDocumentFromBytes(rawBytes, fileOrBytes.name || fileName, options);
+  }
   if (fileOrBytes && fileOrBytes.bytes !== undefined) {
     return extractDocumentFromBytes(
       fileOrBytes.bytes,
       fileOrBytes.name || fileName,
       options
     );
-  }
-  if (fileOrBytes && typeof fileOrBytes.arrayBuffer === "function") {
-    const buf = await fileOrBytes.arrayBuffer();
-    return extractDocumentFromBytes(new Uint8Array(buf), fileOrBytes.name || fileName, options);
   }
   throw new DocumentParseError("INVALID_INPUT", { reason: "unsupported_source" });
 }

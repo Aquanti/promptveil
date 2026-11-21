@@ -16,6 +16,7 @@ import {
   inflateRawPureJs,
   inflateZlibPureJs,
   parseDocumentFile,
+  parseXmlPureJs,
   readZipEntries,
   validateBatchFiles,
 } from "../../app/static/js/pro-documents.js";
@@ -787,5 +788,115 @@ describe("PromptVeil M2 Security Hygiene & Batch Vault/UI Integration", () => {
     pipeline.clearBatchQueue();
     assert.equal(state.batchItems.length, 0);
     assert.equal(elements.get("batch-queue-panel").hidden, true);
+  });
+
+  test("parseDocumentFile supports browser File-like objects with Blob.prototype.bytes() method alongside arrayBuffer()", async () => {
+    const docxBytes = buildSyntheticDocx({ paragraphs: ["Chrome File.bytes test user@corp.ru"] });
+    const browserLikeFile = {
+      name: "browser-upload.docx",
+      size: docxBytes.length,
+      async bytes() {
+        return new Uint8Array(docxBytes);
+      },
+      async arrayBuffer() {
+        return docxBytes.buffer.slice(docxBytes.byteOffset, docxBytes.byteOffset + docxBytes.byteLength);
+      },
+    };
+    const res = await parseDocumentFile(browserLikeFile, "", { forcePureJs: true });
+    assert.match(res.text, /Chrome File\.bytes test user@corp\.ru/);
+
+    // Also test a File-like object that only implements bytes() as an async method
+    const bytesMethodOnly = {
+      name: "bytes-only.txt",
+      async bytes() {
+        return new TextEncoder().encode("Only bytes() method test");
+      },
+    };
+    const resBytesOnly = await parseDocumentFile(bytesMethodOnly);
+    assert.equal(resBytesOnly.text, "Only bytes() method test");
+  });
+
+  test("extractDocxText separates nested <w:txbxContent><w:tbl> inside <w:p> so SessionVault masks all emails", async () => {
+    const docXml =
+      `<?xml version="1.0" encoding="UTF-8"?>` +
+      `<w:document><w:body>` +
+      `<w:p><w:r><w:t>Intro</w:t>` +
+      `<w:pict><v:shape><v:textbox><w:txbxContent>` +
+      `<w:tbl><w:tr>` +
+      `<w:tc><w:p><w:r><w:t>alice@corp.ru</w:t></w:r></w:p></w:tc>` +
+      `<w:tc><w:p><w:r><w:t>bob@corp.ru</w:t></w:r></w:p></w:tc>` +
+      `</w:tr></w:tbl>` +
+      `</w:txbxContent></v:textbox></v:shape></w:pict>` +
+      `</w:r></w:p>` +
+      `</w:body></w:document>`;
+    const docxBytes = buildSyntheticZip([
+      { name: "word/document.xml", data: docXml },
+      { name: "[Content_Types].xml", data: "<Types></Types>" },
+    ]);
+    const extracted = await extractDocxText(docxBytes, { forcePureJs: true });
+    assert.equal(extracted.text, "Intro\nalice@corp.ru\tbob@corp.ru");
+
+    const vault = new SessionVault();
+    const masked = vault.sanitize(extracted.text);
+    assert.equal(masked.maskedCount, 2);
+    assert.equal(masked.sanitizedText.includes("alice@corp.ru"), false);
+    assert.equal(masked.sanitizedText.includes("bob@corp.ru"), false);
+    assert.match(masked.sanitizedText, /^Intro\n\[EMAIL_\d+\]\t\[EMAIL_\d+\]$/);
+  });
+
+  test("extractPdfText resolves indirect /Resources and /Font dictionaries before fallbackCmap", async () => {
+    const cmapText = [
+      "/CIDInit /ProcSet findresource begin",
+      "1 begincodespacerange",
+      "<0001> <FFFF>",
+      "endcodespacerange",
+      "1 beginbfchar",
+      "<4142> <042F>", // Я
+      "endbfchar",
+      "endcmap",
+    ].join("\n");
+    const pdfIndirect = buildPdfFromObjects([
+      [1, "<< /Type /Catalog /Pages 2 0 R >>"],
+      [2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"],
+      [3, "<< /Type /Page /Parent 2 0 R /Resources 8 0 R /Contents [6 0 R 7 0 R] >>"],
+      [4, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"],
+      [5, "<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode 9 0 R >>"],
+      [6, makePdfStreamObj("BT\n/F1 12 Tf\n(AB) Tj\nET\n", { compress: false })],
+      [7, makePdfStreamObj("BT\n/F2 12 Tf\n<4142> Tj\nET\n", { compress: false })],
+      [8, "<< /Font << /F1 4 0 R /F2 5 0 R >> >>"],
+      [9, makePdfStreamObj(cmapText, { compress: true })],
+    ]);
+    const res = await extractPdfText(pdfIndirect);
+    assert.equal(res.text, "AB\nЯ");
+  });
+
+  test("parseXmlPureJs guards out-of-range numeric character entities without throwing RangeError", () => {
+    const root = parseXmlPureJs("<root><t>&#99999999;</t><h>&#x110000;</h><ok>&#65;&#x42;</ok></root>");
+    assert.equal(root.children[0].textContent, "&#99999999;");
+    assert.equal(root.children[1].textContent, "&#x110000;");
+    assert.equal(root.children[2].textContent, "AB");
+  });
+
+  test("renderBatchQueuePanel attaches data-testid=batch-queue-preview on preview paragraphs", () => {
+    const listEl = elements.get("batch-queue-list");
+    renderBatchQueuePanel(
+      {},
+      {
+        batchItems: [
+          {
+            name: "sample.pdf",
+            ext: ".pdf",
+            status: "ok",
+            maskedCount: 1,
+            sanitizedText: "Contact: [EMAIL_1]",
+          },
+        ],
+        isPro: true,
+        lang: "ru",
+      }
+    );
+    assert.equal(listEl.children.length, 1);
+    const previewNode = listEl.children[0].children[1];
+    assert.equal(previewNode.getAttribute("data-testid"), "batch-queue-preview");
   });
 });

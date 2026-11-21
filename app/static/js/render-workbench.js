@@ -560,7 +560,11 @@ export function renderBatchQueuePanel(
           : collapsed
         : t("batch.itemEmpty", {}, lang);
     }
-    li.appendChild(createEl("p", "batch-queue-preview", previewText));
+    li.appendChild(
+      createEl("p", "batch-queue-preview", previewText, {
+        "data-testid": "batch-queue-preview",
+      })
+    );
     listEl.appendChild(li);
   }
 

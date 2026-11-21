@@ -614,14 +614,21 @@ export function createPipelineController({
 
     const proBtn = getEl("open-pro-license-btn");
     if (proBtn && typeof MutationObserver === "function") {
-      const observer = new MutationObserver(() => {
+      const observer = new MutationObserver((records) => {
+        const currentState = proBtn.getAttribute("data-pro-state");
+        const stateChanged = records.some((r) => r.oldValue !== currentState);
+        if (!stateChanged) return;
         if (isProActive?.()) {
           hideProUpgradePrompt();
           hideInlineAlert("input-error-banner");
         }
         refreshWorkbenchUi();
       });
-      observer.observe(proBtn, { attributes: true, attributeFilter: ["data-pro-state"] });
+      observer.observe(proBtn, {
+        attributes: true,
+        attributeFilter: ["data-pro-state"],
+        attributeOldValue: true,
+      });
     }
   }
 
