@@ -19,6 +19,7 @@ mimetypes.add_type("image/png", ".png")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 mimetypes.add_type("application/xml", ".xml")
 mimetypes.add_type("text/plain", ".txt")
+mimetypes.add_type("application/zip", ".zip")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -49,6 +50,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        if (
+            request.url.path.startswith("/downloads/")
+            and request.url.path.endswith(".zip")
+            and response.status_code == 200
+        ):
+            response.headers.setdefault("Cache-Control", "public, max-age=300")
         return response
 
     @application.api_route(

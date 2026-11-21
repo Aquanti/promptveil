@@ -672,6 +672,7 @@ def test_cache_control_and_netlify_parity() -> None:
         "/fonts/*",
         "/sw.js",
         "/manifest.webmanifest",
+        "/downloads/*.zip",
     }
 
     dist_block = next(block for block in header_blocks if block["for"] == "/dist/*")
@@ -683,6 +684,10 @@ def test_cache_control_and_netlify_parity() -> None:
     manifest_block = next(block for block in header_blocks if block["for"] == "/manifest.webmanifest")
     assert manifest_block["values"]["Content-Type"] == "application/manifest+json; charset=utf-8"
     assert manifest_block["values"]["Cache-Control"] == "public, max-age=300"
+
+    downloads_block = next(block for block in header_blocks if block["for"] == "/downloads/*.zip")
+    assert downloads_block["values"]["Content-Type"] == "application/zip"
+    assert downloads_block["values"]["Cache-Control"] == "public, max-age=300"
 
     root_block = next(block for block in header_blocks if block["for"] == "/*")
     assert "Cache-Control" not in root_block["values"]
@@ -790,8 +795,18 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
         'id="tpl-modal-privacy-policy"',
         'id="tpl-modal-terms"',
         'id="tpl-modal-pro-license"',
+        'id="tpl-modal-pro-downloads"',
         'id="open-pro-license-btn"',
         'data-testid="open-pro-license-btn"',
+        'id="open-pro-downloads-btn"',
+        'data-testid="open-pro-downloads-btn"',
+        'id="pro-license-downloads-btn"',
+        'data-testid="pro-license-downloads-btn"',
+        'id="modal-pro-downloads"',
+        'data-testid="modal-pro-downloads"',
+        'id="download-extension-zip-btn"',
+        'data-testid="download-extension-zip-btn"',
+        'href="/downloads/promptveil-pro-extension.zip"',
         'id="pricing-activate-pro-btn"',
         'id="modal-pro-license"',
         'id="pro-license-status-card"',
@@ -819,8 +834,8 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
         assert hook in index_html, f"Missing required hook {hook} in index.html"
         assert hook in en_html, f"Missing required hook {hook} in en/index.html"
 
-    assert index_html.count("<template ") >= 5
-    assert en_html.count("<template ") >= 5
+    assert index_html.count("<template ") >= 6
+    assert en_html.count("<template ") >= 6
     assert re.search(r'href="/dist/styles\.[A-Za-z0-9_-]+\.css"', not_found_html)
 
     pro_license_js = (STATIC_DIR / "js" / "pro-license.js").read_text(encoding="utf-8")
@@ -949,6 +964,7 @@ def test_service_worker_and_stage2_p1_contracts() -> None:
     assert "eval(" not in sw_src
     assert 'CACHE_NAME = "promptveil-build-' in sw_src
     assert "/dist/styles." in sw_src and "/dist/app." in sw_src
+    assert '"/downloads/promptveil-pro-extension.zip"' in sw_src
     assert "SKIP_WAITING" in sw_src
     assert "self.clients.claim()" in sw_src
     install_block = re.search(r'addEventListener\("install".*?\}\);', sw_src, re.DOTALL)
@@ -1196,6 +1212,59 @@ def test_m3_profiles_packs_and_templates_contracts() -> None:
         assert pack_id in presets_js
     for tpl_id in ("contract_review", "nda_redline", "code_security_review"):
         assert tpl_id in presets_js
+
+
+def test_m4b_extension_zip_endpoint_and_security_headers() -> None:
+    """Verify /downloads/promptveil-pro-extension.zip MIME, security headers, archive integrity, and traversal 404."""
+    import io
+    import zipfile
+
+    client = TestClient(app)
+
+    head_resp = client.head("/downloads/promptveil-pro-extension.zip")
+    assert head_resp.status_code == 200
+    assert head_resp.headers["content-type"].startswith("application/zip")
+    assert head_resp.headers.get("cache-control") == "public, max-age=300"
+    _assert_security_headers(head_resp.headers)
+    assert head_resp.content == b""
+
+    get_resp = client.get("/downloads/promptveil-pro-extension.zip")
+    assert get_resp.status_code == 200
+    assert get_resp.headers["content-type"].startswith("application/zip")
+    assert get_resp.headers.get("cache-control") == "public, max-age=300"
+    _assert_security_headers(get_resp.headers)
+    assert get_resp.content.startswith(b"PK\x03\x04")
+
+    with zipfile.ZipFile(io.BytesIO(get_resp.content), "r") as zf:
+        assert zf.testzip() is None
+        names = set(zf.namelist())
+        expected = {
+            "manifest.json",
+            "popup.html",
+            "popup.css",
+            "content.css",
+            "dist/content.bundle.js",
+            "dist/popup.bundle.js",
+            "icons/icon-16.png",
+            "icons/icon-48.png",
+            "icons/icon-128.png",
+        }
+        assert names == expected
+        for entry_name in names:
+            data = zf.read(entry_name)
+            if not entry_name.endswith(".png"):
+                text = data.decode("utf-8")
+                for marker in FORBIDDEN_LEAK_SUBSTRINGS:
+                    assert marker not in text, f"Leak marker {marker!r} in ZIP entry {entry_name}"
+                assert "PV-CLIENT-" not in text
+                assert not re.search(r"PV1\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{32,}", text)
+
+    for missing_route in ("/downloads/nonexistent.zip", "/downloads/..%2F..%2Fapp/main.py"):
+        miss_resp = client.get(missing_route)
+        assert miss_resp.status_code == 404
+        _assert_security_headers(miss_resp.headers)
+        for marker in FORBIDDEN_LEAK_SUBSTRINGS:
+            assert marker not in miss_resp.text
 
 
 

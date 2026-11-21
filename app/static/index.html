@@ -36,9 +36,9 @@
     content="Бесплатная защита текстов, реквизитов РФ и ключей перед отправкой в нейросети с нулевым хранением данных."
   />
   <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
-  <link rel="stylesheet" href="/dist/styles.UPWFLDYZ.css" />
-  <script type="module" src="/dist/app.THW7EOP4.js"></script>
-  <link rel="modulepreload" href="/dist/i18n-en-H5HHTK6P.js" />
+  <link rel="stylesheet" href="/dist/styles.UMY4UFFP.css" />
+  <script type="module" src="/dist/app.ML7GPTO7.js"></script>
+  <link rel="modulepreload" href="/dist/i18n-en-EY65K4KX.js" />
 </head>
 <body>
   <a href="#main-workbench" class="skip-link" data-i18n="a11y.skipLink">Перейти к работе с текстом</a>
@@ -1069,6 +1069,17 @@
           <div class="pricing-card-footer">
             <button
               type="button"
+              id="open-pro-downloads-btn"
+              class="btn-lime"
+              hidden
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="modal-pro-downloads"
+              data-testid="open-pro-downloads-btn"
+              data-i18n="pro.downloadsOpenBtn"
+            >Скачать расширение (Pro)</button>
+            <button
+              type="button"
               id="open-pro-modal-btn"
               class="btn-lime"
               aria-haspopup="dialog"
@@ -1914,8 +1925,8 @@
           <p class="policy-item-body" data-i18n="terms.item2Body">Эвристические и шаблонные детекторы снижают риск случайной утечки, но не гарантируют 100% полноты маскирования. Пользователь самостоятельно проверяет безопасный текст перед отправкой в сторонние сервисы.</p>
         </li>
         <li class="policy-item">
-          <h3 class="policy-item-title" data-i18n="terms.item3Title">3. Лист ожидания Pro и Команда</h3>
-          <p class="policy-item-body" data-i18n="terms.item3Body">Формы записи в лист ожидания работают без сетевой отправки и предназначены только для информирования о будущих функциях. Заявка не является публичной офертой и не влечёт обязательств по оплате.</p>
+          <h3 class="policy-item-title" data-i18n="terms.item3Title">3. Ключи Pro и лист ожидания Команды</h3>
+          <p class="policy-item-body" data-i18n="terms.item3Body">Доступ Pro активируется офлайн-ключом Ed25519 локально на устройстве. Формы запроса ключа и записи в лист ожидания Бизнес / Команда работают без сетевой отправки и не являются публичной офертой.</p>
         </li>
         <li class="policy-item">
           <h3 class="policy-item-title" data-i18n="terms.item4Title">4. Обратная связь</h3>
@@ -2007,6 +2018,16 @@
       <div class="modal-footer-actions">
         <button
           type="button"
+          id="pro-license-downloads-btn"
+          class="btn-lime"
+          hidden
+          aria-haspopup="dialog"
+          aria-controls="modal-pro-downloads"
+          data-testid="pro-license-downloads-btn"
+          data-i18n="pro.downloadsOpenBtn"
+        >Скачать расширение (Pro)</button>
+        <button
+          type="button"
           id="pro-license-get-key-btn"
           class="btn-secondary"
           data-testid="pro-license-get-key-btn"
@@ -2020,6 +2041,77 @@
           data-i18n="common.close"
         >Закрыть</button>
       </div>
+    </div>
+  </section>
+  </template>
+
+  <template id="tpl-modal-pro-downloads">
+  <section
+    id="modal-pro-downloads"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="pro-downloads-modal-title"
+    hidden
+    data-testid="modal-pro-downloads"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="pro-downloads-modal-title" class="modal-title" data-i18n="proDownloads.title">Расширение для браузера (Pro)</h2>
+        <p class="modal-subtitle" data-i18n="proDownloads.subtitle">Локальная защита промптов прямо в чатах ИИ без сетевых запросов.</p>
+      </div>
+      <button
+        type="button"
+        id="close-pro-downloads-btn"
+        class="drawer-close"
+        aria-label="Закрыть"
+        data-i18n-aria="common.close"
+        data-testid="close-pro-downloads-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="pro-downloads-hero">
+        <span class="pro-downloads-badge" data-i18n="proDownloads.heroBadge">Manifest V3 • 0 сети • Chrome / Edge / Яндекс.Браузер</span>
+        <p class="pro-downloads-desc" data-i18n="proDownloads.heroDesc">Скачайте архив, распакуйте его в отдельную папку на компьютере и подключите в режиме разработчика — данные и ключи остаются только на вашем устройстве.</p>
+        <a
+          id="download-extension-zip-btn"
+          class="btn-lime pro-downloads-zip-btn"
+          href="/downloads/promptveil-pro-extension.zip"
+          download="promptveil-pro-extension.zip"
+          data-testid="download-extension-zip-btn"
+          data-i18n="proDownloads.downloadBtn"
+        >Скачать архив расширения (.zip)</a>
+      </div>
+
+      <h3 class="pro-downloads-guide-heading" data-i18n="proDownloads.guideHeading">Пошаговая установка в браузер</h3>
+      <ul class="policy-list pro-downloads-guides">
+        <li class="policy-item">
+          <h4 class="policy-item-title" data-i18n="proDownloads.chromeTitle">Google Chrome</h4>
+          <p class="policy-item-body" data-i18n="proDownloads.chromeBody">Распакуйте promptveil-pro-extension.zip в постоянную папку. Откройте chrome://extensions, включите «Режим разработчика», нажмите «Загрузить распакованное расширение» и выберите папку.</p>
+        </li>
+        <li class="policy-item">
+          <h4 class="policy-item-title" data-i18n="proDownloads.edgeTitle">Microsoft Edge</h4>
+          <p class="policy-item-body" data-i18n="proDownloads.edgeBody">Откройте edge://extensions, включите «Режим разработчика» в левой панели, нажмите «Загрузить распакованное» и выберите папку с файлом manifest.json.</p>
+        </li>
+        <li class="policy-item">
+          <h4 class="policy-item-title" data-i18n="proDownloads.yandexTitle">Яндекс.Браузер</h4>
+          <p class="policy-item-body" data-i18n="proDownloads.yandexBody">Откройте browser://extensions, включите «Режим разработчика», нажмите «Загрузить распакованное расширение» и укажите распакованную папку. Затем вставьте ваш ключ PV1... во всплывающем окне расширения.</p>
+        </li>
+      </ul>
+
+      <p class="pro-downloads-note" data-i18n="proDownloads.note">Расширение работает поверх ChatGPT, Claude, Gemini, DeepSeek, GigaChat и Алисы только в памяти активной вкладки и использует тот же ключ PV1....</p>
+    </div>
+
+    <div class="modal-footer">
+      <span></span>
+      <button
+        type="button"
+        id="close-pro-downloads-footer-btn"
+        class="btn-secondary"
+        data-testid="close-pro-downloads-footer-btn"
+        data-i18n="common.close"
+      >Закрыть</button>
     </div>
   </section>
   </template>

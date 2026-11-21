@@ -36,9 +36,9 @@
     content="Free client-side masking and restoration workspace for AI prompts with zero data retention."
   />
   <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
-  <link rel="stylesheet" href="/dist/styles.UPWFLDYZ.css" />
-  <script type="module" src="/dist/app.THW7EOP4.js"></script>
-  <link rel="modulepreload" href="/dist/i18n-ru-QVTAHR73.js" />
+  <link rel="stylesheet" href="/dist/styles.UMY4UFFP.css" />
+  <script type="module" src="/dist/app.ML7GPTO7.js"></script>
+  <link rel="modulepreload" href="/dist/i18n-ru-ABT2WJB2.js" />
 </head>
 <body>
   <a href="#main-workbench" class="skip-link" data-i18n="a11y.skipLink">Skip to workbench</a>
@@ -1069,6 +1069,17 @@
           <div class="pricing-card-footer">
             <button
               type="button"
+              id="open-pro-downloads-btn"
+              class="btn-lime"
+              hidden
+              aria-haspopup="dialog"
+              aria-expanded="false"
+              aria-controls="modal-pro-downloads"
+              data-testid="open-pro-downloads-btn"
+              data-i18n="pro.downloadsOpenBtn"
+            >Download Extension (Pro)</button>
+            <button
+              type="button"
               id="open-pro-modal-btn"
               class="btn-lime"
               aria-haspopup="dialog"
@@ -1914,8 +1925,8 @@
           <p class="policy-item-body" data-i18n="terms.item2Body">Pattern and heuristic detectors reduce accidental leakage risk but do not guarantee 100% coverage. You are responsible for reviewing masked text before pasting into external AI providers.</p>
         </li>
         <li class="policy-item">
-          <h3 class="policy-item-title" data-i18n="terms.item3Title">3. Pro &amp; Team Waitlist</h3>
-          <p class="policy-item-body" data-i18n="terms.item3Body">Waitlist forms operate locally without network upload and serve solely for launch updates. Submitting an inquiry is not a binding offer and creates no payment obligation.</p>
+          <h3 class="policy-item-title" data-i18n="terms.item3Title">3. Pro Keys &amp; Team Waitlist</h3>
+          <p class="policy-item-body" data-i18n="terms.item3Body">Pro access is activated locally on your device via an offline Ed25519 key. Key-request and Business / Team waitlist forms operate locally without network upload and do not constitute a binding offer.</p>
         </li>
         <li class="policy-item">
           <h3 class="policy-item-title" data-i18n="terms.item4Title">4. Owner contacts</h3>
@@ -2007,6 +2018,16 @@
       <div class="modal-footer-actions">
         <button
           type="button"
+          id="pro-license-downloads-btn"
+          class="btn-lime"
+          hidden
+          aria-haspopup="dialog"
+          aria-controls="modal-pro-downloads"
+          data-testid="pro-license-downloads-btn"
+          data-i18n="pro.downloadsOpenBtn"
+        >Download Extension (Pro)</button>
+        <button
+          type="button"
           id="pro-license-get-key-btn"
           class="btn-secondary"
           data-testid="pro-license-get-key-btn"
@@ -2020,6 +2041,77 @@
           data-i18n="common.close"
         >Close</button>
       </div>
+    </div>
+  </section>
+  </template>
+
+  <template id="tpl-modal-pro-downloads">
+  <section
+    id="modal-pro-downloads"
+    class="modal-dialog"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="pro-downloads-modal-title"
+    hidden
+    data-testid="modal-pro-downloads"
+  >
+    <div class="modal-header">
+      <div>
+        <h2 id="pro-downloads-modal-title" class="modal-title" data-i18n="proDownloads.title">Browser Extension (Pro)</h2>
+        <p class="modal-subtitle" data-i18n="proDownloads.subtitle">Local prompt masking directly inside AI chats with zero network egress.</p>
+      </div>
+      <button
+        type="button"
+        id="close-pro-downloads-btn"
+        class="drawer-close"
+        aria-label="Close"
+        data-i18n-aria="common.close"
+        data-testid="close-pro-downloads-btn"
+      >×</button>
+    </div>
+
+    <div class="modal-body">
+      <div class="pro-downloads-hero">
+        <span class="pro-downloads-badge" data-i18n="proDownloads.heroBadge">Manifest V3 • Zero-Egress • Chrome / Edge / Yandex Browser</span>
+        <p class="pro-downloads-desc" data-i18n="proDownloads.heroDesc">Download the archive, extract it into a folder on your computer, and load it in Developer mode — your text and license key stay strictly on your device.</p>
+        <a
+          id="download-extension-zip-btn"
+          class="btn-lime pro-downloads-zip-btn"
+          href="/downloads/promptveil-pro-extension.zip"
+          download="promptveil-pro-extension.zip"
+          data-testid="download-extension-zip-btn"
+          data-i18n="proDownloads.downloadBtn"
+        >Download Extension Archive (.zip)</a>
+      </div>
+
+      <h3 class="pro-downloads-guide-heading" data-i18n="proDownloads.guideHeading">Step-by-Step Browser Setup</h3>
+      <ul class="policy-list pro-downloads-guides">
+        <li class="policy-item">
+          <h4 class="policy-item-title" data-i18n="proDownloads.chromeTitle">Google Chrome</h4>
+          <p class="policy-item-body" data-i18n="proDownloads.chromeBody">Extract promptveil-pro-extension.zip to a permanent folder. Open chrome://extensions, turn on Developer mode, click Load unpacked, and select the extracted folder.</p>
+        </li>
+        <li class="policy-item">
+          <h4 class="policy-item-title" data-i18n="proDownloads.edgeTitle">Microsoft Edge</h4>
+          <p class="policy-item-body" data-i18n="proDownloads.edgeBody">Open edge://extensions, enable Developer mode in the left sidebar, click Load unpacked, and select the extracted folder containing manifest.json.</p>
+        </li>
+        <li class="policy-item">
+          <h4 class="policy-item-title" data-i18n="proDownloads.yandexTitle">Yandex Browser</h4>
+          <p class="policy-item-body" data-i18n="proDownloads.yandexBody">Open browser://extensions, enable Developer mode, click Load unpacked extension, and select the extracted folder. Then paste your PV1... key into the extension popup.</p>
+        </li>
+      </ul>
+
+      <p class="pro-downloads-note" data-i18n="proDownloads.note">The extension runs on ChatGPT, Claude, Gemini, DeepSeek, GigaChat, and Alisa strictly in active tab memory using the same PV1... key.</p>
+    </div>
+
+    <div class="modal-footer">
+      <span></span>
+      <button
+        type="button"
+        id="close-pro-downloads-footer-btn"
+        class="btn-secondary"
+        data-testid="close-pro-downloads-footer-btn"
+        data-i18n="common.close"
+      >Close</button>
     </div>
   </section>
   </template>

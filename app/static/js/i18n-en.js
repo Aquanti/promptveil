@@ -404,6 +404,25 @@ export const EN = Object.freeze({
   "pro.fileUpgradeBatch":
     "Uploading multiple files at once is unlocked in PromptVeil Pro.",
   "pro.fileUpgradeBtn": "Activate Pro",
+  "pro.downloadsOpenBtn": "Download Extension (Pro)",
+  "proDownloads.title": "Browser Extension (Pro)",
+  "proDownloads.subtitle": "Local prompt masking directly inside AI chats with zero network egress.",
+  "proDownloads.heroBadge": "Manifest V3 • Zero-Egress • Chrome / Edge / Yandex Browser",
+  "proDownloads.heroDesc":
+    "Download the archive, extract it into a folder on your computer, and load it in Developer mode — your text and license key stay strictly on your device.",
+  "proDownloads.downloadBtn": "Download Extension Archive (.zip)",
+  "proDownloads.guideHeading": "Step-by-Step Browser Setup",
+  "proDownloads.chromeTitle": "Google Chrome",
+  "proDownloads.chromeBody":
+    "Extract promptveil-pro-extension.zip to a permanent folder. Open chrome://extensions, turn on Developer mode, click Load unpacked, and select the extracted folder.",
+  "proDownloads.edgeTitle": "Microsoft Edge",
+  "proDownloads.edgeBody":
+    "Open edge://extensions, enable Developer mode in the left sidebar, click Load unpacked, and select the extracted folder containing manifest.json.",
+  "proDownloads.yandexTitle": "Yandex Browser",
+  "proDownloads.yandexBody":
+    "Open browser://extensions, enable Developer mode, click Load unpacked extension, and select the extracted folder. Then paste your PV1... key into the extension popup.",
+  "proDownloads.note":
+    "The extension runs on ChatGPT, Claude, Gemini, DeepSeek, GigaChat, and Alisa strictly in active tab memory using the same PV1... key.",
   "doc.errorEmpty": "File is empty.",
   "doc.errorCorruptZip": "Corrupted document archive.",
   "doc.errorInvalidDocx": "Invalid .docx file (missing word/document.xml).",
@@ -469,9 +488,9 @@ export const EN = Object.freeze({
   "terms.item2Title": "2. User review responsibility",
   "terms.item2Body":
     "Pattern and heuristic detectors reduce accidental leakage risk but do not guarantee 100% coverage. You are responsible for reviewing masked text before pasting into external AI providers.",
-  "terms.item3Title": "3. Pro & Team Waitlist",
+  "terms.item3Title": "3. Pro Keys & Team Waitlist",
   "terms.item3Body":
-    "Waitlist forms operate locally without network upload and serve solely for launch updates. Submitting an inquiry is not a binding offer and creates no payment obligation.",
+    "Pro access is activated locally on your device via an offline Ed25519 key. Key-request and Business / Team waitlist forms operate locally without network upload and do not constitute a binding offer.",
   "terms.item4Title": "4. Owner contacts",
   "terms.item4Body":
     "Project author: {author}. Contact {email} or Telegram {telegram} with any questions.",

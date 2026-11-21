@@ -607,6 +607,11 @@ a.footer-contact-value:hover {
     padding: 1.05rem;
   }
 
+  #open-pro-downloads-btn,
+  [data-testid="pricing-card-pro"] .pricing-card-footer button {
+    min-height: 44px;
+  }
+
   .footer-links-row {
     gap: 0.45rem 0.75rem;
   }

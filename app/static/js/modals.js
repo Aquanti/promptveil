@@ -548,14 +548,53 @@ export function syncProUiState(state, lang = getLang()) {
   if (removeBtn) {
     removeBtn.disabled = !isPro;
   }
+
+  const openDownloadsBtn = getEl("open-pro-downloads-btn");
+  if (openDownloadsBtn) {
+    openDownloadsBtn.hidden = !isPro;
+    if (!isPro) {
+      openDownloadsBtn.setAttribute("aria-expanded", "false");
+    }
+  }
+  const licenseDownloadsBtn = getEl("pro-license-downloads-btn");
+  if (licenseDownloadsBtn) {
+    licenseDownloadsBtn.hidden = !isPro;
+  }
+  if (!isPro) {
+    const downloadsModal = getEl("modal-pro-downloads");
+    if (downloadsModal && !downloadsModal.hidden) {
+      downloadsModal.hidden = true;
+      closeDrawers(false, state);
+    }
+  }
 }
 
 export function openProLicenseModal(triggerEl, state, hideInlineAlert) {
+  const downloadsModal = getEl("modal-pro-downloads");
+  if (downloadsModal && !downloadsModal.hidden) {
+    downloadsModal.hidden = true;
+  }
+  getEl("open-pro-downloads-btn")?.setAttribute("aria-expanded", "false");
   ensureModalMounted("modal-pro-license");
   hideInlineAlert?.("pro-license-alert");
   syncProUiState(state, getLang());
   openDrawer("modal-pro-license", triggerEl, state);
   getEl("open-pro-license-btn")?.setAttribute("aria-expanded", "true");
+}
+
+export function openProDownloadsModal(triggerEl, state) {
+  if (!state?.proLicense?.isPro) {
+    return null;
+  }
+  const proModal = getEl("modal-pro-license");
+  if (proModal && !proModal.hidden) {
+    proModal.hidden = true;
+  }
+  getEl("open-pro-license-btn")?.setAttribute("aria-expanded", "false");
+  const modalEl = ensureModalMounted("modal-pro-downloads");
+  openDrawer("modal-pro-downloads", triggerEl, state);
+  getEl("open-pro-downloads-btn")?.setAttribute("aria-expanded", "true");
+  return modalEl;
 }
 
 export function bindModalAndThemeEvents({
@@ -572,7 +611,12 @@ export function bindModalAndThemeEvents({
     if (proModal && !proModal.hidden) {
       proModal.hidden = true;
     }
+    const downloadsModal = getEl("modal-pro-downloads");
+    if (downloadsModal && !downloadsModal.hidden) {
+      downloadsModal.hidden = true;
+    }
     getEl("open-pro-license-btn")?.setAttribute("aria-expanded", "false");
+    getEl("open-pro-downloads-btn")?.setAttribute("aria-expanded", "false");
     closeDrawers(true, state);
   };
 
@@ -598,6 +642,9 @@ export function bindModalAndThemeEvents({
   registerModalHydrator("modal-pro-license", () => {
     getEl("close-pro-license-btn")?.addEventListener("click", closeActiveDialog);
     getEl("close-pro-license-footer-btn")?.addEventListener("click", closeActiveDialog);
+    getEl("pro-license-downloads-btn")?.addEventListener("click", () => {
+      openProDownloadsModal(getEl("open-pro-downloads-btn") || getEl("open-pro-license-btn"), state);
+    });
     getEl("pro-license-get-key-btn")?.addEventListener("click", () => {
       const proModal = getEl("modal-pro-license");
       if (proModal) proModal.hidden = true;
@@ -638,8 +685,17 @@ export function bindModalAndThemeEvents({
     });
   });
 
+  registerModalHydrator("modal-pro-downloads", () => {
+    getEl("close-pro-downloads-btn")?.addEventListener("click", closeActiveDialog);
+    getEl("close-pro-downloads-footer-btn")?.addEventListener("click", closeActiveDialog);
+  });
+
   getEl("open-pro-license-btn")?.addEventListener("click", (event) => {
     openProLicenseModal(event.currentTarget, state, hideInlineAlert);
+  });
+
+  getEl("open-pro-downloads-btn")?.addEventListener("click", (event) => {
+    openProDownloadsModal(event.currentTarget, state);
   });
 
   getEl("theme-toggle-btn")?.addEventListener("click", () => {
@@ -699,7 +755,13 @@ export function bindModalAndThemeEvents({
 
   document.addEventListener("keydown", (event) => {
     const proModal = getEl("modal-pro-license");
-    const openDialogEl = proModal && !proModal.hidden ? proModal : getOpenDialogEl();
+    const downloadsModal = getEl("modal-pro-downloads");
+    const openDialogEl =
+      proModal && !proModal.hidden
+        ? proModal
+        : downloadsModal && !downloadsModal.hidden
+          ? downloadsModal
+          : getOpenDialogEl();
     handleDrawerKeydown(event, openDialogEl, closeActiveDialog);
   });
 

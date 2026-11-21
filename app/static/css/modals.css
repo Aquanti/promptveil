@@ -395,6 +395,71 @@ a.plan-fallback-value:hover {
   resize: vertical;
 }
 
+/* Pro Downloads & Extension Setup Modal */
+.pro-downloads-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.95rem 1rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--accent-safe-border);
+  background-color: var(--bg-surface-subtle);
+}
+
+.pro-downloads-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 0.24rem 0.7rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--accent-safe-border);
+  background-color: var(--accent-safe-bg);
+  color: var(--accent-safe-fg);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.pro-downloads-desc {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.48;
+  color: var(--text-secondary);
+}
+
+.pro-downloads-zip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  text-decoration: none;
+  text-align: center;
+}
+
+.pro-downloads-guide-heading {
+  margin: 0.15rem 0 0;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.pro-downloads-guides .policy-item-body {
+  overflow-wrap: anywhere;
+}
+
+.pro-downloads-note {
+  margin: 0;
+  padding: 0.72rem 0.9rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-subtle);
+  font-size: 0.79rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
 @media (max-width: 639px) {
   .modal-dialog {
     width: calc(100% - 1rem);
@@ -412,7 +477,10 @@ a.plan-fallback-value:hover {
   .plan-result-actions button,
   .plan-fallback-contacts .btn-copy-xs,
   .pro-license-form button,
-  #modal-pro-license .modal-footer button {
+  #modal-pro-license .modal-footer button,
+  #download-extension-zip-btn,
+  #modal-pro-downloads .modal-footer button,
+  #modal-pro-downloads button:not(.drawer-close) {
     min-height: 44px;
   }
 }
