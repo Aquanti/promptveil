@@ -1028,7 +1028,7 @@ def verify_russian_purity(page: Page) -> dict[str, Any]:
     # - "Счета (IBAN)" (app/static/js/i18n.js:155)
     # - "счётом IBAN" / "счетами IBAN" (app/static/js/presets.js:15,57 preset tooltips)
     raw_chrome = f"{snapshot['title']}\n{snapshot['chromeText']}"
-    cleaned_chrome = re.sub(r"\[[A-Z_]+_\d+\]", " ", raw_chrome)
+    cleaned_chrome = re.sub(r"\[[A-Z][A-Z0-9_]*_\d+\]", " ", raw_chrome)
     for localized_iban_phrase in ("Счета (IBAN)", "счётом IBAN", "счетами IBAN"):
         cleaned_chrome = cleaned_chrome.replace(localized_iban_phrase, " ")
 

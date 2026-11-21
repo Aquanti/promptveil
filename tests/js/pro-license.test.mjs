@@ -1,6 +1,6 @@
 import test, { afterEach, beforeEach, describe } from "node:test";
 import assert from "node:assert/strict";
-import { generateKeyPairSync } from "node:crypto";
+import { generateKeyPairSync, sign as cryptoSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import {
@@ -360,5 +360,75 @@ describe("PromptVeil M1 R2 Ed25519 Pro License Verifier", () => {
     assert.equal(proof.storage.storedTextBytes, 0);
     assert.equal(proof.storage.allowedPrefKeysPresent, 1);
     assert.equal(proof.allPassed, true);
+  });
+
+  test("verifyEd25519PureJs and verifyProLicenseToken reject identity & small-subgroup keys and invalid-schema/padded PV1 tokens", async () => {
+    // 1. Identity public key (y=1, sign=0) & order-2 public key (y=p-1, sign=0) & order-4 public key (y=0, sign=0)
+    const idPub = new Uint8Array(32);
+    idPub[0] = 0x01;
+    const order2Pub = new Uint8Array(32).fill(0xff);
+    order2Pub[0] = 0xec;
+    order2Pub[31] = 0x7f;
+    const order4Pub = new Uint8Array(32); // y = 0, sign = 0 (order 4)
+    const forgedSig = new Uint8Array(64);
+    forgedSig[0] = 0x01; // R = identity, S = 0
+
+    for (const msgText of ["m4-0", "m4-1", "m4-2", "m4-3"]) {
+      const msgBytes = new TextEncoder().encode(msgText);
+      assert.equal(verifyEd25519PureJs(msgBytes, forgedSig, idPub), false);
+      assert.equal(verifyEd25519PureJs(msgBytes, forgedSig, order2Pub), false);
+      assert.equal(verifyEd25519PureJs(msgBytes, forgedSig, order4Pub), false);
+    }
+
+    // Pure-JS fallback (crypto absent) parity for identity & small-subgroup PV1 tokens
+    Object.defineProperty(globalThis, "crypto", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+    const forgedPayload = Buffer.from(
+      JSON.stringify({
+        v: 1,
+        tier: "owner",
+        keyId: "FORGED-ID",
+        label: "Forged",
+        issuedAt: "2026-11-21T10:00:00.000Z",
+      })
+    ).toString("base64url");
+    const forgedSigB64U = Buffer.from(forgedSig).toString("base64url");
+    const forgedTok = `PV1.${forgedPayload}.${forgedSigB64U}`;
+    for (const badPub of [idPub, order2Pub, order4Pub]) {
+      const pubB64U = Buffer.from(badPub).toString("base64url");
+      const res = await verifyProLicenseToken(forgedTok, { publicKeyB64U: pubB64U });
+      assert.equal(res.valid, false);
+      assert.equal(res.isPro, false);
+    }
+
+    // 2. Signed-but-invalid-schema PV1 tokens & padded base64url
+    const signRawPayload = (payload) => {
+      const payloadB64U = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
+      const sig = cryptoSign(null, Buffer.from(`PV1.${payloadB64U}`, "utf8"), keyPairA.privateKey);
+      return `PV1.${payloadB64U}.${Buffer.from(sig).toString("base64url")}`;
+    };
+    const invalidPayloads = [
+      { v: 1, tier: "admin", keyId: "PV-ADM", label: "Admin", issuedAt: "2026-11-21T00:00:00Z" },
+      { v: 2, tier: "pro", keyId: "PV-V2", label: "V2", issuedAt: "2026-11-21T00:00:00Z" },
+      { v: 1, tier: "pro", keyId: "PV-EXP0", label: "Exp0", issuedAt: "2026-11-21T00:00:00Z", exp: 0 },
+      { v: 1, tier: "pro", keyId: "PV-BADEXP", label: "BadExp", issuedAt: "2026-11-21T00:00:00Z", exp: "not-a-date" },
+      { v: 1, tier: "pro", keyId: "   ", label: "BlankId", issuedAt: "2026-11-21T00:00:00Z" },
+    ];
+    for (const payload of invalidPayloads) {
+      const tok = signRawPayload(payload);
+      const res = await verifyProLicenseToken(tok, { publicKeyB64U: pubA });
+      assert.equal(res.valid, false);
+      assert.equal(res.isPro, false);
+    }
+    const validTok = signProToken(
+      { v: 1, tier: "pro", keyId: "PV-PAD", label: "Pad", issuedAt: "2026-11-21T00:00:00Z" },
+      keyPairA.privateKey
+    );
+    const paddedRes = await verifyProLicenseToken(`${validTok}=`, { publicKeyB64U: pubA });
+    assert.equal(paddedRes.valid, false);
+    assert.equal(paddedRes.reason, "encoding");
   });
 });

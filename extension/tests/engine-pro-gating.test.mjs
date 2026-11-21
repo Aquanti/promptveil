@@ -6,6 +6,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { createContentController } from "../src/content.js";
+import { findPromptBox, isElementVisible } from "../src/adapters.js";
 import { initPopupController } from "../src/popup.js";
 import {
   EXT_PRO_LICENSE_STORAGE_KEY,
@@ -662,4 +663,64 @@ test("popup controller enforces Free 5-rule cap, rejects tampered keys, and unlo
   );
 
   popup.destroy();
+});
+
+test("content controller flags digit-bearing unresolved tokens such as [IPV4_1] and [SHA256_1]", async () => {
+  const { local, onChanged } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+  const doc = createContentDoc();
+  const promptBox = doc.createElement("textarea", { id: "chat-input" });
+  promptBox.value = "Server ivan@acme.ru online";
+  doc.body.appendChild(promptBox);
+
+  const ctrl = await createContentController({
+    win: { getSelection: () => null },
+    doc,
+    hostname: "chat.deepseek.com",
+    clipboard: { writeText: async () => {}, readText: async () => "" },
+    storageArea: local,
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+  });
+
+  await ctrl.handleSanitize();
+  const replyNode = doc.createElement("div", { class: "ds-markdown" });
+  replyNode.textContent = "Reply referencing [IPV4_1] and [SHA256_1] only";
+  doc.body.appendChild(replyNode);
+
+  const rehRes = await ctrl.handleRehydrate();
+  assert.equal(rehRes.ok, true);
+  assert.deepEqual(rehRes.result.unresolvedTokens, ["[IPV4_1]", "[SHA256_1]"]);
+  ctrl.destroy();
+});
+
+test("adapters.isElementVisible rejects opacity:0 and hidden/aria-hidden/display:none ancestors", () => {
+  const styles = new WeakMap();
+  const doc = createContentDoc();
+  doc.defaultView.getComputedStyle = (node) =>
+    styles.get(node) || { display: "block", visibility: "visible", opacity: "1" };
+
+  const hiddenWrap = doc.createElement("div", { id: "hidden-wrap" });
+  hiddenWrap.hidden = true;
+  const hiddenTa = doc.createElement("textarea", { id: "prompt-textarea" });
+  hiddenWrap.appendChild(hiddenTa);
+  doc.body.appendChild(hiddenWrap);
+
+  const ariaHiddenWrap = doc.createElement("div", { "aria-hidden": "true" });
+  const ariaHiddenTa = doc.createElement("textarea", { id: "aria-hidden-ta" });
+  ariaHiddenWrap.appendChild(ariaHiddenTa);
+  doc.body.appendChild(ariaHiddenWrap);
+
+  const opacityZeroTa = doc.createElement("textarea", { id: "opacity-zero" });
+  styles.set(opacityZeroTa, { display: "block", visibility: "visible", opacity: "0" });
+  doc.body.appendChild(opacityZeroTa);
+
+  const visibleCe = doc.createElement("div", { id: "prompt-textarea", contenteditable: "true" });
+  doc.body.appendChild(visibleCe);
+
+  assert.equal(isElementVisible(hiddenTa), false);
+  assert.equal(isElementVisible(ariaHiddenTa), false);
+  assert.equal(isElementVisible(opacityZeroTa), false);
+  assert.equal(isElementVisible(visibleCe), true);
+  assert.equal(findPromptBox(doc, "chatgpt.com"), visibleCe);
 });

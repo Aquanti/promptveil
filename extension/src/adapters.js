@@ -186,22 +186,31 @@ export function isElementVisible(el, hostId = PROMPTVEIL_HOST_ID) {
   if (!el || isInsideHost(el, hostId)) {
     return false;
   }
-  if (el.hidden === true || el.getAttribute?.("aria-hidden") === "true") {
-    return false;
-  }
   if (el.disabled === true || el.readOnly === true) {
     return false;
   }
   const win = el.ownerDocument?.defaultView || globalThis.window;
-  if (win && typeof win.getComputedStyle === "function") {
-    try {
-      const style = win.getComputedStyle(el);
-      if (style && (style.display === "none" || style.visibility === "hidden")) {
-        return false;
-      }
-    } catch {
-      // Ignore computed style failures in minimal DOM environments.
+  let cur = el;
+  while (cur && cur.nodeType === 1) {
+    if (cur.hidden === true || cur.getAttribute?.("aria-hidden") === "true") {
+      return false;
     }
+    if (win && typeof win.getComputedStyle === "function") {
+      try {
+        const style = win.getComputedStyle(cur);
+        if (
+          style &&
+          (style.display === "none" ||
+            style.visibility === "hidden" ||
+            Number.parseFloat(style.opacity) === 0)
+        ) {
+          return false;
+        }
+      } catch {
+        // Ignore computed style failures in minimal DOM environments.
+      }
+    }
+    cur = cur.parentElement || cur.parentNode;
   }
   const rootRect = el.ownerDocument?.documentElement?.getBoundingClientRect?.();
   if (rootRect && (rootRect.width > 0 || rootRect.height > 0) && typeof el.getBoundingClientRect === "function") {

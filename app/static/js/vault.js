@@ -331,7 +331,7 @@ export class SessionVault {
 
     // Identify unresolved PromptVeil-shaped tokens directly in the LLM reply.
     const unresolvedSet = new Set();
-    const tokenShapeRegex = /\[[A-Z_]+_\d+\]/g;
+    const tokenShapeRegex = /\[[A-Z][A-Z0-9_]*_\d+\]/g;
     for (const m of reply.matchAll(tokenShapeRegex)) {
       if (!this.tokenToEntry.has(m[0])) {
         unresolvedSet.add(m[0]);

@@ -500,7 +500,7 @@ function isPlaceholderEnvValue(value) {
   ) {
     return true;
   }
-  if (/^\[[A-Z_]+_\d+\]$/.test(value)) {
+  if (/^\[[A-Z][A-Z0-9_]*_\d+\]$/.test(value)) {
     return true;
   }
   return false;
@@ -670,7 +670,7 @@ function isHighEntropySecret(token, { minLength = 20, minEntropy = 3.8 } = {}) {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token)) {
     return false;
   }
-  if (/^\[[A-Z_]+_\d+\]$/.test(token)) {
+  if (/^\[[A-Z][A-Z0-9_]*_\d+\]$/.test(token)) {
     return false;
   }
   if (/^v?\d+(?:\.\d+){2,}(?:-[A-Za-z0-9.]+)?$/i.test(token) || /^\d{4}[-_]\d{2}[-_]\d{2}/.test(token)) {
@@ -1515,7 +1515,18 @@ export function detectEntities(text, customRules = [], options = {}) {
   for (const m of text.matchAll(entropyRegex)) {
     const rawToken = m[1];
     const trimmed = rawToken.replace(/[.!?]+$/, "");
-    if (!trimmed || !isHighEntropySecret(trimmed, entropyOpts)) {
+    if (!trimmed) {
+      continue;
+    }
+    if (
+      m.index > 0 &&
+      text[m.index - 1] === "[" &&
+      text[m.index + trimmed.length] === "]" &&
+      /^[A-Z][A-Z0-9_]*_\d+$/.test(trimmed)
+    ) {
+      continue;
+    }
+    if (!isHighEntropySecret(trimmed, entropyOpts)) {
       continue;
     }
     // Ignore URL :port/path suffixes such as https://example.com:8443/v1/... or grpcs://host:9443/...

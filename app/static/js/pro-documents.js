@@ -962,6 +962,9 @@ export function parseXmlPureJs(xmlText) {
 
 export function parseXml(xmlText, { forcePureJs = false } = {}) {
   const clean = String(xmlText || "").replace(/^\uFEFF/, "");
+  if (/<!(?:DOCTYPE|ENTITY)\b/i.test(clean)) {
+    throw new DocumentParseError("XML_PARSE_ERROR", { reason: "dtd_disallowed" });
+  }
   if (!forcePureJs && typeof DOMParser === "function") {
     const doc = new DOMParser().parseFromString(clean, "application/xml");
     if (
@@ -1199,12 +1202,17 @@ function resolveXlsxSheets(entryLookup, decoder, options) {
       const id = getElementAttr(rel, "Id");
       const target = getElementAttr(rel, "Target");
       if (id && target) {
-        const normalized = target.startsWith("/")
-          ? target.slice(1).toLowerCase()
-          : target.startsWith("xl/")
-          ? target.toLowerCase()
-          : `xl/${target.replace(/^\.\//, "").toLowerCase()}`;
-        idToTarget.set(id, normalized);
+        const rawTarget = target.replace(/\\/g, "/").trim();
+        const parts = rawTarget.startsWith("/") || /^xl\//i.test(rawTarget) ? [] : ["xl"];
+        for (const seg of rawTarget.replace(/^\/+/, "").split("/")) {
+          if (!seg || seg === ".") continue;
+          if (seg === "..") {
+            if (parts.length > 0) parts.pop();
+          } else {
+            parts.push(seg);
+          }
+        }
+        idToTarget.set(id, parts.join("/").toLowerCase());
       }
     }
 
@@ -1375,6 +1383,7 @@ function parseToUnicodeCmap(cmapBytes) {
   const text = bytesToLatin1(cmapBytes);
   let codeBytes = 2;
   const csMatch = /begincodespacerange\s*([\s\S]*?)endcodespacerange/.exec(text);
+  const hasCodespace = Boolean(csMatch);
   if (csMatch) {
     const firstHex = /<([0-9a-fA-F]+)>/.exec(csMatch[1]);
     if (firstHex && firstHex[1].length <= 2) {
@@ -1382,6 +1391,8 @@ function parseToUnicodeCmap(cmapBytes) {
     }
   }
 
+  let sawShortSrc = false;
+  let sawLongSrc = false;
   const map = new Map();
 
   const bfCharRe = /beginbfchar\s*([\s\S]*?)endbfchar/g;
@@ -1392,7 +1403,12 @@ function parseToUnicodeCmap(cmapBytes) {
     while ((p = pairRe.exec(m[1])) !== null) {
       const code = Number.parseInt(p[1], 16);
       map.set(code, decodeUtf16BeHex(p[2]));
-      if (p[1].length > 2) codeBytes = 2;
+      if (p[1].length > 2) {
+        codeBytes = 2;
+        sawLongSrc = true;
+      } else {
+        sawShortSrc = true;
+      }
     }
   }
 
@@ -1404,7 +1420,12 @@ function parseToUnicodeCmap(cmapBytes) {
     while ((r = lineRe.exec(block)) !== null) {
       const start = Number.parseInt(r[1], 16);
       const end = Number.parseInt(r[2], 16);
-      if (r[1].length > 2) codeBytes = 2;
+      if (r[1].length > 2 || r[2].length > 2) {
+        codeBytes = 2;
+        sawLongSrc = true;
+      } else {
+        sawShortSrc = true;
+      }
       if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || end - start > 65536) {
         continue;
       }
@@ -1430,6 +1451,10 @@ function parseToUnicodeCmap(cmapBytes) {
         }
       }
     }
+  }
+
+  if (!hasCodespace) {
+    codeBytes = sawLongSrc ? 2 : sawShortSrc ? 1 : 2;
   }
 
   return { codeBytes, map };

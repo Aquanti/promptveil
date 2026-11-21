@@ -5,12 +5,15 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import zipfile
+import zlib
 from pathlib import Path
 
 import pytest
 from playwright.sync_api import Browser, Locator, Page
 
-from conftest import E2ESession, STATIC_APP_DIR, start_static_dir_server
+from conftest import E2ESession, EphemeralProKeys, STATIC_APP_DIR, start_static_dir_server
+from doc_fixtures import make_synthetic_docx
 from locators import PromptVeilUI
 from monitors import (
     ConsoleErrorMonitor,
@@ -2016,5 +2019,515 @@ def test_T5_32_stage_d_headers_template_modals_and_sw_update_banner(
             sw_ctx.close()
 
     raw_session.console.assert_no_errors()
+
+
+def test_T5_33_r1_launchers_whitespace_keyboard_enter_and_en_clipboard_error(
+    e2e_session: E2ESession,
+) -> None:
+    """R1 adversarial: whitespace-only input stays unready without copying; keyboard Enter on Gemini flushes on Step 2; EN clipboard alert."""
+    page = e2e_session.page
+    ui = e2e_session.ui
+
+    ui.get_prompt_input().fill("   \n\t  ")
+    ui.get_prompt_input().evaluate(
+        "el => el.dispatchEvent(new Event('input', { bubbles: true }))"
+    )
+    page.wait_for_timeout(180)
+    assert ui.is_ai_launchers_ready() is False
+
+    page.evaluate("async () => navigator.clipboard.writeText('SENTINEL_WS')")
+    page.context.route("https://gemini.google.com/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("gemini")
+        pop_info.value.close()
+        assert ui.read_clipboard_text() == "SENTINEL_WS"
+        assert not page.locator("[data-testid='status-banner']").is_visible()
+    finally:
+        page.context.unroute("https://gemini.google.com/**")
+
+    # Custom rule + debounced input + Step 2 + keyboard Enter on Gemini pill
+    ui.add_custom_rule("ProjectOrion")
+    ui.close_open_drawer()
+    ui.get_prompt_input().fill("Secret ProjectOrion lead r1.adv@example.com")
+    ui.switch_mode("rehydrate")
+    assert ui.is_ai_launchers_ready() is True
+
+    gemini_pill = ui.get_ai_launcher("gemini")
+    page.context.route("https://gemini.google.com/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            gemini_pill.focus()
+            page.keyboard.press("Enter")
+        pop_info.value.close()
+        copied = ui.read_clipboard_text() or ""
+        assert copied == "Secret [CUSTOM_1] lead [EMAIL_1]"
+        assert "ProjectOrion" not in copied and "r1.adv@example.com" not in copied
+    finally:
+        page.context.unroute("https://gemini.google.com/**")
+
+    # EN mode clipboard denied -> English role='alert' banner
+    ui.switch_language("en")
+    page.evaluate(
+        """() => {
+            Object.defineProperty(navigator, 'clipboard', {
+                configurable: true,
+                value: { writeText: () => Promise.reject(new Error('blocked')) },
+            });
+            document.execCommand = () => false;
+        }"""
+    )
+    page.context.route("https://gemini.google.com/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("gemini")
+        pop_info.value.close()
+        alert_el = page.locator("[data-testid='status-banner'][role='alert']")
+        alert_el.wait_for(state="visible", timeout=3000)
+        assert "Clipboard access restricted" in alert_el.inner_text()
+    finally:
+        page.context.unroute("https://gemini.google.com/**")
+
+    e2e_session.net.assert_zero_egress(["ProjectOrion", "r1.adv@example.com"])
+    e2e_session.console.assert_no_errors()
+
+
+def test_T5_34_r2_pro_license_schema_padding_identity_purejs_and_modal_a11y(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R2 adversarial: expired storage purge, pure-JS identity/small-subgroup key rejection, invalid-schema/padded PV1 tokens, wrapped key, and Pro modal focus trap."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    page.goto(f"{pro_raw_session.base_url}/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+
+    # 1. Expired validly-signed token pre-seeded in localStorage must purge on reload
+    expired_tok = ephemeral_pro_keys.issue_token(
+        tier="pro", key_id="PV-T5-EXP", exp="2020-01-01T00:00:00.000Z"
+    )
+    page.evaluate("t => localStorage.setItem('promptveil_pro_license_v1', t)", expired_tok)
+    page.reload(wait_until="networkidle")
+    assert ui.get_pro_badge_text() == "Free"
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    # 2. Pure-JS Ed25519 parity (pre-interactive): identity, order-2, and order-4 public keys with (R=identity, S=0) must be rejected
+    pure_check = page.evaluate(
+        """async () => {
+            const { verifyEd25519PureJs } = await import('/js/pro-license.js');
+            const idPub = new Uint8Array(32);
+            idPub[0] = 0x01;
+            const order2Pub = new Uint8Array(32).fill(0xff);
+            order2Pub[0] = 0xec;
+            order2Pub[31] = 0x7f;
+            const order4Pub = new Uint8Array(32);
+            const forgedSig = new Uint8Array(64);
+            forgedSig[0] = 0x01;
+            const msg = new TextEncoder().encode('m4-3');
+            return {
+                idAccepted: verifyEd25519PureJs(msg, forgedSig, idPub),
+                order2Accepted: verifyEd25519PureJs(msg, forgedSig, order2Pub),
+                order4Accepted: verifyEd25519PureJs(msg, forgedSig, order4Pub),
+            };
+        }"""
+    )
+    assert pure_check == {
+        "idAccepted": False,
+        "order2Accepted": False,
+        "order4Accepted": False,
+    }
+
+    pro_raw_session.net.start_interactive_phase()
+
+    # 3. Signed-but-invalid-schema tokens + padded base64url rejected cleanly
+    bad_schema_tokens = [
+        ephemeral_pro_keys.sign_raw_payload(
+            {"v": 1, "tier": "admin", "keyId": "PV-ADM", "label": "Admin", "issuedAt": "2026-11-21T00:00:00Z"}
+        ),
+        ephemeral_pro_keys.sign_raw_payload(
+            {"v": 2, "tier": "pro", "keyId": "PV-V2", "label": "V2", "issuedAt": "2026-11-21T00:00:00Z"}
+        ),
+        ephemeral_pro_keys.sign_raw_payload(
+            {"v": 1, "tier": "pro", "keyId": "PV-EXP0", "label": "Exp0", "issuedAt": "2026-11-21T00:00:00Z", "exp": 0}
+        ),
+        ephemeral_pro_keys.sign_raw_payload(
+            {"v": 1, "tier": "pro", "keyId": "   ", "label": "BlankId", "issuedAt": "2026-11-21T00:00:00Z"}
+        ),
+        ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-PAD") + "=",
+    ]
+    ui.open_pro_license_modal("header")
+    for tok in bad_schema_tokens:
+        ui.activate_pro_key(tok)
+        assert page.locator("#pro-license-alert").is_visible()
+        assert ui.get_pro_badge_text() == "Free"
+        assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    # 4. Whitespace/newline-wrapped valid key succeeds + modal focus trap & Escape restoration
+    wrapped_tok = "  \n  " + ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-T5-WRAP") + "\r\n  "
+    ui.activate_pro_key(wrapped_tok)
+    assert ui.get_pro_badge_text() == "Pro Активен"
+
+    pro_btn = page.locator("[data-testid='open-pro-license-btn']").first
+    assert pro_btn.get_attribute("aria-expanded") == "true"
+    page.keyboard.press("Shift+Tab")
+    assert page.evaluate("() => Boolean(document.activeElement?.closest('#modal-pro-license'))")
+    for _ in range(10):
+        page.keyboard.press("Tab")
+        assert page.evaluate("() => Boolean(document.activeElement?.closest('#modal-pro-license'))")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(120)
+    assert pro_btn.get_attribute("aria-expanded") == "false"
+    assert page.evaluate("() => document.activeElement?.id") == "open-pro-license-btn"
+
+    # 5. "Get a key" button transitions cleanly to #modal-plan-request and Escape closes backdrop
+    ui.open_pro_license_modal("header")
+    page.locator("[data-testid='pro-license-get-key-btn']").click()
+    page.wait_for_timeout(120)
+    assert not page.locator("#modal-pro-license").is_visible()
+    assert page.locator("#modal-plan-request").is_visible()
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(120)
+    assert not page.locator("#drawer-backdrop").is_visible()
+
+    pro_raw_session.net.assert_zero_egress([wrapped_tok.strip()])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T5_35_r3_pro_deactivation_batch_isolation_xlsx_rels_pdf_cmap_zip_bomb_and_dtd_xml(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R3 adversarial: Pro deactivation clears residual batchItems, 1-byte ToUnicode without codespacerange, ../xl/ XLSX rels, Billion Laughs XML, and corrupt FlateDecode."""
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-T5-R3"))
+    ui.close_active_modal()
+
+    # 1. Pro deactivation mid-batch must clear batchItems so keyboard clear resets vault & re-activation does not resurrect
+    batch_docx = make_synthetic_docx(
+        pro_e2e_session.io.uploads / "deact_secret.docx",
+        paragraphs=["Confidential deact.secret@example.com"],
+    )
+    ui.upload_files([batch_docx])
+    assert len(ui.get_batch_queue_items()) == 1
+
+    ui.open_pro_license_modal("header")
+    ui.remove_pro_key()
+    ui.close_active_modal()
+
+    inp = ui.get_prompt_input()
+    inp.fill("")
+    inp.evaluate("el => el.dispatchEvent(new Event('input', { bubbles: true }))")
+    page.wait_for_timeout(200)
+    out_after = ui.sanitize_text("Fresh free.only@example.org")
+    assert out_after.strip() == "Fresh [EMAIL_1]"
+    assert ui.rehydrate_text("[EMAIL_1]").strip() == "free.only@example.org"
+
+    ui.switch_mode("sanitize")
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-T5-R3-RE"))
+    ui.close_active_modal()
+    assert not page.locator("#batch-queue-panel").is_visible()
+    assert ui.get_batch_queue_items() == []
+
+    # 2. PDF with 1-byte ToUnicode CMap omitting begincodespacerange + indirect /Length + ' operator
+    cmap_1b = (
+        "/CIDInit /ProcSet findresource begin\n"
+        "begincmap\n"
+        "2 beginbfchar\n"
+        "<01> <0061>\n"
+        "<02> <0040>\n"
+        "endbfchar\n"
+        "1 beginbfrange\n"
+        "<10> <12> <0078>\n"
+        "endbfrange\n"
+        "endcmap\n"
+    ).encode("ascii")
+    cmap_comp = zlib.compress(cmap_1b)
+    stream_comp = zlib.compress(
+        b"BT\n/F1 12 Tf\n<0102101112> Tj\n(extra.pdf@example.com)'\nET\n"
+    )
+    pdf_1b = (
+        b"%PDF-1.4\n"
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
+        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n"
+        b"4 0 obj\n<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode 6 0 R >>\nendobj\n"
+        b"5 0 obj\n<< /Filter /FlateDecode /Length 7 0 R >>\nstream\n" + stream_comp + b"\nendstream\nendobj\n"
+        b"6 0 obj\n<< /Filter /FlateDecode /Length " + str(len(cmap_comp)).encode("ascii") + b" >>\nstream\n" + cmap_comp + b"\nendstream\nendobj\n"
+        b"7 0 obj\n" + str(len(stream_comp)).encode("ascii") + b"\nendobj\n%%EOF\n"
+    )
+    pdf_1b_path = pro_e2e_session.io.uploads / "cmap_1byte.pdf"
+    pdf_1b_path.write_bytes(pdf_1b)
+    ui.upload_files([pdf_1b_path])
+    raw_pdf = ui.get_prompt_input().input_value()
+    assert "a@xyz" in raw_pdf
+    assert "extra.pdf@example.com" in raw_pdf
+    assert "[EMAIL_1]" in ui.get_sanitize_output_text()
+
+    # 3. XLSX with custom worksheet filename, Target="../xl/worksheets/custom.xml", and missing sharedStrings.xml
+    xlsx_custom = pro_e2e_session.io.uploads / "custom_rels.xlsx"
+    with zipfile.ZipFile(xlsx_custom, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "xl/workbook.xml",
+            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            '<sheets><sheet name="Custom" sheetId="1" r:id="rId1"/></sheets></workbook>',
+        )
+        zf.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Target="../xl/worksheets/custom.xml"/></Relationships>',
+        )
+        zf.writestr(
+            "xl/worksheets/custom.xml",
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            '<sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>rels.ok@example.com</t></is></c></row></sheetData></worksheet>',
+        )
+    ui.upload_files([xlsx_custom])
+    assert "rels.ok@example.com" in ui.get_prompt_input().input_value()
+    assert "[EMAIL_1]" in ui.get_sanitize_output_text()
+
+    # 4. Billion Laughs XML inside .docx is rejected safely by browser DOMParser with zero hang/crash
+    bl_docx = pro_e2e_session.io.uploads / "billion_laughs.docx"
+    bl_xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<!DOCTYPE lolz ['
+        ' <!ENTITY lol "lol">'
+        ' <!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">'
+        ' <!ENTITY lol2 "&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;&lol1;">'
+        ' <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">'
+        ' <!ENTITY lol4 "&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;">'
+        ' <!ENTITY lol5 "&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;&lol4;">'
+        ']>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:body><w:p><w:r><w:t>&lol5;</w:t></w:r></w:p></w:body></w:document>'
+    )
+    with zipfile.ZipFile(bl_docx, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", "<Types/>")
+        zf.writestr("word/document.xml", bl_xml)
+    ui.upload_files([bl_docx])
+    assert ui.get_visible_error_notice()
+
+    # 5. Corrupted FlateDecode PDF is rejected cleanly
+    corrupt_flate_pdf = pro_e2e_session.io.uploads / "bad_flate.pdf"
+    corrupt_flate_pdf.write_bytes(
+        b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n"
+        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>\nendobj\n"
+        b"4 0 obj\n<< /Filter /FlateDecode /Length 8 >>\nstream\nBADFLATE\nendstream\nendobj\n%%EOF\n"
+    )
+    ui.upload_files([corrupt_flate_pdf])
+    assert ui.get_visible_error_notice()
+
+    pro_e2e_session.net.assert_zero_egress(
+        ["deact.secret@example.com", "extra.pdf@example.com", "rels.ok@example.com"]
+    )
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_T5_36_token_shape_with_digits_ipv4_rehydrate_env_and_strict_entropy(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """Candidate #1 (F-01): Digit-bearing prefixes ([IPV4_1], [SHA256_1]) and long bracketed tokens in normal/strict mode."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+
+    page.goto(f"{pro_raw_session.base_url}/en/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    # 1. Digit-bearing token [IPV4_1] in ENV assignment must NOT be double-masked as [ENV_SECRET_1],
+    # and long bracketed tokens [POSSIBLE_CARD_1234567] / [IPV4_ADDRESS_0123456789] must NOT re-mask as [SECRET_1].
+    probe_text = (
+        "AUTH_HOST=[IPV4_1]\n"
+        "KEEP_LONG=[POSSIBLE_CARD_1234567]\n"
+        "STRICT_TOK=[IPV4_ADDRESS_0123456789]"
+    )
+    ui.sanitize_text(probe_text)
+    normal_out = ui.get_sanitize_output_text()
+    assert "[IPV4_1]" in normal_out
+    assert "[ENV_SECRET_" not in normal_out
+    assert "[POSSIBLE_CARD_1234567]" in normal_out
+    assert "[SECRET_" not in normal_out
+
+    ui.set_sensitivity_mode("strict")
+    strict_out = ui.get_sanitize_output_text()
+    assert "[IPV4_ADDRESS_0123456789]" in strict_out
+    assert "[SECRET_" not in strict_out
+
+    # 2. Rehydrating a reply containing unresolved [IPV4_1] and [SHA256_1] must surface unresolved warning instead of silent no-op.
+    ui.switch_mode("rehydrate")
+    ui.rehydrate_text("Host [IPV4_1] digest [SHA256_1] unreachable")
+    unresolved = ui.get_unresolved_tokens()
+    assert "[IPV4_1]" in unresolved
+    assert "[SHA256_1]" in unresolved
+
+    # 3. Verify Pro code_security_review template uses canonical [IP_1] and surfaces unresolved tokens on rehydrate.
+    ui.switch_mode("sanitize")
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-T5-36", label="T5 36"))
+    ui.close_active_modal()
+    ui.click_prompt_template("code_security_review")
+    tpl_out = ui.get_sanitize_output_text()
+    assert "[IP_1]" in tpl_out
+    ui.switch_mode("rehydrate")
+    ui.rehydrate_text(tpl_out)
+    assert "[IP_1]" in ui.get_unresolved_tokens()
+
+    pro_raw_session.net.assert_zero_egress()
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T5_37_rulebook_pro_pack_alert_and_banner_retranslate_on_lang_toggle(
+    e2e_session: E2ESession,
+) -> None:
+    """F-02: Rulebook Pro pack upgrade banner and inline alert must retranslate pack title on RU <-> EN toggle."""
+    page = e2e_session.page
+    ui = e2e_session.ui
+    e2e_session.net.start_interactive_phase()
+
+    ui.apply_industry_word_pack("banking_fintech")
+    drawer = page.locator("#drawer-rulebook")
+    banner = drawer.locator("#rulebook-pro-upgrade-banner, [data-testid='rulebook-pro-upgrade-banner']").first
+    alert = drawer.locator("#rulebook-alert, [data-testid='rulebook-alert']").first
+    assert banner.is_visible()
+    assert alert.is_visible()
+    assert "Банки и финтех" in banner.inner_text()
+    assert "Банки и финтех" in alert.inner_text()
+
+    page.evaluate("() => document.getElementById('lang-en-btn')?.click()")
+    page.wait_for_function("() => document.documentElement.lang === 'en'", timeout=3000)
+    en_banner_text = banner.inner_text()
+    en_alert_text = alert.inner_text()
+    assert "Banking & FinTech" in en_banner_text
+    assert "Banking & FinTech" in en_alert_text
+    assert "Банки и финтех" not in en_banner_text
+    assert "Банки и финтех" not in en_alert_text
+    ui.close_open_drawer()
+
+    e2e_session.net.assert_zero_egress()
+    e2e_session.console.assert_no_errors()
+
+
+def test_T5_38_profiles_json_prototype_pollution_xss_and_tampered_free_storage(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R5 Adversarial: Prototype pollution & XSS payloads in rule JSON import / profile names + Free storage tamper."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    dialogs: list[str] = []
+    page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+
+    page.goto(f"{pro_raw_session.base_url}/en/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-T5-38", label="T5 38"))
+    ui.close_active_modal()
+
+    xss_name = "<img src=x onerror=alert(1)>"
+    ui.create_rulebook_profile(xss_name)
+    assert xss_name in ui.get_rulebook_profile_options()
+
+    evil_json_path = pro_raw_session.io.uploads / "evil_rules.json"
+    evil_json_path.write_text(
+        json.dumps(
+            {
+                "__proto__": {"pvPolluted": True},
+                "rules": [
+                    {
+                        "term": "AlphaSecretTerm",
+                        "category": "<script>alert(1)</script>",
+                        "caseSensitive": False,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    drawer = ui.open_rulebook_drawer()
+    assert drawer.locator("input[type='file']").count() == 1
+    drawer.locator("#import-rules-input").set_input_files(str(evil_json_path))
+    page.wait_for_timeout(150)
+
+    assert page.evaluate("() => ({}).pvPolluted === undefined") is True
+    assert dialogs == []
+    ui.close_open_drawer()
+
+    ui.sanitize_text("Contact AlphaSecretTerm now")
+    assert "AlphaSecretTerm" not in ui.get_sanitize_output_text()
+    pro_raw_session.net.assert_zero_egress(["AlphaSecretTerm"])
+
+    # Remove Pro key + tamper localStorage with forged token; reload must enforce Free default.
+    ui.open_pro_license_modal("header")
+    ui.remove_pro_key()
+    ui.close_active_modal()
+    page.evaluate("() => localStorage.setItem('promptveil_pro_license_v1', 'PV1.forged.sig')")
+    page.reload(wait_until="networkidle")
+    assert ui.get_pro_badge_text().lower() in ("free", "бесплатно")
+    drawer = ui.open_rulebook_drawer()
+    opts = ui.get_rulebook_profile_options()
+    assert len(opts) == 1
+    assert xss_name not in opts
+    assert drawer.locator("#profiles-tier-badge").is_visible()
+    drawer.locator("#profile-name-input").fill("FreeBlocked")
+    drawer.locator("#profile-create-btn").click()
+    page.wait_for_timeout(120)
+    assert drawer.locator("#rulebook-pro-upgrade-banner").is_visible()
+    assert len(ui.get_rulebook_profile_options()) == 1
+    assert dialogs == []
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T5_39_extension_zip_headers_download_isolation_and_privacy_proof_after_pro(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+    request: pytest.FixtureRequest,
+) -> None:
+    """R4 + R6: Extension .zip MIME/Cache-Control/CORP headers, Free gating, CRC32 integrity, and Privacy Proof allowlist."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    is_static_only = bool(request.config.getoption("--static-only"))
+
+    status, headers, _ = fetch_http_response(
+        f"{pro_raw_session.base_url}/downloads/promptveil-pro-extension.zip"
+    )
+    assert status == 200
+    assert headers.get("content-type", "").split(";")[0].strip().lower() == "application/zip"
+    if not is_static_only:
+        assert "max-age=300" in headers.get("cache-control", "").lower()
+        assert headers.get("x-content-type-options", "").lower() == "nosniff"
+        assert headers.get("cross-origin-resource-policy", "").lower() == "same-origin"
+
+    page.goto(f"{pro_raw_session.base_url}/en/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    # Free mode must hide #open-pro-downloads-btn
+    assert not page.locator("#open-pro-downloads-btn").is_visible()
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-T5-39", label="T5 39"))
+    ui.close_active_modal()
+    zip_path = ui.download_extension_zip(pro_raw_session.io.downloads)
+    assert zip_path.exists() and zip_path.stat().st_size > 1000
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        assert zf.testzip() is None
+        names = zf.namelist()
+        assert names == sorted(names)
+        assert not any(n.startswith(("src/", "tests/")) for n in names)
+
+    ui.create_rulebook_profile("ProofCheckProfile")
+    ui.close_open_drawer()
+    proof_modal = ui.open_privacy_proof_modal("header")
+    proof_text = proof_modal.inner_text()
+    assert "CSP violations in app document: 0" in proof_text
+    assert "unknown keys: 0" in proof_text
+    assert "0 bytes" in proof_text
+    assert "Verified: 0 retention and 0 text egress" in proof_text
+
+    pro_raw_session.net.assert_zero_egress()
+    pro_raw_session.console.assert_no_errors()
 
 

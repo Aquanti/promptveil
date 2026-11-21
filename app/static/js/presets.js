@@ -420,11 +420,11 @@ export const PROMPT_TEMPLATES = Object.freeze([
       en: "Anonymized contract audit prompt covering liability caps, payment terms, and termination",
     }),
     textByLang: Object.freeze({
-      ru: `Проверь проект договора между [ORG_1] и [ORG_2] (контакт [FIO_1], реквизит [RU_INN_1], счёт [RU_ACCOUNT_1]).
+      ru: `Проверь проект договора между [ORG_1] и [ORG_2] (контакт [FIO_1], реквизит [INN_1], счёт [BANK_ACC_1]).
 1. Выяви односторонние штрафы, скрытые неустойки и условия досрочного расторжения.
 2. Проверь лимит ответственности сторон, порядок приёмки и сроки оплаты.
 3. Предложи сбалансированные формулировки для защиты интересов заказчика.`,
-      en: `Review the draft services agreement between [ORG_1] and [ORG_2] (contact [PERSON_1], account [IBAN_1]).
+      en: `Review the draft services agreement between [ORG_1] and [ORG_2] (contact [FIO_1], account [IBAN_1]).
 1. Flag uncapped liability, asymmetric indemnities, and auto-renewal or termination traps.
 2. Summarize payment terms, acceptance milestones, and SLA remedies.
 3. Propose balanced redlines protecting the buyer.`,
@@ -464,11 +464,11 @@ export const PROMPT_TEMPLATES = Object.freeze([
       en: "Anonymized DevSecOps audit for auth bypasses, secret handling, and injection vectors",
     }),
     textByLang: Object.freeze({
-      ru: `Проведи аудит безопасности кода и конфигурации для узла [IPV4_1] (ключ [API_KEY_1], параметр [ENV_SECRET_1]).
+      ru: `Проведи аудит безопасности кода и конфигурации для узла [IP_1] (ключ [API_KEY_1], параметр [ENV_SECRET_1]).
 1. Проверь риск обхода авторизации, инъекций и небезопасной обработки входных данных.
 2. Оцени изоляцию секретов, принцип минимальных привилегий и заголовки безопасности.
 3. Составь приоритизированный список исправлений с кратким обоснованием.`,
-      en: `Perform a security code and configuration review for host [IPV4_1] (credential [API_KEY_1], secret [ENV_SECRET_1]).
+      en: `Perform a security code and configuration review for host [IP_1] (credential [API_KEY_1], secret [ENV_SECRET_1]).
 1. Check for authentication bypasses, injection vectors, SSRF, and unsafe deserialization.
 2. Audit secret isolation, least-privilege IAM permissions, and HTTP security headers.
 3. Provide prioritized remediation steps with concise rationale.`,

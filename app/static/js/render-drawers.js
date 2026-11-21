@@ -4,6 +4,7 @@
 
 import { clearEl, createEl, getEl, getVisibleFocusableElements } from "./dom.js";
 import { getCustomRuleTagLabel, t } from "./i18n.js";
+import { getLocalizedWordPack } from "./presets.js";
 import { DEFAULT_PROFILE_ID } from "./storage.js";
 
 export function renderRulebookProfiles(
@@ -55,7 +56,11 @@ export function renderRulebookProfiles(
       upgradeBannerEl.hidden = true;
     } else if (!upgradeBannerEl.hidden && upgradeTextEl) {
       const reasonKey = upgradeBannerEl.getAttribute("data-upgrade-key") || "rulebook.profilesProRequired";
-      const reasonTitle = upgradeBannerEl.getAttribute("data-upgrade-title") || "";
+      const packKey = upgradeBannerEl.getAttribute("data-upgrade-pack-key") || "";
+      const reasonTitle =
+        (packKey ? getLocalizedWordPack(packKey, lang)?.title : "") ||
+        upgradeBannerEl.getAttribute("data-upgrade-title") ||
+        "";
       upgradeTextEl.textContent = t(reasonKey, reasonTitle ? { title: reasonTitle } : {}, lang);
     }
   }
@@ -245,6 +250,8 @@ export const DIALOG_IDS = Object.freeze([
   "modal-plan-request",
   "modal-privacy-policy",
   "modal-terms",
+  "modal-pro-license",
+  "modal-pro-downloads",
 ]);
 
 export function getOpenDialogEl() {
@@ -263,11 +270,15 @@ export function closeDrawers(restoreFocus, state) {
   const openAuditBtn = getEl("open-audit-btn");
   const openProofBtn = getEl("open-proof-btn");
   const footerProofBtn = getEl("footer-open-proof-btn");
+  const openProLicenseBtn = getEl("open-pro-license-btn");
+  const openProDownloadsBtn = getEl("open-pro-downloads-btn");
 
   if (openRuleBtn) openRuleBtn.setAttribute("aria-expanded", "false");
   if (openAuditBtn) openAuditBtn.setAttribute("aria-expanded", "false");
   if (openProofBtn) openProofBtn.setAttribute("aria-expanded", "false");
   if (footerProofBtn) footerProofBtn.setAttribute("aria-expanded", "false");
+  if (openProLicenseBtn) openProLicenseBtn.setAttribute("aria-expanded", "false");
+  if (openProDownloadsBtn) openProDownloadsBtn.setAttribute("aria-expanded", "false");
   if (backdrop) backdrop.hidden = true;
   for (const id of DIALOG_IDS) {
     const dlg = getEl(id);

@@ -577,6 +577,7 @@ describe("PromptVeil M2 Security Hygiene & Batch Vault/UI Integration", () => {
         this.textContent = nodes.map((n) => n.textContent || "").join("");
       },
       focus() {},
+      addEventListener() {},
       classList: {
         toggle(cls, force) {
           if (force) classes.add(cls);
@@ -898,5 +899,196 @@ describe("PromptVeil M2 Security Hygiene & Batch Vault/UI Integration", () => {
     assert.equal(listEl.children.length, 1);
     const previewNode = listEl.children[0].children[1];
     assert.equal(previewNode.getAttribute("data-testid"), "batch-queue-preview");
+  });
+
+  test("extractPdfText infers 1-byte codeBytes when ToUnicode CMap omits begincodespacerange", async () => {
+    const cmapText = [
+      "/CIDInit /ProcSet findresource begin",
+      "begincmap",
+      "2 beginbfchar",
+      "<41> <0410>",
+      "<42> <0411>",
+      "endbfchar",
+      "1 beginbfrange",
+      "<10> <12> <0031>",
+      "endbfrange",
+      "endcmap",
+    ].join("\n");
+    const pdf = buildPdfFromObjects([
+      [1, "<< /Type /Catalog /Pages 2 0 R >>"],
+      [2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>"],
+      [3, "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"],
+      [4, "<< /Type /Font /Subtype /Type0 /Encoding /Identity-H /ToUnicode 6 0 R >>"],
+      [5, makePdfStreamObj("BT\n/F1 12 Tf\n<4142101112> Tj\nET\n", { compress: true })],
+      [6, makePdfStreamObj(cmapText, { compress: true })],
+    ]);
+    const res = await extractPdfText(pdf);
+    assert.equal(res.text, "АБ123");
+  });
+
+  test("extractXlsxText resolves ../xl/ and backslash workbook.xml.rels targets without sharedStrings.xml", async () => {
+    for (const relTarget of ["../xl/worksheets/custom.xml", "worksheets\\custom.xml"]) {
+      const xlsx = buildSyntheticZip([
+        {
+          name: "xl/workbook.xml",
+          data: '<workbook><sheets><sheet name="Custom" sheetId="1" r:id="rId1"/></sheets></workbook>',
+        },
+        {
+          name: "xl/_rels/workbook.xml.rels",
+          data: `<Relationships><Relationship Id="rId1" Target="${relTarget}"/></Relationships>`,
+        },
+        {
+          name: "xl/worksheets/custom.xml",
+          data: '<worksheet><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>ok@example.com</t></is></c></row></sheetData></worksheet>',
+        },
+      ]);
+      const res = await extractXlsxText(xlsx);
+      assert.equal(res.text, "ok@example.com");
+    }
+  });
+
+  test("readZipEntries rejects lying-header ZIP bomb in both forcePureJs=true and forcePureJs=false", async () => {
+    const encoder = new TextEncoder();
+    const bigPayload = encoder.encode("A".repeat(4096));
+    const compData = new Uint8Array(zlib.deflateRawSync(bigPayload));
+    const nameBytes = encoder.encode("bomb.txt");
+    const crc = crc32(bigPayload);
+
+    const lfh = new Uint8Array(30 + nameBytes.length);
+    const lv = new DataView(lfh.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(8, 8, true);
+    lv.setUint32(14, crc, true);
+    lv.setUint32(18, compData.length, true);
+    lv.setUint32(22, 10, true); // Lying header claims 10 bytes
+    lv.setUint16(26, nameBytes.length, true);
+    lfh.set(nameBytes, 30);
+
+    const cdh = new Uint8Array(46 + nameBytes.length);
+    const cv = new DataView(cdh.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(10, 8, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, compData.length, true);
+    cv.setUint32(24, 10, true); // Lying CD claims 10 bytes
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint32(42, 0, true);
+    cdh.set(nameBytes, 46);
+
+    const cdOffset = lfh.length + compData.length;
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, 1, true);
+    ev.setUint16(10, 1, true);
+    ev.setUint32(12, cdh.length, true);
+    ev.setUint32(16, cdOffset, true);
+
+    const bombZip = new Uint8Array(cdOffset + cdh.length + 22);
+    bombZip.set(lfh, 0);
+    bombZip.set(compData, lfh.length);
+    bombZip.set(cdh, cdOffset);
+    bombZip.set(eocd, cdOffset + cdh.length);
+
+    for (const forcePureJs of [true, false]) {
+      await assert.rejects(
+        () => readZipEntries(bombZip, { maxOutputBytes: 1024, forcePureJs }),
+        (err) => err instanceof DocumentParseError && err.code === "ZIP_BOMB"
+      );
+    }
+  });
+
+  test("parseXml rejects DTD/ENTITY (Billion Laughs) declarations", async () => {
+    const blXml =
+      '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<!DOCTYPE lolz [ <!ENTITY lol "lol"> ]>' +
+      "<w:document><w:body><w:p><w:r><w:t>&lol;</w:t></w:r></w:p></w:body></w:document>";
+    const blDocx = buildSyntheticZip([
+      { name: "[Content_Types].xml", data: "<Types/>" },
+      { name: "word/document.xml", data: blXml },
+    ]);
+    await assert.rejects(
+      () => extractDocxText(blDocx, { forcePureJs: true }),
+      (err) => err instanceof DocumentParseError && err.code === "XML_PARSE_ERROR"
+    );
+  });
+
+  test("Pro deactivation MutationObserver clears state.batchItems so vault resets on empty input and does not resurrect", () => {
+    const prevMO = globalThis.MutationObserver;
+    let observerCb = null;
+    globalThis.MutationObserver = class {
+      constructor(cb) {
+        observerCb = cb;
+      }
+      observe() {}
+    };
+    const proBtn = makeEl("open-pro-license-btn");
+    proBtn.setAttribute("data-pro-state", "pro");
+    elements.set("open-pro-license-btn", proBtn);
+
+    let isPro = true;
+    const state = {
+      rawText: "",
+      llmReply: "",
+      activePresetId: "",
+      activeTemplateId: "",
+      previewTemplateId: "",
+      lastSanitizeResult: null,
+      lastSanitizedInput: "",
+      lastRehydrateResult: null,
+      rules: [],
+      auditLog: [],
+      detectUuid: false,
+      sensitivity: "normal",
+      vault: new SessionVault(),
+      batchItems: [],
+    };
+    try {
+      const pipeline = createPipelineController({
+        state,
+        getFileController: () => ({ cancelPendingFileRead() {} }),
+        refreshWorkbenchUi: () => {
+          renderBatchQueuePanel({}, { batchItems: state.batchItems, isPro, lang: "ru" });
+        },
+        refreshDrawersUi: () => {},
+        renderPrivacyProofModal: () => {},
+      });
+      pipeline.bindBatchEvents({ isProActive: () => isPro });
+      pipeline.loadBatchFiles([
+        {
+          name: "secret.docx",
+          status: "ok",
+          text: "Confidential batch.secret@example.com",
+          isScannedPdf: false,
+        },
+      ]);
+      assert.equal(state.batchItems.length, 1);
+      assert.equal(state.vault.tokenToEntry.size, 1);
+
+      // Deactivate Pro & clear input
+      isPro = false;
+      state.rawText = "";
+      proBtn.setAttribute("data-pro-state", "free");
+      observerCb([{ oldValue: "pro" }]);
+
+      assert.equal(state.batchItems.length, 0);
+      assert.equal(state.vault.tokenToEntry.size, 0);
+
+      state.rawText = "Free user free.person@example.org";
+      const freeOut = pipeline.runSanitizePipeline(false);
+      assert.equal(freeOut.sanitizedText, "Free user [EMAIL_1]");
+
+      // Re-activate Pro must not resurrect old batchItems
+      isPro = true;
+      proBtn.setAttribute("data-pro-state", "pro");
+      observerCb([{ oldValue: "free" }]);
+      assert.equal(state.batchItems.length, 0);
+      assert.equal(elements.get("batch-queue-panel").hidden, true);
+    } finally {
+      globalThis.MutationObserver = prevMO;
+    }
   });
 });

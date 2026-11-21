@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 
 import { ensureDictionary, setLang } from "../../app/static/js/i18n.js";
-import { resetNotifications } from "../../app/static/js/notifications.js";
+import { detectEntities } from "../../app/static/js/detector.js";
+import { refreshBannersAndAlerts, resetNotifications } from "../../app/static/js/notifications.js";
 import { createPipelineController } from "../../app/static/js/pipeline.js";
 import {
   INDUSTRY_WORD_PACKS,
@@ -16,7 +17,7 @@ import {
 } from "../../app/static/js/presets.js";
 import { runZeroRetentionSelfTest } from "../../app/static/js/privacy-proof.js";
 import { activateProLicense, loadActiveProLicense } from "../../app/static/js/pro-license.js";
-import { renderRulebookProfiles } from "../../app/static/js/render-drawers.js";
+import { DIALOG_IDS, renderRulebookProfiles } from "../../app/static/js/render-drawers.js";
 import { renderPromptTemplatesBar } from "../../app/static/js/render-workbench.js";
 import {
   DEFAULT_PROFILE_ID,
@@ -562,5 +563,88 @@ describe("PromptVeil M3 Multi-Project Profiles, Pro Word Packs & Prompt Template
     assert.equal(proof.storage.unknownStorageKeys, 0);
     assert.equal(proof.storage.storedTextBytes, 0);
     assert.equal(proof.allPassed, true);
+  });
+
+  test("F-01/F-02/F-04/F-05: digit-bearing tokens, dynamic pack alert retranslation, aligned PROMPT_TEMPLATES, and DIALOG_IDS", () => {
+    // F-01: SessionVault.rehydrate & detectEntities handle digit-bearing prefixes and long bracketed tokens
+    const vault = new SessionVault();
+    const reh = vault.rehydrate("Check [IPV4_1], [SHA256_1], and [EMAIL_1]");
+    assert.deepEqual(reh.unresolvedTokens, ["[IPV4_1]", "[SHA256_1]", "[EMAIL_1]"]);
+
+    const envProbe = detectEntities("AUTH_HOST=[IPV4_1]\nAPI_TOKEN=[API_KEY_1]\nPORT=8080", [], {
+      sensitivityMode: "normal",
+    });
+    assert.equal(envProbe.some((e) => e.category === "ENV_SECRET"), false);
+
+    const longNorm = detectEntities("Token [POSSIBLE_CARD_1234567] here", [], {
+      sensitivityMode: "normal",
+    });
+    assert.equal(longNorm.length, 0);
+
+    const longStrict = detectEntities(
+      "Check [IPV4_ADDRESS_0123456789] and [EMAIL_ADDRESS_0123456789]",
+      [],
+      { sensitivityMode: "strict" }
+    );
+    assert.equal(longStrict.length, 0);
+
+    // F-04: PROMPT_TEMPLATES use canonical detector prefixes
+    assert.match(getLocalizedPromptTemplate("code_security_review", "ru").text, /\[IP_1\]/);
+    assert.match(getLocalizedPromptTemplate("code_security_review", "en").text, /\[IP_1\]/);
+    assert.match(getLocalizedPromptTemplate("contract_review", "ru").text, /\[INN_1\].*\[BANK_ACC_1\]/);
+    assert.match(getLocalizedPromptTemplate("contract_review", "en").text, /\[FIO_1\]/);
+
+    // F-05: DIALOG_IDS includes modal-pro-license & modal-pro-downloads
+    assert.equal(DIALOG_IDS.includes("modal-pro-license"), true);
+    assert.equal(DIALOG_IDS.includes("modal-pro-downloads"), true);
+
+    // F-02: Rulebook pack upgrade banner & inline alert retranslate dynamically on RU -> EN switch
+    const state = {
+      rawText: "",
+      llmReply: "",
+      activePresetId: "",
+      activeTemplateId: "",
+      previewTemplateId: "",
+      lastSanitizeResult: null,
+      lastSanitizedInput: "",
+      lastRehydrateResult: null,
+      rules: [],
+      profilesStore: loadProfilesStore("ru"),
+      proLicense: { valid: false, isPro: false, tier: "free" },
+      auditLog: [],
+      detectUuid: false,
+      sensitivity: "normal",
+      batchItems: [],
+      vault: new SessionVault(),
+    };
+    const pipeline = createPipelineController({
+      state,
+      getFileController: () => ({ cancelPendingFileRead() {} }),
+      refreshWorkbenchUi: () => {},
+      refreshDrawersUi: () => {},
+      renderPrivacyProofModal: () => {},
+    });
+
+    setLang("ru");
+    pipeline.applyIndustryWordPack("banking_fintech");
+    assert.match(elements.get("rulebook-alert").textContent, /Банки и финтех/);
+    assert.match(elements.get("rulebook-pro-upgrade-text").textContent, /Банки и финтех/);
+
+    setLang("en");
+    refreshBannersAndAlerts("en");
+    renderRulebookProfiles(
+      {
+        selectEl: elements.get("profile-select"),
+        deleteBtnEl: elements.get("profile-delete-btn"),
+        tierBadgeEl: elements.get("profiles-tier-badge"),
+        upgradeBannerEl: elements.get("rulebook-pro-upgrade-banner"),
+        upgradeTextEl: elements.get("rulebook-pro-upgrade-text"),
+      },
+      { profiles: state.profilesStore.profiles, activeProfileId: state.profilesStore.activeProfileId, isPro: false, lang: "en" }
+    );
+    assert.match(elements.get("rulebook-alert").textContent, /Banking & FinTech/);
+    assert.equal(elements.get("rulebook-alert").textContent.includes("Банки и финтех"), false);
+    assert.match(elements.get("rulebook-pro-upgrade-text").textContent, /Banking & FinTech/);
+    assert.equal(elements.get("rulebook-pro-upgrade-text").textContent.includes("Банки и финтех"), false);
   });
 });

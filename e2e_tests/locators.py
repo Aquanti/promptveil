@@ -875,7 +875,7 @@ class PromptVeilUI:
             try:
                 if item.is_visible():
                     text = str(item.evaluate("el => el.textContent || ''"))
-                    for tok in re.findall(r"\[[A-Z_]+_\d+\]", text):
+                    for tok in re.findall(r"\[[A-Z][A-Z0-9_]*_\d+\]", text):
                         if tok not in found:
                             found.append(tok)
             except Exception:  # noqa: BLE001
@@ -897,13 +897,13 @@ class PromptVeilUI:
                 try:
                     if item.is_visible():
                         text = str(item.evaluate("el => el.textContent || ''"))
-                        if not re.search(r"\[[A-Z_]+_\d+\]", text):
+                        if not re.search(r"\[[A-Z][A-Z0-9_]*_\d+\]", text):
                             text = str(
                                 item.evaluate(
                                     "el => (el.parentElement ? el.parentElement.textContent : el.textContent) || ''"
                                 )
                             )
-                        for tok in re.findall(r"\[[A-Z_]+_\d+\]", text):
+                        for tok in re.findall(r"\[[A-Z][A-Z0-9_]*_\d+\]", text):
                             if tok not in found:
                                 found.append(tok)
                 except Exception:  # noqa: BLE001
@@ -1248,8 +1248,8 @@ class PromptVeilUI:
                         continue
                     txt = (item.inner_text() or "").strip()
                     tok_attr = item.get_attribute("data-token")
-                    tok_match = re.search(r"\[[A-Z_]+_\d+\]", txt)
-                    if tok_attr and re.fullmatch(r"\[[A-Z_]+_\d+\]", tok_attr.strip()):
+                    tok_match = re.search(r"\[[A-Z][A-Z0-9_]*_\d+\]", txt)
+                    if tok_attr and re.fullmatch(r"\[[A-Z][A-Z0-9_]*_\d+\]", tok_attr.strip()):
                         token = tok_attr.strip()
                     elif tok_match:
                         token = tok_match.group(0)
@@ -1311,7 +1311,7 @@ class PromptVeilUI:
                     if not item.is_visible():
                         continue
                     txt = (item.inner_text() or "").strip()
-                    tok_match = re.search(r"\[[A-Z_]+_\d+\]", txt)
+                    tok_match = re.search(r"\[[A-Z][A-Z0-9_]*_\d+\]", txt)
                     if not tok_match:
                         continue
                     token = tok_match.group(0)

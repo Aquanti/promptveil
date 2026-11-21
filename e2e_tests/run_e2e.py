@@ -1,8 +1,8 @@
 """Dual-mode CLI runner for PromptVeil Opaque-Box E2E Suite.
 
 Modes:
-- --mode self-test: Runs py_compile, verifies pytest collects all 245 tests
-  (197 Tiers 1-4 [93 Tier 1 + 81 Tier 2 + 14 Tier 3 + 9 Tier 4] + 32 Tier 5 + 16 Acceptance),
+- --mode self-test: Runs py_compile, verifies pytest collects all 252 tests
+  (197 Tiers 1-4 [93 Tier 1 + 81 Tier 2 + 14 Tier 3 + 9 Tier 4] + 39 Tier 5 + 16 Acceptance),
   launches an in-process contract-mock HTTP server (e2e_tests/fixtures/), and runs real
   Playwright + headless Chrome/Edge/Chromium self-tests including positive Russian-first
   contract checks and negative monitor checks.
@@ -177,9 +177,9 @@ def _step_collect_only() -> None:
             f"Expected 197 unique Tiers 1-4 tests, got {len(t1_4_lines)} (unique={len(set(t1_4_lines))})."
         )
     t5_lines = _collect_marker_ids("tier5")
-    if len(t5_lines) != 32 or len(set(t5_lines)) != 32:
+    if len(t5_lines) != 39 or len(set(t5_lines)) != 39:
         raise RuntimeError(
-            f"Expected 32 unique Tier 5 tests, got {len(t5_lines)} (unique={len(set(t5_lines))})."
+            f"Expected 39 unique Tier 5 tests, got {len(t5_lines)} (unique={len(set(t5_lines))})."
         )
     acc_lines = _collect_marker_ids("acceptance")
     if len(acc_lines) != 16 or len(set(acc_lines)) != 16:
@@ -188,9 +188,9 @@ def _step_collect_only() -> None:
         )
     all_lines = _collect_marker_ids()
     expected_total = len(t1_4_lines) + len(t5_lines) + len(acc_lines)
-    if expected_total != 245 or len(all_lines) != len(set(all_lines)) or len(all_lines) != expected_total:
+    if expected_total != 252 or len(all_lines) != len(set(all_lines)) or len(all_lines) != expected_total:
         raise RuntimeError(
-            f"Unexpected total collected tests: total={len(all_lines)}, unique={len(set(all_lines))}, expected=245"
+            f"Unexpected total collected tests: total={len(all_lines)}, unique={len(set(all_lines))}, expected=252"
         )
     tier_breakdown = "+".join(str(c) for c in per_tier_counts)
     print(

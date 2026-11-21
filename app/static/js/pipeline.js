@@ -119,7 +119,11 @@ export function createPipelineController({
     }
   }
 
-  function showRulebookProUpgradeBanner(key = "rulebook.profilesProRequired", title = "") {
+  function showRulebookProUpgradeBanner(
+    key = "rulebook.profilesProRequired",
+    title = "",
+    packKey = ""
+  ) {
     const banner = getEl("rulebook-pro-upgrade-banner");
     const textEl = getEl("rulebook-pro-upgrade-text");
     if (textEl) {
@@ -128,6 +132,7 @@ export function createPipelineController({
     if (banner) {
       banner.setAttribute("data-upgrade-key", key);
       banner.setAttribute("data-upgrade-title", title || "");
+      banner.setAttribute("data-upgrade-pack-key", packKey || "");
       banner.hidden = false;
     }
   }
@@ -435,11 +440,11 @@ export function createPipelineController({
     if (!pack) return 0;
 
     if (pack.isPro && !state.proLicense?.isPro) {
-      showRulebookProUpgradeBanner("rulebook.proPackRequired", pack.title);
+      showRulebookProUpgradeBanner("rulebook.proPackRequired", pack.title, packKey);
       showInlineAlert(
         "rulebook-alert",
         "rulebook.proPackRequired",
-        { title: pack.title },
+        (curLang) => ({ title: getLocalizedWordPack(packKey, curLang)?.title || pack.title }),
         "warn"
       );
       return 0;
@@ -464,7 +469,12 @@ export function createPipelineController({
     }
 
     if (toAdd.length === 0) {
-      showInlineAlert("rulebook-alert", "rulebook.packAlreadyApplied", { title: pack.title }, "info");
+      showInlineAlert(
+        "rulebook-alert",
+        "rulebook.packAlreadyApplied",
+        (curLang) => ({ title: getLocalizedWordPack(packKey, curLang)?.title || pack.title }),
+        "info"
+      );
       return 0;
     }
 
@@ -474,7 +484,10 @@ export function createPipelineController({
     showInlineAlert(
       "rulebook-alert",
       "rulebook.packApplied",
-      { title: pack.title, added: toAdd.length },
+      (curLang) => ({
+        title: getLocalizedWordPack(packKey, curLang)?.title || pack.title,
+        added: toAdd.length,
+      }),
       "success"
     );
     return toAdd.length;
@@ -515,10 +528,16 @@ export function createPipelineController({
       state.rules = res.profile.rules;
       refreshDrawersUi();
       runSanitizePipeline(false);
-      const dispName = res.profile.isDefault
-        ? t("rulebook.defaultProfileName")
-        : res.profile.name;
-      showInlineAlert("rulebook-alert", "rulebook.profileSwitched", { name: dispName }, "info");
+      showInlineAlert(
+        "rulebook-alert",
+        "rulebook.profileSwitched",
+        (curLang) => ({
+          name: res.profile.isDefault
+            ? t("rulebook.defaultProfileName", {}, curLang)
+            : res.profile.name,
+        }),
+        "info"
+      );
     });
 
     getEl("profile-create-btn")?.addEventListener("click", () => {
@@ -930,15 +949,18 @@ export function createPipelineController({
           hideRulebookProUpgradeBanner();
           hideInlineAlert("input-error-banner");
           state.previewTemplateId = "";
-        } else if (
-          state.profilesStore &&
-          state.profilesStore.activeProfileId !== DEFAULT_PROFILE_ID
-        ) {
-          state.profilesStore = {
-            ...state.profilesStore,
-            activeProfileId: DEFAULT_PROFILE_ID,
-          };
-          state.rules = getActiveProfile(state.profilesStore).rules;
+        } else {
+          state.batchItems = [];
+          if (
+            state.profilesStore &&
+            state.profilesStore.activeProfileId !== DEFAULT_PROFILE_ID
+          ) {
+            state.profilesStore = {
+              ...state.profilesStore,
+              activeProfileId: DEFAULT_PROFILE_ID,
+            };
+            state.rules = getActiveProfile(state.profilesStore).rules;
+          }
         }
         runSanitizePipeline(false);
         refreshDrawersUi();

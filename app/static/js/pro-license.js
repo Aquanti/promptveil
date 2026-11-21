@@ -254,6 +254,9 @@ export function verifyEd25519PureJs(messageBytes, signatureBytes, publicKeyBytes
   if (!A) {
     return false;
   }
+  if (pointEqual(A, ED25519_ZERO) || pointEqual(scalarMult(A, 8n), ED25519_ZERO)) {
+    return false;
+  }
   const Rbytes = signatureBytes.subarray(0, 32);
   const Sbytes = signatureBytes.subarray(32, 64);
   const R = decodeEd25519Point(Rbytes);

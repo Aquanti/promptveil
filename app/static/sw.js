@@ -1,6 +1,6 @@
 /* PromptVeil Self-Hosted Offline Service Worker (Network-First HTML, Cache-First /dist/*, SWR Static) */
 
-const CACHE_NAME = "promptveil-build-bbad93a0d1";
+const CACHE_NAME = "promptveil-build-a62cd6cf47";
 
 const PRECACHE_URLS = [
   "/",
@@ -14,7 +14,7 @@ const PRECACHE_URLS = [
   "/og-image.png",
   "/downloads/promptveil-pro-extension.zip",
   "/dist/styles.UMY4UFFP.css",
-  "/dist/app.ML7GPTO7.js",
+  "/dist/app.63TC2NCS.js",
   "/dist/i18n-en-EY65K4KX.js",
   "/dist/i18n-ru-ABT2WJB2.js"
 ];
