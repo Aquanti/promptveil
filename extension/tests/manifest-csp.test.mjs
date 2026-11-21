@@ -110,6 +110,8 @@ test("Static CSP, zero-egress, zero-localStorage, and zero-URL-literal hygiene a
       `${file} must not contain inline <script>`
     );
     assert.equal(/https?:\/\/|wss?:\/\//i.test(html), false, `${file} must not contain external URLs`);
+    assert.equal(/100vw\b/i.test(html), false, `${file} must not use 100vw`);
+    assert.equal(/\bRAM\b/.test(html), false, `${file} RU default copy must not contain "RAM"`);
     for (const pat of forbiddenDomAndNetwork) {
       assert.equal(pat.test(html), false, `${file} matched forbidden pattern ${pat}`);
     }
@@ -127,6 +129,11 @@ test("Static CSP, zero-egress, zero-localStorage, and zero-URL-literal hygiene a
     for (const pat of forbiddenDomAndNetwork) {
       assert.equal(pat.test(js), false, `${path.basename(file)} matched forbidden pattern ${pat}`);
     }
+    assert.equal(
+      /100vw\b/i.test(js),
+      false,
+      `${path.basename(file)} must not use 100vw`
+    );
     assert.equal(
       /(['"`])(?:https?|wss?):\/\//i.test(js),
       false,
@@ -153,5 +160,6 @@ test("i18n-ext.js provides 100% RU/EN key parity and exact action labels", () =>
   for (const key of ruKeys) {
     assert.equal(EXTENSION_STRINGS.ru[key].trim().length > 0, true, `Empty RU string: ${key}`);
     assert.equal(EXTENSION_STRINGS.en[key].trim().length > 0, true, `Empty EN string: ${key}`);
+    assert.equal(/\bRAM\b/.test(EXTENSION_STRINGS.ru[key]), false, `RU string must not use "RAM": ${key}`);
   }
 });

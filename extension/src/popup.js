@@ -15,6 +15,7 @@ import {
   getChromeStorageLocal,
   loadExtProLicenseToken,
   loadExtSettings,
+  normalizeExtSettings,
   saveExtProLicenseToken,
   saveExtSettings,
   subscribeExtStorageChanges,
@@ -83,6 +84,7 @@ export async function initPopupController({
     brandTitle: doc.getElementById("popup-brand-title"),
     brandTagline: doc.getElementById("popup-brand-tagline"),
     proBadge: doc.getElementById("popup-pro-badge"),
+    langSwitch: doc.getElementById("popup-lang-switch"),
     langRu: doc.getElementById("popup-lang-ru"),
     langEn: doc.getElementById("popup-lang-en"),
     themeBtn: doc.getElementById("popup-theme-btn"),
@@ -146,6 +148,23 @@ export async function initPopupController({
     customFeedback: null,
     proFeedback: null,
   };
+
+  let settingsSaveChain = Promise.resolve();
+  let pendingSettingsSaves = 0;
+
+  function updateSettings(updater) {
+    const nextDraft =
+      typeof updater === "function" ? updater(state.settings) : { ...state.settings, ...updater };
+    state.settings = normalizeExtSettings(nextDraft);
+    const snapshot = state.settings;
+    pendingSettingsSaves += 1;
+    const runSave = () =>
+      saveExtSettings(snapshot, storageArea).finally(() => {
+        pendingSettingsSaves = Math.max(0, pendingSettingsSaves - 1);
+      });
+    settingsSaveChain = settingsSaveChain.then(runSave, runSave);
+    return settingsSaveChain;
+  }
 
   async function refreshLicenseFromStorage() {
     const rawToken = await loadExtProLicenseToken(storageArea);
@@ -231,6 +250,8 @@ export async function initPopupController({
 
     els.brandTitle.textContent = t(lang, "ext.name");
     els.brandTagline.textContent = t(lang, "ext.tagline");
+    els.proBadge.setAttribute("title", t(lang, "pro.badgeTitle"));
+    els.langSwitch?.setAttribute("aria-label", t(lang, "ext.langSwitchAria"));
     els.langRu.textContent = t(lang, "ext.langRu");
     els.langEn.textContent = t(lang, "ext.langEn");
     els.langRu.classList.toggle("is-active", lang === "ru");
@@ -275,6 +296,7 @@ export async function initPopupController({
 
     els.rulesTitle.textContent = t(lang, "rules.title");
     els.customTerm.setAttribute("placeholder", t(lang, "rules.placeholder"));
+    els.customCategory.setAttribute("aria-label", t(lang, "rules.categoryAria"));
     els.customAddBtn.textContent = t(lang, "rules.addBtn");
     els.customEmpty.textContent = t(lang, "rules.empty");
 
@@ -329,17 +351,17 @@ export async function initPopupController({
           els.proKeyInput.focus();
           return;
         }
-        const nextDisabled = new Set(state.settings.disabledCategories);
-        if (nextDisabled.has(cat.category)) {
-          nextDisabled.delete(cat.category);
-        } else {
-          nextDisabled.add(cat.category);
-        }
-        state.settings = await saveExtSettings(
-          { ...state.settings, disabledCategories: Array.from(nextDisabled) },
-          storageArea
-        );
+        const savePromise = updateSettings((prev) => {
+          const nextDisabled = new Set(prev.disabledCategories);
+          if (nextDisabled.has(cat.category)) {
+            nextDisabled.delete(cat.category);
+          } else {
+            nextDisabled.add(cat.category);
+          }
+          return { ...prev, disabledCategories: Array.from(nextDisabled) };
+        });
         renderCategories();
+        await savePromise;
       });
       return btn;
     });
@@ -358,9 +380,12 @@ export async function initPopupController({
 
     els.customEmpty.hidden = rules.length > 0;
 
-    const items = rules.map((rule) => {
+    const items = rules.map((rule, index) => {
+      const isCappedPaused = !isPro && index >= FREE_CUSTOM_RULE_LIMIT;
       const li = doc.createElement("li");
-      li.className = `pv-rule-item${rule.enabled === false ? " is-disabled" : ""}`;
+      li.className = `pv-rule-item${rule.enabled === false ? " is-disabled" : ""}${
+        isCappedPaused ? " is-paused" : ""
+      }`;
 
       const left = doc.createElement("div");
       left.className = "pv-rule-left";
@@ -371,14 +396,14 @@ export async function initPopupController({
       checkbox.checked = rule.enabled !== false;
       checkbox.setAttribute("aria-label", t(lang, "rules.toggleAria"));
       checkbox.addEventListener("change", async () => {
-        const nextRules = state.settings.customRules.map((item) =>
-          item.id === rule.id ? { ...item, enabled: checkbox.checked } : item
-        );
-        state.settings = await saveExtSettings(
-          { ...state.settings, customRules: nextRules },
-          storageArea
-        );
+        const savePromise = updateSettings((prev) => ({
+          ...prev,
+          customRules: prev.customRules.map((item) =>
+            item.id === rule.id ? { ...item, enabled: checkbox.checked } : item
+          ),
+        }));
         renderCustomRulesAndPacks();
+        await savePromise;
       });
 
       const termSpan = doc.createElement("span");
@@ -390,6 +415,12 @@ export async function initPopupController({
       tagSpan.textContent = t(lang, `rules.cat.${rule.category || "CUSTOM"}`);
 
       left.append(checkbox, termSpan, tagSpan);
+      if (isCappedPaused) {
+        const pausedSpan = doc.createElement("span");
+        pausedSpan.className = "pv-rule-tag is-paused";
+        pausedSpan.textContent = t(lang, "rules.freePaused");
+        left.append(pausedSpan);
+      }
 
       const delBtn = doc.createElement("button");
       delBtn.type = "button";
@@ -397,13 +428,13 @@ export async function initPopupController({
       delBtn.setAttribute("aria-label", t(lang, "rules.removeAria"));
       delBtn.textContent = "×";
       delBtn.addEventListener("click", async () => {
-        const nextRules = state.settings.customRules.filter((item) => item.id !== rule.id);
-        state.settings = await saveExtSettings(
-          { ...state.settings, customRules: nextRules },
-          storageArea
-        );
+        const savePromise = updateSettings((prev) => ({
+          ...prev,
+          customRules: prev.customRules.filter((item) => item.id !== rule.id),
+        }));
         clearCustomAlert();
         renderCustomRulesAndPacks();
+        await savePromise;
       });
 
       li.append(left, delBtn);
@@ -450,13 +481,10 @@ export async function initPopupController({
           );
           return;
         }
-        state.settings = await saveExtSettings(
-          {
-            ...state.settings,
-            customRules: [...state.settings.customRules, ...additions],
-          },
-          storageArea
-        );
+        const savePromise = updateSettings((prev) => ({
+          ...prev,
+          customRules: [...prev.customRules, ...additions],
+        }));
         showCustomAlert(
           t(state.settings.lang, "packs.imported", {
             title: pack.title,
@@ -465,6 +493,7 @@ export async function initPopupController({
           "success"
         );
         renderCustomRulesAndPacks();
+        await savePromise;
       });
       return btn;
     });
@@ -532,20 +561,25 @@ export async function initPopupController({
 
   els.langRu.addEventListener("click", async () => {
     if (state.settings.lang === "ru") return;
-    state.settings = await saveExtSettings({ ...state.settings, lang: "ru" }, storageArea);
+    const savePromise = updateSettings({ lang: "ru" });
     renderAll();
+    await savePromise;
   });
 
   els.langEn.addEventListener("click", async () => {
     if (state.settings.lang === "en") return;
-    state.settings = await saveExtSettings({ ...state.settings, lang: "en" }, storageArea);
+    const savePromise = updateSettings({ lang: "en" });
     renderAll();
+    await savePromise;
   });
 
   els.themeBtn.addEventListener("click", async () => {
-    const nextTheme = state.settings.theme === "dark" ? "light" : "dark";
-    state.settings = await saveExtSettings({ ...state.settings, theme: nextTheme }, storageArea);
+    const savePromise = updateSettings((prev) => ({
+      ...prev,
+      theme: prev.theme === "dark" ? "light" : "dark",
+    }));
     renderAll();
+    await savePromise;
   });
 
   els.proBadge.addEventListener("click", () => {
@@ -554,47 +588,40 @@ export async function initPopupController({
   });
 
   els.overlayToggle.addEventListener("click", async () => {
-    state.settings = await saveExtSettings(
-      { ...state.settings, overlayVisible: !state.settings.overlayVisible },
-      storageArea
-    );
+    const savePromise = updateSettings((prev) => ({
+      ...prev,
+      overlayVisible: !prev.overlayVisible,
+    }));
     renderStaticCopy();
+    await savePromise;
   });
 
   els.sensNormal.addEventListener("click", async () => {
     if (state.settings.sensitivity === "normal") return;
-    state.settings = await saveExtSettings(
-      { ...state.settings, sensitivity: "normal", detectUuid: false },
-      storageArea
-    );
+    const savePromise = updateSettings({ sensitivity: "normal", detectUuid: false });
     renderStaticCopy();
+    await savePromise;
   });
 
   els.sensStrict.addEventListener("click", async () => {
     if (state.settings.sensitivity === "strict") return;
-    state.settings = await saveExtSettings(
-      { ...state.settings, sensitivity: "strict", detectUuid: true },
-      storageArea
-    );
+    const savePromise = updateSettings({ sensitivity: "strict", detectUuid: true });
     renderStaticCopy();
+    await savePromise;
   });
 
   els.uuidToggle.addEventListener("change", async () => {
     if (state.settings.sensitivity === "strict") return;
-    state.settings = await saveExtSettings(
-      { ...state.settings, detectUuid: els.uuidToggle.checked },
-      storageArea
-    );
+    const savePromise = updateSettings({ detectUuid: els.uuidToggle.checked });
     renderStaticCopy();
+    await savePromise;
   });
 
   els.categoriesReset.addEventListener("click", async () => {
     if (!state.license.isPro) return;
-    state.settings = await saveExtSettings(
-      { ...state.settings, disabledCategories: [] },
-      storageArea
-    );
+    const savePromise = updateSettings({ disabledCategories: [] });
     renderCategories();
+    await savePromise;
   });
 
   els.customForm.addEventListener("submit", async (event) => {
@@ -626,13 +653,14 @@ export async function initPopupController({
       showCustomAlert(t(lang, "rules.duplicate"), "warn");
       return;
     }
-    state.settings = await saveExtSettings(
-      { ...state.settings, customRules: [...state.settings.customRules, candidate] },
-      storageArea
-    );
+    const savePromise = updateSettings((prev) => ({
+      ...prev,
+      customRules: [...prev.customRules, candidate],
+    }));
     els.customTerm.value = "";
     clearCustomAlert();
     renderCustomRulesAndPacks();
+    await savePromise;
   });
 
   els.proActivateBtn.addEventListener("click", async () => {
@@ -676,7 +704,7 @@ export async function initPopupController({
   });
 
   const unsubscribe = subscribeExtStorageChanges(async ({ settingsChanged, licenseChanged }) => {
-    if (settingsChanged) {
+    if (settingsChanged && pendingSettingsSaves === 0) {
       state.settings = await loadExtSettings(storageArea);
     }
     if (licenseChanged) {

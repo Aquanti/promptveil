@@ -434,3 +434,90 @@ test("resolveRehydrateSource follows selection -> latest assistant reply -> clip
     source: "clipboard",
   });
 });
+
+test("readEditorText avoids <p> newline doubling even when Chromium innerText joins paragraphs with \\n\\n", () => {
+  const doc = createMockDocument();
+  const editor = doc.createElement("div", {
+    class: "ProseMirror",
+    contenteditable: "true",
+  });
+
+  // 1) Two consecutive <p> siblings (single Enter in ProseMirror)
+  const p1 = doc.createElement("p");
+  p1.textContent = "Строка 1: \u200BПроектАврора";
+  const p2 = doc.createElement("p");
+  p2.textContent = "Строка 2: +7 916 111-22-33";
+  editor.append(p1, p2);
+  // Simulate Chromium innerText returning \n\n between <p> siblings
+  Object.defineProperty(editor, "innerText", {
+    configurable: true,
+    get() {
+      return "Строка 1: \u200BПроектАврора\n\nСтрока 2: +7 916 111-22-33";
+    },
+  });
+  assert.equal(readEditorText(editor), "Строка 1: ПроектАврора\nСтрока 2: +7 916 111-22-33");
+
+  // 2) Intentional blank paragraph <p><br></p> and <p>\u200B<br></p>
+  const pBlank = doc.createElement("p");
+  pBlank.appendChild(doc.createTextNode("\u200B"));
+  pBlank.appendChild(doc.createElement("br"));
+  editor.replaceChildren(p1, pBlank, p2);
+  assert.equal(readEditorText(editor), "Строка 1: ПроектАврора\n\nСтрока 2: +7 916 111-22-33");
+
+  // 3) <br> inside a <p> followed by another <p>
+  const pWithBr = doc.createElement("p");
+  pWithBr.append(doc.createTextNode("Часть A"), doc.createElement("br"), doc.createTextNode("Часть B"));
+  const p3 = doc.createElement("p");
+  p3.textContent = "Часть C";
+  editor.replaceChildren(pWithBr, p3);
+  assert.equal(readEditorText(editor), "Часть A\nЧасть B\nЧасть C");
+});
+
+test("writeEditorText dispatches change event when execCommand insertText succeeds", () => {
+  const doc = createMockDocument();
+  const editor = doc.createElement("div", {
+    class: "ProseMirror",
+    contenteditable: "true",
+  });
+  const pInitial = doc.createElement("p");
+  pInitial.textContent = "Строка 1\nСтрока 2";
+  editor.appendChild(pInitial);
+  doc.body.appendChild(editor);
+
+  doc.createRange = () => ({
+    selectNodeContents() {},
+  });
+  doc.defaultView.getSelection = () => ({
+    removeAllRanges() {},
+    addRange() {},
+  });
+
+  let execCalls = 0;
+  doc.execCommand = (cmd, _ui, val) => {
+    execCalls += 1;
+    assert.equal(cmd, "insertText");
+    const lines = String(val).split("\n");
+    const paragraphs = lines.map((line) => {
+      const p = doc.createElement("p");
+      if (line.length > 0) p.textContent = line;
+      else p.appendChild(doc.createElement("br"));
+      return p;
+    });
+    editor.replaceChildren(...paragraphs);
+    // Chromium execCommand fires native input event only (not change)
+    editor.dispatchEvent(new doc.defaultView.InputEvent("input", { bubbles: true, data: val }));
+    return true;
+  };
+
+  const origWindow = globalThis.window;
+  globalThis.window = doc.defaultView;
+  try {
+    const ok = writeEditorText(editor, "Строка 1: [CUSTOM_1]\nСтрока 2: [PHONE_1]", doc);
+    assert.equal(ok, true);
+    assert.equal(execCalls, 1);
+    assert.deepEqual(editor.events, ["input", "change"]);
+    assert.equal(readEditorText(editor), "Строка 1: [CUSTOM_1]\nСтрока 2: [PHONE_1]");
+  } finally {
+    globalThis.window = origWindow;
+  }
+});

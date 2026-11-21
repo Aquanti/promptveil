@@ -255,12 +255,26 @@ function stripZeroWidth(text) {
   return String(text || "").replace(/\u200B/g, "");
 }
 
+const BLOCK_TAGS = new Set(["P", "DIV", "LI", "BLOCKQUOTE", "PRE"]);
+
+function hasBlockElementChildren(el) {
+  if (!el?.childNodes) {
+    return false;
+  }
+  for (const child of Array.from(el.childNodes)) {
+    if (child.nodeType === 1 && BLOCK_TAGS.has(getElementTagName(child))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function extractBlockText(node) {
   if (!node) {
     return "";
   }
   if (node.nodeType === 3) {
-    return node.nodeValue || "";
+    return stripZeroWidth(node.nodeValue || "");
   }
   const tag = getElementTagName(node);
   if (tag === "BR") {
@@ -268,20 +282,32 @@ function extractBlockText(node) {
   }
   const children = node.childNodes ? Array.from(node.childNodes) : [];
   if (children.length === 0) {
-    return node.textContent || "";
+    return stripZeroWidth(node.textContent || "");
   }
-  const isBlockTag = tag === "P" || tag === "DIV" || tag === "LI";
+  const isBlockTag = BLOCK_TAGS.has(tag);
+  const nonEmptyChildren = children.filter(
+    (child) => !(child.nodeType === 3 && stripZeroWidth(child.nodeValue || "") === "")
+  );
   if (
     isBlockTag &&
-    children.length === 1 &&
-    children[0].nodeType === 1 &&
-    getElementTagName(children[0]) === "BR"
+    nonEmptyChildren.length === 1 &&
+    nonEmptyChildren[0].nodeType === 1 &&
+    getElementTagName(nonEmptyChildren[0]) === "BR"
   ) {
     return "\n";
   }
   const parts = children.map((child) => extractBlockText(child));
   const joined = parts.join("");
-  return isBlockTag ? `${joined}\n` : joined;
+  if (!isBlockTag) {
+    return joined;
+  }
+  const hasBlockChild = children.some(
+    (child) => child.nodeType === 1 && BLOCK_TAGS.has(getElementTagName(child))
+  );
+  if (hasBlockChild && joined.endsWith("\n")) {
+    return joined;
+  }
+  return `${joined}\n`;
 }
 
 export function normalizeEditorText(text) {
@@ -295,6 +321,11 @@ export function readEditorText(el) {
   const tag = getElementTagName(el);
   if (tag === "TEXTAREA" || tag === "INPUT") {
     return typeof el.value === "string" ? el.value : "";
+  }
+  if (el.childNodes && el.childNodes.length > 0 && hasBlockElementChildren(el)) {
+    const raw = Array.from(el.childNodes, (child) => extractBlockText(child)).join("");
+    const cleaned = stripZeroWidth(raw).replace(/\r\n/g, "\n");
+    return cleaned === "\n" ? "" : cleaned.replace(/\n$/, "");
   }
   if (typeof el.innerText === "string" && el.innerText.length > 0) {
     const cleaned = stripZeroWidth(el.innerText).replace(/\r\n/g, "\n");
@@ -452,7 +483,13 @@ export function writeEditorText(el, nextText, doc = el?.ownerDocument || globalT
     }
   }
 
-  if (!execWorked && doc) {
+  if (execWorked) {
+    const view = doc?.defaultView || globalThis;
+    const EventCtor = view?.Event || globalThis.Event;
+    if (typeof EventCtor === "function") {
+      el.dispatchEvent(new EventCtor("change", { bubbles: true }));
+    }
+  } else if (doc) {
     writeParagraphChildren(el, valueStr, doc);
     dispatchInputEvents(el, valueStr, doc);
   }

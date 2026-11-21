@@ -5,6 +5,7 @@
   bottom: 20px;
   z-index: 2147483647;
   display: block;
+  max-width: calc(100% - 40px);
   font-family: "Segoe UI Variable Display", "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   line-height: 1.4;
 }

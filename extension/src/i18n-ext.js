@@ -7,6 +7,7 @@ export const EXTENSION_STRINGS = Object.freeze({
   ru: Object.freeze({
     "ext.name": "PromptVeil",
     "ext.tagline": "Локальная защита промптов",
+    "ext.langSwitchAria": "Выбор языка",
     "ext.langRu": "RU",
     "ext.langEn": "EN",
     "ext.themeToDark": "Включить тёмную тему",
@@ -43,6 +44,8 @@ export const EXTENSION_STRINGS = Object.freeze({
     "rules.duplicate": "Такое слово уже есть в списке.",
     "rules.toggleAria": "Включить или отключить правило",
     "rules.removeAria": "Удалить правило",
+    "rules.categoryAria": "Категория",
+    "rules.freePaused": "Лимит Free (пауза)",
     "rules.cat.CUSTOM": "Своё слово",
     "rules.cat.PERSON": "ФИО / Имя",
     "rules.cat.ORG": "Компания",
@@ -59,6 +62,7 @@ export const EXTENSION_STRINGS = Object.freeze({
     "pro.badgeFree": "Free",
     "pro.badgePro": "Pro Активен",
     "pro.badgeOwner": "Owner Pro",
+    "pro.badgeTitle": "Лицензия Pro",
     "pro.sectionTitle": "Лицензия Pro (Ed25519)",
     "pro.statusTitleFree": "Тариф: Старт (Free)",
     "pro.statusDescFree":
@@ -80,18 +84,18 @@ export const EXTENSION_STRINGS = Object.freeze({
     "pro.activatedSuccess": "Лицензия активирована ({tier}: {keyId}).",
     "pro.removedSuccess": "Ключ удалён — включён режим Free.",
 
-    "footer.zeroRetention": "0 хранения текстов • Метки только в RAM вкладки",
+    "footer.zeroRetention": "0 хранения текстов • Метки только в памяти вкладки",
 
     "pill.title": "PromptVeil",
     "pill.sanitizeBtn": "Скрыть перед отправкой",
     "pill.rehydrateBtn": "Вернуть ответ",
-    "pill.vaultCount": "Замен в RAM: {count}",
+    "pill.vaultCount": "Замен в памяти: {count}",
     "pill.resetTitle": "Очистить словарь вкладки",
     "pill.collapseTitle": "Свернуть или развернуть панель",
     "pill.noInput": "Не найдено поле ввода промпта на странице.",
     "pill.emptyInput": "Введите текст промпта перед скрытием.",
     "pill.noMatches": "Конфиденциальные данные не обнаружены.",
-    "pill.maskedSuccess": "Скрыто значений: {count} (только в RAM вкладки).",
+    "pill.maskedSuccess": "Скрыто значений: {count} (только в памяти вкладки).",
     "pill.emptyVault":
       "В этой вкладке ещё нет замен. Сначала нажмите «Скрыть перед отправкой».",
     "pill.noReplySource":
@@ -135,6 +139,7 @@ export const EXTENSION_STRINGS = Object.freeze({
   en: Object.freeze({
     "ext.name": "PromptVeil",
     "ext.tagline": "Local prompt privacy",
+    "ext.langSwitchAria": "Language",
     "ext.langRu": "RU",
     "ext.langEn": "EN",
     "ext.themeToDark": "Switch to dark theme",
@@ -171,6 +176,8 @@ export const EXTENSION_STRINGS = Object.freeze({
     "rules.duplicate": "This word is already in the list.",
     "rules.toggleAria": "Enable or disable rule",
     "rules.removeAria": "Remove rule",
+    "rules.categoryAria": "Category",
+    "rules.freePaused": "Free limit (paused)",
     "rules.cat.CUSTOM": "Custom",
     "rules.cat.PERSON": "Person",
     "rules.cat.ORG": "Organization",
@@ -187,6 +194,7 @@ export const EXTENSION_STRINGS = Object.freeze({
     "pro.badgeFree": "Free",
     "pro.badgePro": "Pro Active",
     "pro.badgeOwner": "Owner Pro",
+    "pro.badgeTitle": "Pro License",
     "pro.sectionTitle": "Pro License (Ed25519)",
     "pro.statusTitleFree": "Plan: Start (Free)",
     "pro.statusDescFree":

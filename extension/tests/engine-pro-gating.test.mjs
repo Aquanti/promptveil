@@ -586,7 +586,8 @@ test("popup controller enforces Free 5-rule cap, rejects tampered keys, and unlo
     label: "Client 99",
     issuedAt: "2026-01-01T00:00:00Z",
   });
-  const tamperedToken = `${validProToken.slice(0, -2)}AA`;
+  const tamperedSuffix = validProToken.endsWith("AA") ? "QQ" : "AA";
+  const tamperedToken = `${validProToken.slice(0, -2)}${tamperedSuffix}`;
   keyInput.value = tamperedToken;
   activateBtn.click();
   await new Promise((r) => setTimeout(r, 15));
@@ -622,11 +623,43 @@ test("popup controller enforces Free 5-rule cap, rejects tampered keys, and unlo
   const serializedStorage = JSON.stringify(Array.from(store.entries()));
   assert.equal(serializedStorage.includes("ivan@acme.ru"), false);
 
-  // Remove Pro key -> reverts to Free
+  // Remove Pro key -> reverts to Free and marks >5 rules as paused
   doc.getElementById("popup-pro-remove-btn").click();
   await new Promise((r) => setTimeout(r, 15));
   assert.equal(popup.getState().license.isPro, false);
   assert.equal(doc.getElementById("popup-pro-badge").textContent, "Free");
+  const ruleItemsAfterDowngrade = doc.getElementById("popup-custom-list").querySelectorAll("li.pv-rule-item");
+  assert.equal(ruleItemsAfterDowngrade.length > 5, true);
+  assert.equal(ruleItemsAfterDowngrade[0].classList.contains("is-paused"), false);
+  assert.equal(ruleItemsAfterDowngrade[5].classList.contains("is-paused"), true);
+  assert.equal(
+    ruleItemsAfterDowngrade[5].querySelector(".pv-rule-tag.is-paused")?.textContent,
+    "Лимит Free (пауза)"
+  );
+
+  // Synchronous multi-click settings changes in the same event-loop tick must not overwrite each other
+  doc.getElementById("popup-lang-en").click();
+  doc.getElementById("popup-theme-btn").click();
+  doc.getElementById("popup-sens-strict").click();
+  await new Promise((r) => setTimeout(r, 25));
+  assert.equal(popup.getState().settings.lang, "en");
+  assert.equal(popup.getState().settings.theme, "dark");
+  assert.equal(popup.getState().settings.sensitivity, "strict");
+  assert.equal(popup.getState().settings.detectUuid, true);
+  const storedAfterBurst = await loadExtSettings(local);
+  assert.equal(storedAfterBurst.lang, "en");
+  assert.equal(storedAfterBurst.theme, "dark");
+  assert.equal(storedAfterBurst.sensitivity, "strict");
+
+  // Localized static attributes update on language switch
+  assert.equal(doc.getElementById("popup-pro-badge").getAttribute("title"), "Pro License");
+  assert.equal(doc.getElementById("popup-lang-switch").getAttribute("aria-label"), "Language");
+  assert.equal(doc.getElementById("popup-custom-category").getAttribute("aria-label"), "Category");
+  assert.equal(
+    doc.getElementById("popup-custom-list").querySelectorAll("li.pv-rule-item")[5]
+      .querySelector(".pv-rule-tag.is-paused")?.textContent,
+    "Free limit (paused)"
+  );
 
   popup.destroy();
 });

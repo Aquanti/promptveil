@@ -26,6 +26,7 @@ import {
 export const SHADOW_CSS = `
 :host {
   all: initial;
+  max-width: 100%;
   font-family: "Segoe UI Variable Display", "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   color: #0b130f;
 }
@@ -45,11 +46,12 @@ export const SHADOW_CSS = `
   flex-direction: column;
   align-items: flex-end;
   gap: 8px;
+  max-width: 100%;
 }
 
 .pv-popover {
   width: 348px;
-  max-width: calc(100vw - 36px);
+  max-width: 100%;
   background: #ffffff;
   color: #0b130f;
   border: 1px solid rgba(7, 47, 31, 0.16);
@@ -139,7 +141,7 @@ export const SHADOW_CSS = `
 }
 
 .pv-toast {
-  max-width: 340px;
+  max-width: min(340px, 100%);
   padding: 7px 11px;
   border-radius: 12px;
   font-size: 12px;
@@ -308,7 +310,7 @@ export const SHADOW_CSS = `
 
 .pv-btn-copy {
   appearance: none;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 9999px;
   background: #072f1f;
   color: #ffffff;
@@ -316,6 +318,16 @@ export const SHADOW_CSS = `
   font-size: 11.5px;
   font-weight: 700;
   cursor: pointer;
+}
+
+:host([data-pv-theme="dark"]) .pv-btn-copy {
+  background: #0f402c;
+  border: 1px solid rgba(180, 241, 5, 0.35);
+  color: #ffffff;
+}
+
+:host([data-pv-theme="dark"]) .pv-btn-copy:hover {
+  background: #18553c;
 }
 
 .pv-btn-sanitize:hover {

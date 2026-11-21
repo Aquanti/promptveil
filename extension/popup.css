@@ -81,13 +81,23 @@
   display: none !important;
 }
 
-html,
-body {
+html {
   margin: 0;
   padding: 0;
   width: 360px;
-  max-width: 360px;
+  max-width: 100%;
+  overflow-y: auto;
   overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
   background: var(--bg-canvas);
   color: var(--text-primary);
   font-family: var(--font-sans);
@@ -98,9 +108,11 @@ body {
 .pv-app {
   display: flex;
   flex-direction: column;
-  width: 360px;
-  max-width: 360px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 460px;
+  box-sizing: border-box;
 }
 
 .pv-rail {
@@ -108,6 +120,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
   padding: 11px 12px;
   background: var(--bg-rail);
   color: var(--text-on-rail);
@@ -223,6 +236,7 @@ body {
   flex-direction: column;
   gap: 10px;
   padding: 10px 12px 12px;
+  min-width: 0;
 }
 
 .pv-card {
@@ -233,6 +247,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 9px;
+  min-width: 0;
 }
 
 .pv-card-head {
@@ -298,12 +313,14 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
 }
 
 .pv-control-label {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-primary);
+  min-width: 0;
 }
 
 .pv-switch-btn {
@@ -489,12 +506,14 @@ body {
 .pv-custom-form-row {
   display: flex;
   gap: 6px;
+  min-width: 0;
 }
 
 .pv-input,
 .pv-select,
 .pv-textarea {
   width: 100%;
+  min-width: 0;
   border: 1px solid var(--border-strong);
   background: var(--bg-surface-subtle);
   color: var(--text-primary);
@@ -506,6 +525,7 @@ body {
 
 .pv-select {
   flex: 1 1 auto;
+  min-width: 0;
 }
 
 .pv-textarea {
@@ -614,6 +634,10 @@ body {
   text-decoration: line-through;
 }
 
+.pv-rule-item.is-paused {
+  opacity: 0.78;
+}
+
 .pv-rule-tag {
   font-size: 10px;
   font-weight: 700;
@@ -622,6 +646,12 @@ body {
   background: var(--bg-surface-pill);
   color: var(--text-secondary);
   flex: 0 0 auto;
+}
+
+.pv-rule-tag.is-paused {
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border: 1px solid var(--warn-border);
 }
 
 .pv-rule-del {
