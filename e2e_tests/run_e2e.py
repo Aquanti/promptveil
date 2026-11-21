@@ -1,10 +1,11 @@
 """Dual-mode CLI runner for PromptVeil Opaque-Box E2E Suite.
 
 Modes:
-- --mode self-test: Runs py_compile, verifies pytest collects all 172 tests
-  (127 Tiers 1-4 + 32 Tier 5 + 13 Acceptance), launches an in-process contract-mock
-  HTTP server (e2e_tests/fixtures/), and runs real Playwright + headless Chrome/Edge/Chromium
-  self-tests including positive Russian-first contract checks and negative monitor checks.
+- --mode self-test: Runs py_compile, verifies pytest collects all 245 tests
+  (197 Tiers 1-4 [93 Tier 1 + 81 Tier 2 + 14 Tier 3 + 9 Tier 4] + 32 Tier 5 + 16 Acceptance),
+  launches an in-process contract-mock HTTP server (e2e_tests/fixtures/), and runs real
+  Playwright + headless Chrome/Edge/Chromium self-tests including positive Russian-first
+  contract checks and negative monitor checks.
 - --mode live: Runs the pytest suite against --base-url (default http://127.0.0.1:8000)
   or --static-only (app/static/ without /health), with optional --start-server,
   --tier (1|2|3|4|5|acceptance|all), --filter, --browser, --headed, and --report-json.
@@ -132,10 +133,25 @@ def _collect_marker_ids(marker_expr: str | None = None) -> list[str]:
 
 
 def _step_collect_only() -> None:
+    expected_t1_4 = {
+        "tier1": 93,
+        "tier2": 81,
+        "tier3": 14,
+        "tier4": 9,
+    }
+    per_tier_counts: list[int] = []
+    for marker, expected in expected_t1_4.items():
+        lines = _collect_marker_ids(marker)
+        if len(lines) != expected or len(set(lines)) != expected:
+            raise RuntimeError(
+                f"Expected {expected} unique {marker} tests, got {len(lines)} (unique={len(set(lines))})."
+            )
+        per_tier_counts.append(len(lines))
+
     t1_4_lines = _collect_marker_ids("tier1 or tier2 or tier3 or tier4")
-    if len(t1_4_lines) != 127 or len(set(t1_4_lines)) != 127:
+    if len(t1_4_lines) != 197 or len(set(t1_4_lines)) != 197:
         raise RuntimeError(
-            f"Expected 127 unique Tiers 1-4 tests, got {len(t1_4_lines)} (unique={len(set(t1_4_lines))})."
+            f"Expected 197 unique Tiers 1-4 tests, got {len(t1_4_lines)} (unique={len(set(t1_4_lines))})."
         )
     t5_lines = _collect_marker_ids("tier5")
     if len(t5_lines) != 32 or len(set(t5_lines)) != 32:
@@ -143,19 +159,20 @@ def _step_collect_only() -> None:
             f"Expected 32 unique Tier 5 tests, got {len(t5_lines)} (unique={len(set(t5_lines))})."
         )
     acc_lines = _collect_marker_ids("acceptance")
-    if len(acc_lines) != 13 or len(set(acc_lines)) != 13:
+    if len(acc_lines) != 16 or len(set(acc_lines)) != 16:
         raise RuntimeError(
-            f"Expected 13 unique Acceptance tests, got {len(acc_lines)} (unique={len(set(acc_lines))})."
+            f"Expected 16 unique Acceptance tests, got {len(acc_lines)} (unique={len(set(acc_lines))})."
         )
     all_lines = _collect_marker_ids()
     expected_total = len(t1_4_lines) + len(t5_lines) + len(acc_lines)
-    if len(all_lines) != len(set(all_lines)) or len(all_lines) != expected_total:
+    if expected_total != 245 or len(all_lines) != len(set(all_lines)) or len(all_lines) != expected_total:
         raise RuntimeError(
-            f"Unexpected total collected tests: total={len(all_lines)}, unique={len(set(all_lines))}, expected={expected_total}"
+            f"Unexpected total collected tests: total={len(all_lines)}, unique={len(set(all_lines))}, expected=245"
         )
+    tier_breakdown = "+".join(str(c) for c in per_tier_counts)
     print(
         f"[self-test] pytest --collect-only OK "
-        f"({len(t1_4_lines)} Tier 1-4 + {len(t5_lines)} Tier 5 + {len(acc_lines)} Acceptance = {len(all_lines)} unique tests)"
+        f"({len(t1_4_lines)} Tier 1-4 [{tier_breakdown}] + {len(t5_lines)} Tier 5 + {len(acc_lines)} Acceptance = {len(all_lines)} unique tests)"
     )
 
 
@@ -938,7 +955,7 @@ def run_live(args: argparse.Namespace) -> int:
     ]
     if args.headed:
         cmd.append("--headed")
-    if args.start_server:
+    if args.start_server and not args.static_only:
         cmd.append("--start-server")
     if args.static_only:
         cmd.append("--static-only")
@@ -959,7 +976,7 @@ def run_live(args: argparse.Namespace) -> int:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         summary: dict[str, Any] = {
             "mode": "live",
-            "base_url": args.base_url,
+            "base_url": "(static-only)" if args.static_only else args.base_url,
             "static_only": bool(args.static_only),
             "tier": args.tier,
             "filter": args.filter,
@@ -985,6 +1002,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--tier",
         choices=["all", "1", "2", "3", "4", "5", "acceptance"],
         default="all",
+        help="Tier subset to run in --mode live (default: all)",
     )
     parser.add_argument("--filter", default="", help="Substring/test-ID filter (e.g. T1-F1-01)")
     parser.add_argument("--browser", choices=["auto", "chrome", "msedge", "chromium"], default="auto")
@@ -993,7 +1011,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--static-only",
         action="store_true",
-        help="Serve app/static/ directly without /health (Netlify parity)",
+        help="In --mode live, serve app/static/ directly without /health (Netlify parity)",
     )
     parser.add_argument("--report-json", default="", help="Optional path for live summary JSON")
     return parser.parse_args(argv)

@@ -1,20 +1,41 @@
-"""Product Acceptance Gate Tests (R1/R2/R3 + Stages A-E: ACC-01..ACC-13)."""
+"""Product Acceptance Gate Tests (R1..R6 + Stages A-E: ACC-01..ACC-16)."""
 
 from __future__ import annotations
 
+import base64
+import io
+import json
 import re
+import urllib.request
+import zipfile
 from typing import Any
 
 import pytest
 from playwright.sync_api import Browser
 
-from conftest import E2E_DIR, E2ESession, STATIC_APP_DIR, TempIODirs, start_static_dir_server
+from conftest import (
+    E2E_DIR,
+    E2ESession,
+    EphemeralProKeys,
+    STATIC_APP_DIR,
+    TempIODirs,
+    start_static_dir_server,
+)
+from doc_fixtures import (
+    make_oversized_file,
+    make_scanned_image_pdf,
+    make_synthetic_docx,
+    make_synthetic_pdf,
+    make_synthetic_xlsx,
+)
 from locators import PromptVeilUI
 from monitors import (
     ConsoleErrorMonitor,
     NetworkMonitor,
     capture_viewport_screenshot,
     fetch_http_response,
+    verify_ai_launcher_links,
+    verify_allowed_local_storage_keys,
     verify_csp_and_security_headers,
     verify_health_endpoint,
     verify_responsive_layout,
@@ -697,20 +718,34 @@ def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2E
     page = e2e_session.page
     ui = e2e_session.ui
 
-    # 1. Honest Free + Waitlist Pricing section in RU (no fake prices or 30-day free trial)
+    # 1. Honest Free + Key-Activated Pro + Waitlist Team Pricing section in RU (no fake prices or 30-day free trial)
     pricing_el = page.locator("[data-testid='pricing-section']")
     pricing_txt = pricing_el.inner_text()
     assert page.locator("[data-testid='pricing-card-free']").is_visible()
     assert "Активен сейчас" in page.locator("[data-testid='pricing-card-free']").inner_text()
     assert "0 ₽" in page.locator("[data-testid='pricing-card-free']").inner_text()
-    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "Лист ожидания"
+    assert page.locator("[data-testid='pricing-pro-badge']").inner_text().strip() == "Доступ по ключу"
+    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "Офлайн-ключ"
+    assert page.locator("[data-testid='open-pro-modal-btn']").inner_text().strip() == "Получить ключ (Telegram / Почта)"
+    assert (
+        page.locator("[data-testid='pricing-activate-pro-btn']").inner_text().strip()
+        == "Уже есть ключ • Активировать"
+    )
+    assert "Лист ожидания" not in page.locator("[data-testid='pricing-card-pro']").inner_text()
     assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "Лист ожидания"
     assert page.locator("[data-testid='billing-toggle']").count() == 0
     for forbidden in ("490 ₽", "390 ₽", "1 990 ₽", "1 590 ₽", "30 дней бесплатно"):
         assert forbidden not in pricing_txt, f"Unexpected pricing claim {forbidden!r}"
 
-    # 2. Pro & Team client-only waitlist validation + formatted summary + copy + mailto
+    # Verify 'Have a key? • Activate' opens #modal-pro-license cleanly
+    pro_lic_modal = ui.open_pro_license_modal("pricing")
+    assert pro_lic_modal.is_visible()
+    ui.close_active_modal()
+
+    # 2. Pro key-request & Team client-only waitlist validation + formatted summary + copy + mailto
     ui.open_plan_request_modal("pro")
+    assert page.locator("#plan-modal-title").inner_text().strip() == "Запрос ключа — PromptVeil Pro"
+    assert page.locator("#plan-summary-pill").inner_text().strip() == "Pro • Доступ по ключу"
     page.locator("[data-testid='plan-req-submit-btn']").click()
     assert page.locator("[data-testid='plan-request-alert']").is_visible()
 
@@ -728,7 +763,7 @@ def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2E
     page.locator("[data-testid='plan-req-note']").fill("Нужна обработка docx")
     page.locator("[data-testid='plan-req-submit-btn']").click()
     preview_txt = page.locator("[data-testid='plan-request-preview']").inner_text()
-    assert "Pro" in preview_txt and "Иван Петров" in preview_txt and "Лист ожидания" in preview_txt
+    assert "Pro" in preview_txt and "Иван Петров" in preview_txt and "Запрос офлайн-ключа Pro" in preview_txt
     mailto_href = page.locator("[data-testid='plan-req-mailto-link']").get_attribute("href") or ""
     assert mailto_href.startswith("mailto:kilkauciha@gmail.com?")
     page.locator("[data-testid='plan-req-copy-btn']").click()
@@ -822,7 +857,11 @@ def test_ACC_08_pricing_request_modals_footer_contacts_and_i18n(e2e_session: E2E
         assert ru_only not in en_free_txt
     en_theme_aria = page.locator("[data-testid='theme-toggle-btn']").get_attribute("aria-label") or ""
     assert en_theme_aria and en_theme_aria != ru_theme_aria
-    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "Waitlist"
+    assert page.locator("[data-testid='pricing-pro-badge']").inner_text().strip() == "Key-Activated"
+    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "Offline Key"
+    assert page.locator("[data-testid='open-pro-modal-btn']").inner_text().strip() == "Get Key (Telegram / Email)"
+    assert page.locator("[data-testid='pricing-activate-pro-btn']").inner_text().strip() == "Have a key? • Activate"
+    assert "Waitlist" not in page.locator("[data-testid='pricing-card-pro']").inner_text()
     assert page.locator("[data-testid='price-team-value']").inner_text().strip() == "Waitlist"
     assert "0 Text Logs" in page.locator("[data-testid='site-footer']").inner_text()
     assert "Created by SupV1rus" in page.locator("[data-testid='footer-copyright']").inner_text()
@@ -1026,7 +1065,7 @@ def test_ACC_11_pwa_offline_service_worker_and_seo_routes(raw_session: E2ESessio
 
 
 def test_ACC_12_ai_launchers_dark_theme_and_screenshots(e2e_session: E2ESession) -> None:
-    """P1: Verify 'Open in AI' links, Dark Theme persistence + Proof storage clean, & screenshots."""
+    """R1 & P1: Verify persistent Step 1+2 AI launchers incl. Gemini, Dark Theme + Proof storage clean, & screenshots."""
     page = e2e_session.page
     ui = e2e_session.ui
 
@@ -1036,18 +1075,35 @@ def test_ACC_12_ai_launchers_dark_theme_and_screenshots(e2e_session: E2ESession)
         "ai-launcher-gigachat": "https://giga.chat/",
         "ai-launcher-alice": "https://alice.yandex.ru/",
         "ai-launcher-claude": "https://claude.ai/",
+        "ai-launcher-gemini": "https://gemini.google.com/app",
     }
     launchers_bar = page.locator("[data-testid='ai-launchers-bar']")
     assert launchers_bar.is_visible()
-    for tid, expected_href in expected_launchers.items():
-        link = page.locator(f"[data-testid='{tid}']")
-        assert link.is_visible()
-        assert link.get_attribute("href") == expected_href
-        assert link.get_attribute("target") == "_blank"
-        assert "noopener" in (link.get_attribute("rel") or "")
+    assert verify_ai_launcher_links(page) == expected_launchers
+    assert page.locator("[data-testid='ai-launcher-gemini']").inner_text().strip() == "Gemini"
 
-    ui.sanitize_text("Почта dev@example.ru")
-    assert "is-ready" in (launchers_bar.get_attribute("class") or "")
+    masked = ui.sanitize_text("Почта dev@example.ru")
+    assert ui.is_ai_launchers_ready() is True
+
+    # Step 2 persistence + ready state + Gemini clipboard copy on Step 2
+    ui.click_go_rehydrate()
+    assert page.locator("[data-testid='panel-rehydrate']").is_visible()
+    assert launchers_bar.is_visible()
+    assert verify_ai_launcher_links(page) == expected_launchers
+    assert ui.is_ai_launchers_ready() is True
+
+    page.evaluate("async () => navigator.clipboard.writeText('SENTINEL_ACC12')")
+    page.context.route("https://gemini.google.com/**", lambda r: r.abort())
+    try:
+        with page.expect_popup(timeout=3000) as pop_info:
+            ui.click_ai_launcher("gemini")
+        pop_info.value.close()
+        assert ui.read_clipboard_text() == masked
+        assert ui.get_status_banner_text()
+    finally:
+        page.context.unroute("https://gemini.google.com/**")
+
+    ui.switch_mode("sanitize")
 
     # Toggle dark theme and verify persistence + Proof unknownKeys=0
     theme_btn = page.locator("[data-testid='theme-toggle-btn']")
@@ -1198,3 +1254,453 @@ def test_ACC_13_stage_e_copy_open_ai_telegram_limits_sensitivity_and_packs(
 
     e2e_session.net.assert_zero_egress(["acc13@example.ru", sample_term])
     e2e_session.console.assert_no_errors()
+
+
+def test_ACC_14_pro_ed25519_license_and_proof_allowlist(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R2 & R6: Ed25519 offline Pro/Owner key verification, rejections, RU/EN pricing sync, Proof 0 unknown keys, and removal."""
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    assert ui.get_pro_badge_text() == "Free"
+    modal = ui.open_pro_license_modal("header")
+    assert "Старт (Free)" in ui.get_pro_status_card_text()
+
+    # Empty, malformed, tampered, and expired rejections
+    page.locator("[data-testid='pro-license-activate-btn']").click()
+    page.wait_for_timeout(120)
+    alert = page.locator("#pro-license-alert, [data-testid='pro-license-alert']")
+    assert alert.is_visible()
+
+    for bad_token in ("not-a-valid-token", "PV1.broken.sig"):
+        ui.activate_pro_key(bad_token)
+        assert alert.is_visible()
+        assert ui.get_pro_badge_text() == "Free"
+
+    pro_token = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-ACC-PRO", label="ACC Legal")
+    prefix, payload_b64, sig_b64 = pro_token.split(".")
+    padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+    payload_obj = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    payload_obj["tier"] = "owner"
+    tampered_b64 = (
+        base64.urlsafe_b64encode(json.dumps(payload_obj, separators=(",", ":")).encode("utf-8"))
+        .decode("ascii")
+        .rstrip("=")
+    )
+    ui.activate_pro_key(f"{prefix}.{tampered_b64}.{sig_b64}")
+    assert alert.is_visible()
+    assert ui.get_pro_badge_text() == "Free"
+
+    expired_token = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-ACC-EXP",
+        label="Expired",
+        exp="2020-01-01T00:00:00.000Z",
+    )
+    ui.activate_pro_key(expired_token)
+    assert alert.is_visible()
+    assert ui.get_pro_badge_text() == "Free"
+
+    # Valid Pro activation + reload persistence + RU/EN unlocked pricing sync
+    ui.activate_pro_key(pro_token)
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    assert "PV-ACC-PRO" in ui.get_pro_status_card_text()
+    verify_russian_purity(page)
+    ui.close_active_modal()
+
+    pro_e2e_session.net.assert_zero_egress(["PV-ACC-PRO"])
+    pro_e2e_session.net.phase = "load"
+    page.reload(wait_until="networkidle")
+    pro_e2e_session.net.assert_clean_load()
+    pro_e2e_session.net.start_interactive_phase()
+
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    page.locator("[data-testid='pricing-section']").scroll_into_view_if_needed()
+    assert page.locator("[data-testid='pricing-pro-badge']").inner_text().strip() == "Pro Активен"
+    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "Ключ активирован"
+    assert page.locator("[data-testid='pricing-pro-unlocked-note']").is_visible()
+    assert page.locator("[data-testid='pricing-activate-pro-btn']").inner_text().strip() == "Управление ключом Pro"
+
+    pro_e2e_session.net.assert_zero_egress(["PV-ACC-PRO"])
+    pro_e2e_session.net.phase = "load"
+    ui.switch_language("en")
+    pro_e2e_session.net.assert_clean_load()
+    pro_e2e_session.net.start_interactive_phase()
+
+    assert ui.get_pro_badge_text() == "Pro Active"
+    assert page.locator("[data-testid='pricing-pro-badge']").inner_text().strip() == "Pro Active"
+    assert page.locator("[data-testid='price-pro-value']").inner_text().strip() == "Key Activated"
+    assert page.locator("[data-testid='pricing-activate-pro-btn']").inner_text().strip() == "Manage Pro key"
+
+    pro_e2e_session.net.assert_zero_egress(["PV-ACC-PRO"])
+    pro_e2e_session.net.phase = "load"
+    ui.switch_language("ru")
+    page.wait_for_timeout(150)
+    pro_e2e_session.net.assert_clean_load()
+    pro_e2e_session.net.start_interactive_phase()
+
+    # Owner tier activation
+    owner_token = ephemeral_pro_keys.issue_token(tier="owner", key_id="PV-ACC-OWNER", label="Owner Master")
+    ui.open_pro_license_modal("header")
+    ui.activate_pro_key(owner_token)
+    assert ui.get_pro_badge_text() == "Owner Pro"
+    assert "PV-ACC-OWNER" in ui.get_pro_status_card_text()
+    ui.close_active_modal()
+
+    # Zero-Retention Proof & localStorage allowlist
+    ui.sanitize_text("Private check acc14@example.com")
+    verify_allowed_local_storage_keys(page)
+    proof = ui.open_privacy_proof_modal("header")
+    ui.run_privacy_proof_check()
+    proof_txt = proof.inner_text()
+    assert "неизвестные ключи: 0" in proof_txt
+    assert "0 байт" in proof_txt
+    assert "0 запросов" in proof_txt
+    assert "нарушений CSP в документе приложения: 0" in proof_txt
+    ui.close_active_modal()
+
+    # Deactivate back to Free
+    ui.open_pro_license_modal("header")
+    ui.remove_pro_key()
+    ui.close_active_modal()
+    assert ui.get_pro_badge_text() == "Free"
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    pro_e2e_session.net.assert_zero_egress(["acc14@example.com", "PV-ACC-PRO", "PV-ACC-OWNER"])
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_ACC_15_pro_local_office_pdf_batch_and_free_2mb_gate(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R3 & R6: Free 2 MB / doc gate, Pro 50 MB + local .docx/.xlsx/.pdf batch scrubber, export, rehydrate, scanned PDF."""
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    docx_p = make_synthetic_docx(
+        pro_e2e_session.io.uploads / "acc_contract.docx",
+        paragraphs=["Lead counsel acc.doc@acme.test"],
+        table_rows=[["INN", "7707083893"]],
+        header_text="Confidential ACC Header",
+    )
+    xlsx_p = make_synthetic_xlsx(
+        pro_e2e_session.io.uploads / "acc_registry.xlsx",
+        shared_strings=["Email", "IBAN"],
+        rows=[["Email", "IBAN"], ["acc.xlsx@example.org", "DE89370400440532013000"]],
+    )
+    pdf_p = make_synthetic_pdf(
+        pro_e2e_session.io.uploads / "acc_brief.pdf",
+        text_lines=["Signer acc.pdf@example.com", "Card 4276 3800 1234 5678"],
+        compressed=True,
+        use_tounicode=True,
+    )
+    scan_pdf = make_scanned_image_pdf(pro_e2e_session.io.uploads / "acc_scan.pdf")
+    over_2mb = make_oversized_file(
+        pro_e2e_session.io.uploads / "acc_over_2mb.txt",
+        2 * 1024 * 1024 + 4096,
+        ext=".txt",
+    )
+    valid_3mb = make_oversized_file(
+        pro_e2e_session.io.uploads / "acc_valid_3mb.txt",
+        3 * 1024 * 1024,
+        ext=".txt",
+    )
+    over_50mb = make_oversized_file(
+        pro_e2e_session.io.uploads / "acc_over_50mb.txt",
+        50 * 1024 * 1024 + 2048,
+        ext=".txt",
+    )
+
+    # 1. Free-tier format & 2 MB upgrade gates
+    for blocked_doc in (docx_p, xlsx_p, pdf_p):
+        ui.upload_files([blocked_doc])
+        assert ui.get_file_pro_upgrade_banner().is_visible()
+
+    ui.upload_files([over_2mb])
+    err_2mb = ui.get_visible_error_notice()
+    assert re.search(r"2\s*(?:mb|мб)", err_2mb, re.I)
+    assert ui.get_file_pro_upgrade_banner().is_visible()
+
+    upgrade_cta = page.locator("[data-testid='file-pro-upgrade-btn'], #file-pro-upgrade-btn").first
+    assert upgrade_cta.is_visible()
+    upgrade_cta.click()
+    page.wait_for_timeout(120)
+    assert page.locator("[data-testid='modal-pro-license'], #modal-pro-license").is_visible()
+
+    # 2. Unlock Pro -> upgrade banner auto-hides, 3 MB accepted, > 50 MB rejected
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-ACC-BATCH"))
+    ui.close_active_modal()
+    assert not page.locator("[data-testid='file-pro-upgrade-banner'], #file-pro-upgrade-banner").is_visible()
+
+    ui.upload_files([over_50mb])
+    err_50mb = ui.get_visible_error_notice() or ui.get_status_banner_text()
+    assert re.search(r"50\s*(?:mb|мб)", err_50mb, re.I)
+
+    ui.upload_files([valid_3mb])
+    assert len(ui.get_prompt_input().input_value()) >= 1024 or len(ui.get_batch_queue_items()) >= 1
+
+    # 3. Multi-file .docx + .xlsx + .pdf local batch parse, RU purity, .txt & .zip export, Step 2 rehydrate
+    ui.upload_files([docx_p, xlsx_p, pdf_p])
+    assert len(ui.get_batch_queue_items()) == 3
+
+    raw_secrets = [
+        "acc.doc@acme.test",
+        "7707083893",
+        "acc.xlsx@example.org",
+        "DE89370400440532013000",
+        "acc.pdf@example.com",
+        "4276 3800 1234 5678",
+    ]
+    panel_txt = ui.get_batch_queue_panel().inner_text()
+    sanitized_out = ui.get_sanitize_output_text()
+    for secret in raw_secrets:
+        assert secret not in panel_txt
+        assert secret not in sanitized_out
+
+    verify_russian_purity(page)
+
+    dl_txt = ui.download_batch_txt(pro_e2e_session.io.downloads)
+    txt_body = dl_txt.read_text(encoding="utf-8")
+    for fname in ("acc_contract.docx", "acc_registry.xlsx", "acc_brief.pdf"):
+        assert fname in txt_body
+    for secret in raw_secrets:
+        assert secret not in txt_body
+
+    dl_zip = ui.download_batch_zip(pro_e2e_session.io.downloads)
+    with zipfile.ZipFile(dl_zip, "r") as zf:
+        assert zf.testzip() is None
+        members = [n for n in zf.namelist() if n.endswith(".sanitized.txt")]
+        assert len(members) >= 3
+        archive_txt = "\n".join(zf.read(n).decode("utf-8", errors="replace") for n in members)
+        for secret in raw_secrets:
+            assert secret not in archive_txt
+
+    ui.click_batch_rehydrate()
+    restored = ui.get_rehydrate_output_text()
+    for secret in raw_secrets:
+        assert secret in restored
+    assert ui.get_unresolved_tokens() == []
+
+    # 4. Scanned-PDF honest RU/EN notice + batch clear
+    ui.switch_mode("sanitize")
+    ui.clear_batch_queue()
+    assert ui.get_batch_queue_items() == []
+
+    ui.upload_files([scan_pdf])
+    banner_el = page.locator("[data-testid='input-error-banner'], #input-error-banner").first
+    ru_scan_notice = banner_el.inner_text().strip() if banner_el.count() > 0 and banner_el.is_visible() else ""
+    if not ru_scan_notice:
+        ru_scan_notice = ui.get_batch_queue_panel().inner_text()
+    assert re.search(r"скан|OCR|текстового слоя", ru_scan_notice, re.I)
+
+    pro_e2e_session.net.assert_zero_egress(raw_secrets)
+    pro_e2e_session.net.phase = "load"
+    ui.switch_language("en")
+    pro_e2e_session.net.assert_clean_load()
+    pro_e2e_session.net.start_interactive_phase()
+    ui.upload_files([scan_pdf])
+    en_banner_el = page.locator("[data-testid='input-error-banner'], #input-error-banner").first
+    en_scan_notice = (
+        en_banner_el.inner_text().strip() if en_banner_el.count() > 0 and en_banner_el.is_visible() else ""
+    )
+    if not en_scan_notice:
+        en_scan_notice = ui.get_batch_queue_panel().inner_text()
+    assert re.search(r"scan|ocr|text layer|no\s+(?:extractable\s+)?text", en_scan_notice, re.I)
+
+    pro_e2e_session.net.assert_zero_egress(raw_secrets)
+    pro_e2e_session.console.assert_no_errors()
+
+
+def test_ACC_16_extension_zip_pro_downloads_profiles_and_templates(
+    pro_e2e_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R4, R5 & R6: Extension .zip delivery (live & static-only), Pro Downloads modal, profiles, packs, templates & mobile."""
+    page = pro_e2e_session.page
+    ui = pro_e2e_session.ui
+
+    expected_domains = (
+        "chatgpt.com",
+        "claude.ai",
+        "gemini.google.com",
+        "chat.deepseek.com",
+        "giga.chat",
+        "alice.yandex.ru",
+    )
+
+    def _verify_extension_zip_endpoint(target_base: str) -> None:
+        zip_url = f"{target_base.rstrip('/')}/downloads/promptveil-pro-extension.zip"
+        with urllib.request.urlopen(zip_url, timeout=5.0) as resp:
+            assert int(resp.status) == 200
+            hdrs = {k.lower(): v for k, v in resp.headers.items()}
+            payload = resp.read()
+        assert "application/zip" in hdrs.get("content-type", "").lower()
+        assert hdrs.get("x-content-type-options", "").lower() == "nosniff"
+        assert hdrs.get("cross-origin-resource-policy", "").lower() == "same-origin"
+        with zipfile.ZipFile(io.BytesIO(payload), "r") as zf:
+            assert zf.testzip() is None
+            names = set(zf.namelist())
+            assert "manifest.json" in names
+            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+            assert manifest.get("manifest_version") == 3
+
+            action = manifest.get("action") or {}
+            default_popup = action.get("default_popup")
+            assert isinstance(default_popup, str) and default_popup
+            assert default_popup.lstrip("./") in names
+            assert {"dist/popup.bundle.js", "popup.css"}.issubset(names)
+
+            icon_paths: list[str] = [
+                p for p in (manifest.get("icons") or {}).values() if isinstance(p, str) and p
+            ]
+            default_icon = action.get("default_icon")
+            if isinstance(default_icon, str) and default_icon:
+                icon_paths.append(default_icon)
+            elif isinstance(default_icon, dict):
+                icon_paths.extend(p for p in default_icon.values() if isinstance(p, str) and p)
+            assert len(icon_paths) >= 1
+            for icon_path in icon_paths:
+                assert icon_path.lstrip("./") in names
+
+            content_scripts = manifest.get("content_scripts") or []
+            cs_js: list[str] = [
+                p for cs in content_scripts for p in cs.get("js", []) if isinstance(p, str) and p
+            ]
+            cs_css: list[str] = [
+                p for cs in content_scripts for p in cs.get("css", []) if isinstance(p, str) and p
+            ]
+            assert len(cs_js) >= 1
+            for asset_path in cs_js + cs_css:
+                assert asset_path.lstrip("./") in names
+
+            all_hosts = " ".join(
+                list(manifest.get("host_permissions", []))
+                + [m for cs in content_scripts for m in cs.get("matches", [])]
+            )
+            for dom in expected_domains:
+                assert dom in all_hosts
+            for member in zf.namelist():
+                if member.endswith((".js", ".json", ".html", ".css", ".txt")):
+                    body = zf.read(member).decode("utf-8", errors="replace")
+                    for marker in ("BEGIN PRIVATE KEY", "PV-CLIENT-"):
+                        assert marker not in body
+                    assert re.search(r"PV1\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}", body) is None
+
+    # 1. Verify extension .zip on active base_url, static-only server parity, and SW precache
+    _verify_extension_zip_endpoint(pro_e2e_session.base_url)
+    with start_static_dir_server(STATIC_APP_DIR) as static_url:
+        _verify_extension_zip_endpoint(static_url)
+
+    sw_status, _, sw_body = fetch_http_response(f"{pro_e2e_session.base_url.rstrip('/')}/sw.js")
+    assert sw_status == 200
+    assert "/downloads/promptveil-pro-extension.zip" in sw_body
+
+    # 2. Free gate on #open-pro-downloads-btn, then Pro unlock -> #modal-pro-downloads RU/EN & 1-click .zip download
+    dl_trigger = page.locator("[data-testid='open-pro-downloads-btn'], #open-pro-downloads-btn")
+    if dl_trigger.count() > 0 and dl_trigger.first.is_visible() and dl_trigger.first.is_enabled():
+        dl_trigger.first.click()
+        page.wait_for_timeout(120)
+        assert not page.locator("[data-testid='modal-pro-downloads'], #modal-pro-downloads").is_visible()
+        ui.close_active_modal()
+
+    ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-ACC-R45"))
+    ui.close_active_modal()
+
+    dl_modal_ru = ui.open_pro_downloads_modal()
+    ru_dl_txt = dl_modal_ru.inner_text()
+    assert "Chrome" in ru_dl_txt and "Edge" in ru_dl_txt and re.search(r"Яндекс|Yandex", ru_dl_txt, re.I)
+    verify_russian_purity(page)
+    ui.close_active_modal()
+
+    ext_dl = ui.download_extension_zip(pro_e2e_session.io.downloads)
+    with zipfile.ZipFile(ext_dl, "r") as zf:
+        assert zf.testzip() is None
+        assert "manifest.json" in zf.namelist()
+
+    # 3. R5 Multi-Project Profiles + Pro Packs + Prompt Templates (RU/EN)
+    assert any("Основной" in o for o in ui.get_rulebook_profile_options())
+    ui.create_rulebook_profile("Проект Акцепт")
+    ui.add_custom_rule("AccSecretTerm")
+    exported_rules = ui.export_rules_json(pro_e2e_session.io.downloads)
+    ui.rename_rulebook_profile("Проект Акцепт-2")
+    assert any("Проект Акцепт-2" in o for o in ui.get_rulebook_profile_options())
+
+    drawer = ui.open_rulebook_drawer()
+    for pack_key in ("corporate_ma", "devsecops", "banking_fintech", "crossborder_nda"):
+        pack_btn = drawer.locator(f"[data-testid='word-pack-{pack_key}'], [data-pack='{pack_key}']").first
+        assert pack_btn.is_visible() and not pack_btn.is_disabled()
+    ui.apply_industry_word_pack("corporate_ma")
+    ui.delete_rulebook_profile()
+    ui.create_rulebook_profile("Проект Импорт")
+    ui.import_rules_json(exported_rules)
+    assert "AccSecretTerm" in ui.get_rulebook_text()
+    ui.close_open_drawer()
+
+    assert "[CUSTOM_1]" in ui.sanitize_text("Check AccSecretTerm in accept")
+    ui.select_rulebook_profile("Основной")
+    ui.close_open_drawer()
+    assert "AccSecretTerm" in ui.sanitize_text("Check AccSecretTerm in default")
+
+    tpl_bar = ui.get_prompt_templates_bar()
+    tpl_btn = tpl_bar.locator(".prompt-template-btn, button").first
+    tid = (
+        tpl_btn.get_attribute("data-template-id")
+        or tpl_btn.get_attribute("data-template")
+        or tpl_btn.inner_text().strip()
+    )
+    ui.click_prompt_template(tid)
+    raw_ru = ui.get_prompt_input().input_value()
+    assert len(raw_ru.strip()) > 10 and ui.get_sanitize_output_text().strip()
+
+    pro_e2e_session.net.assert_zero_egress(["AccSecretTerm"])
+    pro_e2e_session.net.phase = "load"
+    ui.switch_language("en")
+    pro_e2e_session.net.assert_clean_load()
+    pro_e2e_session.net.start_interactive_phase()
+    dl_modal_en = ui.open_pro_downloads_modal()
+    en_dl_txt = dl_modal_en.inner_text()
+    assert "Chrome" in en_dl_txt and "Edge" in en_dl_txt and "Yandex" in en_dl_txt
+    ui.close_active_modal()
+
+    tpl_bar_en = ui.get_prompt_templates_bar()
+    tpl_btn_en = tpl_bar_en.locator(".prompt-template-btn, button").first
+    tid_en = (
+        tpl_btn_en.get_attribute("data-template-id")
+        or tpl_btn_en.get_attribute("data-template")
+        or tpl_btn_en.inner_text().strip()
+    )
+    ui.click_prompt_template(tid_en)
+    assert len(ui.get_prompt_input().input_value().strip()) > 10
+    pro_e2e_session.net.assert_zero_egress(["AccSecretTerm"])
+    pro_e2e_session.net.phase = "load"
+    ui.switch_language("ru")
+    pro_e2e_session.net.assert_clean_load()
+    pro_e2e_session.net.start_interactive_phase()
+
+    # 4. Zero-Retention Proof & 390x844 Mobile Fit
+    verify_allowed_local_storage_keys(page)
+    proof = ui.open_privacy_proof_modal("header")
+    ui.run_privacy_proof_check()
+    proof_txt = proof.inner_text()
+    assert "неизвестные ключи: 0" in proof_txt
+    assert "0 байт" in proof_txt
+    assert "нарушений CSP в документе приложения: 0" in proof_txt
+    ui.close_active_modal()
+
+    verify_responsive_layout(page, 390, 844)
+    assert ui.get_prompt_templates_bar().is_visible()
+    verify_responsive_layout(page, 390, 844)
+    ui.open_pro_downloads_modal()
+    verify_responsive_layout(page, 390, 844)
+    ui.close_active_modal()
+    drawer_mob = ui.open_rulebook_drawer()
+    verify_responsive_layout(page, 390, 844)
+    dbox = drawer_mob.bounding_box()
+    assert dbox is not None and dbox["x"] >= -0.5 and (dbox["x"] + dbox["width"]) <= 390.5
+    ui.close_open_drawer()
+
+    pro_e2e_session.net.assert_zero_egress(["AccSecretTerm"])
+    pro_e2e_session.console.assert_no_errors()

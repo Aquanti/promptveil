@@ -798,6 +798,7 @@ def verify_russian_purity(page: Page) -> dict[str, Any]:
             const skipSelectors = [
                 'script', 'style', 'noscript', 'textarea', 'input',
                 '[data-testid="sanitized-output"]',
+                '[data-testid="batch-queue-preview"]',
                 '[data-testid="restored-output"]',
                 'mark[data-token]',
                 'mark.restored-token',
