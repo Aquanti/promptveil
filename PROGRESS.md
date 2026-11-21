@@ -1,24 +1,26 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-21T12:54+03:00 (Post-Crash 15m Safety Save)  
-**Session Status:** Post-Crash Full Re-Verification in Progress (`npm run build` OK, `25/25` pytest OK, `48/48` JS unit OK, `172` E2E self-test OK, Live Browser Verification PASS; Live E2E `task-2220` Running)  
-**Exact Stop Point:** Recovered cleanly after PC shutdown (`git fsck` clean at `fca060a`, deploy `6b009726fbb09a4a4c3fc4e3` `ready` at `https://promptveil.netlify.app`). Post-crash re-verification so far confirmed `npm run build` (`7d1ffd0739`, 0 diffs), `py_compile`, `pytest tests/test_server.py` (`25/25`), `node --test` (`48/48`), `run_e2e.py --mode self-test` (`172`), and live production `browser` verification (`f2d75639`: headers/COOP/CORP/manifest+json/CSP, P0 RU detectors + UUID, Stage B state/i18n/pluralizeRu/RAM-audit, Stage E growth, Mobile 390×844 compact header & drawers). Live E2E `task-2220` (`--start-server --tier all` then `--static-only --tier all`) is running (~97% of first suite). Next: await `task-2220` completion -> run live Lighthouse on `https://promptveil.netlify.app` -> reconcile legacy top sections of `PROGRESS.md` -> send completion email via `gmail` CLI to `kilkauciha@gmail.com`.
+**Checkpoint Date:** 2026-11-21T13:04+03:00  
+**Session Status:** POST-CRASH RE-VERIFICATION COMPLETE & COMPLETION EMAIL SENT — Live at https://promptveil.netlify.app  
+**Exact Stop Point:** Clean recovery and full post-crash re-verification completed on `master` (live deploy `6b009726fbb09a4a4c3fc4e3`, `buildId: 6b009724fbb09a4a4c3fc4e1`, `ready` at `https://promptveil.netlify.app`). Verified `npm run build` (`7d1ffd0739`, `0` diffs), `py_compile` (`0` errors), `pytest tests\test_server.py -v` (`25/25`), `node --test tests\js\*.test.mjs` (`48/48`, `13` suites), `e2e_tests\run_e2e.py --mode self-test` (`172` tests), `e2e_tests\run_e2e.py --mode live --start-server --tier all` (`172/172`, `413.08s`), `e2e_tests\run_e2e.py --mode live --static-only --tier all` (`172/172`, `404.59s`), live browser verification `f2d75639` across desktop `1440×900` (`/` & `/en/`) and mobile `390×844`, and live Lighthouse on `https://promptveil.netlify.app` (Desktop `100/100/92/100`, Mobile `96/100/92/100`, Best Practices `92` caused solely by Netlify Free HUD `about:srcdoc`). Completion email sent to `kilkauciha@gmail.com` (`Sent: ID=1a1fd8f07328cc77`, Thread `1a1fd8f07328cc77`). Port `8000` is free and no background tasks remain. Only manual owner step remaining: create `Aquanti/promptveil` on GitHub and push `master` (Section 7).
 
 ---
 
 ## 1. Current Architecture (Option A — 100% Client-Side Public Web Product)
 - **Zero-Egress Browser Privacy Engine (`app/static/js/`):**
-  - `detector.js`: 11 deterministic categories (`API_KEY`, `JWT`, `CREDIT_CARD` Luhn, `IBAN` ISO 7064, `SSN`, `ENV_SECRET`, `CUSTOM` Unicode/Cyrillic with `ruleCategory` tag preservation, `EMAIL`, `PHONE` RU/CIS/intl, `IPV4`, `HIGH_ENTROPY`).
+  - `detector.js`: **25** deterministic categories (`API_KEY`, `URL_TOKEN`, `JWT`, `IBAN` ISO 7064, `RU_ACCOUNT` BIK key, `RU_OMS` Luhn, `CREDIT_CARD` Luhn, `RU_SNILS`, `RU_INN` 10/12, `RU_OGRN`/OGRNIP, `RU_PASSPORT`, `RU_BIK`, `POSSIBLE_CARD` context-labeled fallback, `SSN`, `ENV_SECRET`, `CUSTOM` Unicode/Cyrillic, `EMAIL`, `PHONE` RU/CIS/intl, `RU_ORG`, `RU_AUTO_PLATE`, `RU_FIO` 2–3 words + cases, `RU_ADDRESS` + city capture, `IPV4`, opt-in `UUID`, `HIGH_ENTROPY`) with `"normal"` / `"strict"` sensitivity modes and per-match `reasonKey` explanations.
   - `vault.js`: RAM-only `SessionVault` (`[PREFIX_N]` reversible tokens, transient live-typing evolution, category/item toggles, clean reset on empty input, single-pass longest-token `rehydrate`).
-  - `storage.js`: Per-browser `localStorage` custom rules (`promptveil_rules_v1`), SHA-256 hash-only audit log (`promptveil_audit_v1`), and language preference (`promptveil_lang_v1`, default `"ru"`) with in-memory fallback.
-  - `privacy-proof.js`: Passive live self-test verifying `0` server text requests (`connect-src 'self'`), `0` bytes stored texts/secrets (`sessionStorage`, `cookies`, audit/unknown storage keys), `0` trackers, and transport protocol status (`HTTPS / TLS` vs local host).
-  - `contacts.js`: Centralized frozen owner contacts (`@supv1rus`, `kilkauciha@gmail.com`, `github.com/Aquanti`, author `SupV1rus`) + safe `mailto:` builder without external `http(s)://` literals.
-- **UI & Spark Admin Design System (`app/static/`):**
-  - `index.html` (`lang="ru"`), `favicon.svg`, `styles.css`, and modular CSS (`css/{tokens,layout,components,drawers,sections,modals}.css`) using Spark Admin palette (`#051C12`, `#072F1F`, `#B4F105`, `#FFFFFF`, `#F4F6F5`, `#E2E8DF`) and geometric prism/veil monogram.
-  - Modular ES6 UI controllers: `js/{i18n,dom,presets,clipboard,pricing,modals,render-workbench,render-drawers,privacy-proof,contacts,app}.js` + `sw.js` (`promptveil-static-v2`) with full `RU | EN` coverage, Step 1/2 Paste + Copy-and-Go-Step-2 UX, `"Открыть в ИИ"` 5-LLM bar, instant `resetSessionToZero()` + `pagehide` scrub, Honest Waitlist Pricing (`Free 0 ₽ / навсегда`, `Pro`, `Team` without prices), Dark Theme (`promptveil_theme_v1`), and Trust Footer + `#modal-privacy-policy` + `#modal-terms`.
-- **Local Preview & Static Cloud Hosting (`app/`, `netlify.toml`):**
-  - `app/main.py`, `app/config.py`, `app/schemas.py`: FastAPI static host (`http://127.0.0.1:8000`) + `/health` + strict CSP & security headers.
-  - `netlify.toml`: Static deployment config (`publish = "app/static"`) with matching security and cache headers.
+  - `storage.js`: Per-browser `localStorage` custom rules (`promptveil_rules_v1`), language preference (`promptveil_lang_v1`), dark/light theme (`promptveil_theme_v1`), opt-in audit persistence toggle (`promptveil_audit_persist_v1`), and **RAM-only by default** SHA-256 hash-only audit receipts (`promptveil_audit_v1` written only when opted in).
+  - `privacy-proof.js`: Passive live self-test verifying `0` server text requests (`connect-src 'self'`), `0` bytes stored texts/secrets (`sessionStorage`, `cookies`, audit/unknown storage keys), `0` trackers, `"нарушений CSP в документе приложения: 0"`, and transport protocol status (`HTTPS / TLS` vs local host).
+  - `contacts.js`: Centralized frozen owner contacts (`@supv1rus`, `kilkauciha@gmail.com`, `github.com/Aquanti/promptveil`, author `SupV1rus`) + safe `mailto:` builder without external `http(s)://` literals.
+- **UI, Production Bundle & Spark Admin Design System (`app/static/`, `scripts/build.mjs`):**
+  - Routes: `index.html` (`lang="ru"`, `/` canonical) and `en/index.html` (`lang="en"`, `/en/` canonical) with `hreflang`, OG/Twitter metadata, `favicon.svg`, `404.html`, `robots.txt`, `sitemap.xml`, `manifest.webmanifest`, and PNG PWA/OG assets.
+  - `esbuild` deterministic production build (`7d1ffd0739`) into `app/static/dist/` (`styles.OSO7ZGEU.css`, `app.7ZFZXPFV.js`, lazy chunks `i18n-ru-XC3DQG4V.js`, `i18n-en-DA7RUS5J.js`), 4 `<template>` modals hydrated on open, and Service Worker `sw.js` (`promptveil-build-7d1ffd0739`, network-first HTML + cache-first `/dist/*` + `#sw-update-banner`).
+  - Modular ES6 UI controllers (`18` files in `app/static/js/`): `{app,clipboard,contacts,detector,dom,i18n,i18n-en,i18n-ru,modals,notifications,pipeline,presets,pricing,privacy-proof,render-drawers,render-workbench,storage,vault}.js` with full `RU | EN` parity, mobile `390×844` compact header (`56.25px`) + `>= 44px` tap targets + collapsible vault + sticky bottom bar, 1-click Copy+Open AI launchers, Honest Waitlist Pricing, `#how-it-works` / `#honest-limits`, and Trust Footer.
+- **Local Preview, CI & Static Cloud Hosting (`app/`, `netlify.toml`, `.github/workflows/ci.yml`):**
+  - `app/main.py`, `app/config.py`, `app/schemas.py`: FastAPI static host (`http://127.0.0.1:8000`) + `/health` + strict CSP, `COOP: same-origin`, `CORP: same-origin`, and security headers.
+  - `netlify.toml`: Static deployment config (`publish = "app/static"`) serving `/dist/*` with `immutable` cache, `/manifest.webmanifest` as `application/manifest+json; charset=utf-8`, `/sw.js` as `no-cache`, and matching `COOP`/`CORP`/CSP headers.
+  - Repo hygiene: MIT `LICENSE`, bilingual RU+EN `README.md`, `CHANGELOG.md`, `.gitattributes`, `package.json`, and GitHub Actions CI.
 
 ---
 
@@ -32,23 +34,26 @@
 
 ---
 
-## 3. Verification Status
-- **Active background processes / local servers / subagents:** `0` (port `8000` free).
-- **`py_compile` across `app/`, `tests/`, `e2e_tests/`:** Exit `0` (all Python files, `0` syntax errors).
-- **`pytest tests/test_server.py -v`:** **`22 passed`** (`1.19s`, exit `0`, including Stage 1 SEO/PWA and Stage 2 SW/AI-launcher/Dark-theme contract checks).
-- **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`109` Tier 1–4 + `29` Tier 5 + `12` Acceptance = `150` unique tests, exit `0`).
-- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`150 passed`** (`323.51s` on modular Stage 3A, exit `0`, `0` failed, `0` skipped, `0` console/page/CSP errors).
-- **Lighthouse Audit (`http://127.0.0.1:8000`, Chrome Headless):**
-  - Desktop (`--preset=desktop`): Performance **`100`**, Accessibility **`100`**, Best Practices **`100`**, SEO **`100`**.
-  - Mobile (default): Performance **`98`**, Accessibility **`100`**, Best Practices **`100`**, SEO **`100`**.
-- **Visual Inspection (`e2e_tests/artifacts/acceptance/*.png`):** Inspected `1440×900` & `390×844` light and dark screenshots (`acc_desktop_dark_1440x900.png`, `acc_mobile_dark_390x844.png`, `acc_desktop_pricing_footer_1440x900.png`) — zero overlaps, zero clipping, zero horizontal overflow, WCAG AA contrast, mobile `.top-rail <= 64px`.
+## 3. Verification Status (Post-Crash Full Re-Verification — 2026-11-21)
+- **Active background processes / local servers / subagents:** `0` (`PORT_8000_LISTEN_COUNT=0`).
+- **`npm run build`:** Deterministic build `7d1ffd0739` (`app/static/dist/*`, `0` git diffs).
+- **`py_compile` across `app/`, `tests/`, `e2e_tests/`:** Exit `0` (`0` syntax errors).
+- **`pytest tests/test_server.py -v`:** **`25 passed`** (`1.64s`, exit `0`).
+- **`node --test tests/js/*.test.mjs`:** **`48 passed, 0 failed`** (`13` suites, `202ms`).
+- **`e2e_tests/run_e2e.py --mode self-test`:** **`ALL CHECKS PASSED`** (`127` Tier 1–4 + `32` Tier 5 + `13` Acceptance = `172` unique tests, exit `0`).
+- **`e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`:** **`172 passed, 0 failed, 0 skipped`** (`413.08s`).
+- **`e2e_tests/run_e2e.py --mode live --static-only --tier all`:** **`172 passed, 0 failed, 0 skipped`** (`404.59s`).
+- **Live Lighthouse Audit (`https://promptveil.netlify.app`, Chrome Headless, saved in conversation scratch `lh-live-v3-{desktop,mobile}.json`):**
+  - Desktop (`--preset=desktop`): Performance **`100`**, Accessibility **`100`**, Best Practices **`92`** (Netlify Free HUD `about:srcdoc` only; `0` app CSP violations), SEO **`100`** (`FCP 0.6 s`, `LCP 0.6 s`, `TBT 0 ms`, `CLS 0`, `SI 1.1 s`).
+  - Mobile: Performance **`96`**, Accessibility **`100`**, Best Practices **`92`** (Netlify Free HUD `about:srcdoc` only; `0` app CSP violations), SEO **`100`** (`FCP 1.3 s`, `LCP 1.3 s`, `TBT 220 ms`, `CLS 0`, `SI 2.2 s`).
+- **Live Visual & Functional Inspection (`browser` subagent `f2d75639` on `https://promptveil.netlify.app`):** Verified desktop `1440×900` (`/` & `/en/`) and mobile `390×844` dark theme screenshots (`final_step_32.png`, `step_30_shot_1_mobile_dark_390x844.png`) — `56.25px` mobile header, `>= 44px` tap targets, `0` horizontal overflow, `0` app errors, headers & detections confirmed.
 
 ---
 
 ## 4. Public Launch & Hosting Record
-- **Live Public URL:** `https://promptveil.netlify.app` (renamed from `promtveil` on 2026-11-20)
+- **Live Public URL:** `https://promptveil.netlify.app` (RU) and `https://promptveil.netlify.app/en/` (EN)
 - **Netlify Project:** `promptveil` (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`, `teamSlug: kil-ka-uchikha`, `plan: nf_team_dev` / Free)
-- **Latest Production Deploy:** `6b0064d917c8d8fd558f0da9` (`buildId: 6b0064d817c8d8fd558f0da7`, state `ready`, verified live via `browser` subagent `0516d1c8-c381-4bed-b722-87c7572182d7`: HTTPS 200 `47/47`, 0 app CSP/JS errors, 14/14 RU preset roundtrip, `0 запросов` / `0 байт` / `0 трекеров • HTTPS / TLS`, `Офлайн готов • SW активен`, 5 AI launchers, Dark Theme verified in `final_step_14.png`, Waitlist cards, clickable `@supv1rus` & `github.com/Aquanti`, `#modal-terms`).
+- **Latest Production Deploy:** `6b009726fbb09a4a4c3fc4e3` (`buildId: 6b009724fbb09a4a4c3fc4e1`, state `ready`, re-verified live on 2026-11-21 across desktop `1440×900`, mobile `390×844`, and `/en/`).
 
 
 ---
@@ -252,8 +257,8 @@
   - `.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all`: **`172/172` passed**.
   - `.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode live --static-only --tier all`: **`172/172` passed**.
 - **Completion Email Status (`kilkauciha@gmail.com`):**
-  - **Not yet sent by worker:** The completion email body is prepared outside the repository at `C:\Users\User\.gemini\antigravity\scratch\teamwork\3e50616b-ac3e-43ee-a409-1c9ac6dc2c6a\completion_email.md` and will be sent by the parent coordinator after Victory Audit.
-  - Direct worker `gmail mutate send` attempts (including `2026-11-20T19:18Z`, exit `1`) encountered `Post "https://oauth2.googleapis.com/token": Bad Gateway` (`gmail/google needs authentication`).
+  - **Sent (2026-11-21):** Completion report `completion_email_v3.md` sent via `gmail mutate send` (`Sent: ID=1a1fd8f07328cc77`, `Thread=1a1fd8f07328cc77`).
+  - *(Historical worker note: during the earlier 2026-11-20 subagent run, direct worker attempts hit `oauth2.googleapis.com/token: Bad Gateway`; resolved cleanly after session re-initialization.)*
 
 ---
 
@@ -270,7 +275,7 @@ git push -u origin master
 
 ---
 
-## 8. Next Steps (Owner Manual Action Only)
-1. Create an empty public repository `Aquanti/promptveil` on GitHub and push local `master` using the commands in **Section 7** above, then optionally pin it to your GitHub profile README.
-2. Live production site (`https://promptveil.netlify.app`) is deployed, verified (`80/80` browser checks, Lighthouse Desktop `100/100/92/100` & Mobile `100/100/92/100`), and ready for use.
-3. Completion email to `kilkauciha@gmail.com` is **not yet sent** by the worker session: the body is prepared at `C:\Users\User\.gemini\antigravity\scratch\teamwork\3e50616b-ac3e-43ee-a409-1c9ac6dc2c6a\completion_email.md` and will be sent by the parent coordinator after Victory Audit (team's direct `gmail` CLI attempt encountered Gmail OAuth `Post "https://oauth2.googleapis.com/token": Bad Gateway`; if user re-authentication is still needed, sign in via `<plugin-card catalog-id="gmail"></plugin-card>`).
+## 8. Final Handover (Owner Manual Action Only)
+1. **GitHub Publish:** Create an empty public repository `Aquanti/promptveil` on GitHub and push local `master` using the commands in **Section 7** above, then optionally pin it to your GitHub profile README.
+2. **Production Live URL:** `https://promptveil.netlify.app` (`deployId: 6b009726fbb09a4a4c3fc4e3`, `ready`) — post-crash re-verified (`pytest 25/25`, `node --test 48/48`, FastAPI E2E `172/172`, Static E2E `172/172`, live browser verification `f2d75639`, live Lighthouse Desktop `100/100/92/100` & Mobile `96/100/92/100`).
+3. **Completion Email:** Delivered to `kilkauciha@gmail.com` (`Sent: ID=1a1fd8f07328cc77`).
