@@ -5,6 +5,9 @@
  */
 
 export const RULES_STORAGE_KEY = "promptveil_rules_v1";
+export const PROFILES_STORAGE_KEY = "promptveil_profiles_v1";
+export const DEFAULT_PROFILE_ID = "default";
+export const MAX_PROFILE_NAME_LENGTH = 80;
 export const AUDIT_STORAGE_KEY = "promptveil_audit_v1";
 export const AUDIT_PERSIST_STORAGE_KEY = "promptveil_audit_persist_v1";
 export const LANG_STORAGE_KEY = "promptveil_lang_v1";
@@ -139,42 +142,12 @@ function ensureUniqueRuleId(rule, seenIds) {
   return id === rule.id ? rule : { ...rule, id };
 }
 
-export function loadRules() {
-  const raw = readStorageItem(RULES_STORAGE_KEY);
-  if (!raw) {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    const rules = [];
-    const seen = new Set();
-    const seenIds = new Set();
-    for (const item of parsed) {
-      const normalized = normalizeRule(item);
-      if (!normalized) {
-        continue;
-      }
-      const key = makeRuleDedupKey(normalized);
-      if (!seen.has(key)) {
-        seen.add(key);
-        rules.push(ensureUniqueRuleId(normalized, seenIds));
-      }
-    }
-    return rules;
-  } catch {
-    return [];
-  }
-}
-
-export function saveRules(rules) {
+export function normalizeRuleList(rawRules) {
   const normalized = [];
   const seen = new Set();
   const seenIds = new Set();
-  if (Array.isArray(rules)) {
-    for (const item of rules) {
+  if (Array.isArray(rawRules)) {
+    for (const item of rawRules) {
       const rule = normalizeRule(item);
       if (!rule) {
         continue;
@@ -186,14 +159,33 @@ export function saveRules(rules) {
       }
     }
   }
+  return normalized;
+}
+
+export function loadRules() {
+  const raw = readStorageItem(RULES_STORAGE_KEY);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return normalizeRuleList(parsed);
+  } catch {
+    return [];
+  }
+}
+
+export function saveRules(rules) {
+  const normalized = normalizeRuleList(rules);
   writeStorageItem(RULES_STORAGE_KEY, JSON.stringify(normalized));
   return normalized;
 }
 
 export function exportRulesJson(rules) {
-  const normalized = Array.isArray(rules)
-    ? rules.map(normalizeRule).filter(Boolean)
-    : [];
+  const normalized = normalizeRuleList(rules);
   return JSON.stringify(
     {
       schema: "promptveil.rules.v1",
@@ -205,7 +197,7 @@ export function exportRulesJson(rules) {
   );
 }
 
-export function importRulesJson(jsonStr, existingRules = []) {
+function parseRulesImportPayload(jsonStr) {
   if (typeof jsonStr !== "string" || jsonStr.trim().length === 0) {
     throw new Error("Rules JSON file is empty.");
   }
@@ -217,21 +209,18 @@ export function importRulesJson(jsonStr, existingRules = []) {
     throw new Error("Invalid JSON syntax in rules import file.");
   }
 
-  let rawList;
   if (Array.isArray(parsed)) {
-    rawList = parsed;
-  } else if (
-    parsed &&
-    typeof parsed === "object" &&
-    Array.isArray(parsed.rules)
-  ) {
-    rawList = parsed.rules;
-  } else {
-    throw new Error(
-      "Invalid rules JSON schema: Rules JSON must be an array or an object containing a 'rules' array."
-    );
+    return parsed;
   }
+  if (parsed && typeof parsed === "object" && Array.isArray(parsed.rules)) {
+    return parsed.rules;
+  }
+  throw new Error(
+    "Invalid rules JSON schema: Rules JSON must be an array or an object containing a 'rules' array."
+  );
+}
 
+function mergeRulesWithImportList(rawList, existingRules = []) {
   const merged = [];
   const seen = new Set();
   const seenIds = new Set();
@@ -265,9 +254,364 @@ export function importRulesJson(jsonStr, existingRules = []) {
     addedCount += 1;
   }
 
+  return { merged, addedCount, skippedCount };
+}
+
+export function importRulesJson(jsonStr, existingRules = []) {
+  const rawList = parseRulesImportPayload(jsonStr);
+  const { merged, addedCount, skippedCount } = mergeRulesWithImportList(rawList, existingRules);
   const saved = saveRules(merged);
   return {
     rules: saved,
+    addedCount,
+    skippedCount,
+  };
+}
+
+export function getDefaultProfileName(lang = "ru") {
+  return normalizeLanguage(lang) === "en" ? "Default" : "Основной";
+}
+
+export function isReservedDefaultProfileName(name) {
+  const clean = String(name ?? "").trim().toLowerCase();
+  return clean === "основной" || clean === "default";
+}
+
+export function normalizeProfileName(name) {
+  return String(name ?? "").trim().slice(0, MAX_PROFILE_NAME_LENGTH);
+}
+
+function createProfileId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `prof_${crypto.randomUUID()}`;
+  }
+  return `prof_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeProfilesStore(rawStore, lang = "ru") {
+  const defaultName = getDefaultProfileName(lang);
+  const rawProfiles = Array.isArray(rawStore?.profiles) ? rawStore.profiles : [];
+  const profiles = [];
+  const seenIds = new Set();
+  const seenNames = new Set();
+  let defaultProfile = null;
+
+  for (const item of rawProfiles) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+    const rawId = typeof item.id === "string" ? item.id.trim() : "";
+    const isDefault = rawId === DEFAULT_PROFILE_ID || Boolean(item.isDefault);
+    if (isDefault) {
+      if (!defaultProfile) {
+        defaultProfile = {
+          id: DEFAULT_PROFILE_ID,
+          name: defaultName,
+          isDefault: true,
+          rules: normalizeRuleList(item.rules),
+        };
+      }
+      continue;
+    }
+    const name = normalizeProfileName(item.name);
+    if (!name || isReservedDefaultProfileName(name)) {
+      continue;
+    }
+    const lowerName = name.toLowerCase();
+    if (seenNames.has(lowerName)) {
+      continue;
+    }
+    seenNames.add(lowerName);
+    let id = rawId && rawId !== DEFAULT_PROFILE_ID ? rawId : createProfileId();
+    while (seenIds.has(id) || id === DEFAULT_PROFILE_ID) {
+      id = createProfileId();
+    }
+    seenIds.add(id);
+    profiles.push({
+      id,
+      name,
+      isDefault: false,
+      rules: normalizeRuleList(item.rules),
+    });
+  }
+
+  if (!defaultProfile) {
+    defaultProfile = {
+      id: DEFAULT_PROFILE_ID,
+      name: defaultName,
+      isDefault: true,
+      rules: loadRules(),
+    };
+  }
+
+  const finalProfiles = [defaultProfile, ...profiles];
+  const validIds = new Set(finalProfiles.map((p) => p.id));
+  const requestedActive =
+    typeof rawStore?.activeProfileId === "string" ? rawStore.activeProfileId.trim() : "";
+  const activeProfileId = validIds.has(requestedActive) ? requestedActive : DEFAULT_PROFILE_ID;
+
+  return {
+    version: 1,
+    activeProfileId,
+    profiles: finalProfiles,
+  };
+}
+
+export function saveProfilesStore(store, lang = "ru") {
+  const normalized = normalizeProfilesStore(store, lang);
+  writeStorageItem(PROFILES_STORAGE_KEY, JSON.stringify(normalized));
+  return normalized;
+}
+
+export function loadProfilesStore(lang = "ru") {
+  const raw = readStorageItem(PROFILES_STORAGE_KEY);
+  const buildFallback = () => ({
+    version: 1,
+    activeProfileId: DEFAULT_PROFILE_ID,
+    profiles: [
+      {
+        id: DEFAULT_PROFILE_ID,
+        name: getDefaultProfileName(lang),
+        isDefault: true,
+        rules: loadRules(),
+      },
+    ],
+  });
+
+  if (raw === null || raw === "") {
+    return buildFallback();
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || !Array.isArray(parsed.profiles)) {
+      return saveProfilesStore(buildFallback(), lang);
+    }
+    const normalized = normalizeProfilesStore(parsed, lang);
+    const hadAnyValidEntry = parsed.profiles.some(
+      (item) => item && typeof item === "object" && !Array.isArray(item) && (item.id === DEFAULT_PROFILE_ID || item.isDefault || normalizeProfileName(item.name))
+    );
+    if (!hadAnyValidEntry) {
+      return saveProfilesStore(buildFallback(), lang);
+    }
+    return normalized;
+  } catch {
+    return saveProfilesStore(buildFallback(), lang);
+  }
+}
+
+export function getActiveProfile(store) {
+  const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
+  if (profiles.length === 0) {
+    return {
+      id: DEFAULT_PROFILE_ID,
+      name: getDefaultProfileName("ru"),
+      isDefault: true,
+      rules: [],
+    };
+  }
+  const activeId = store?.activeProfileId || DEFAULT_PROFILE_ID;
+  return profiles.find((p) => p.id === activeId) || profiles[0];
+}
+
+export function setActiveProfileRules(store, nextRules, { lang = "ru" } = {}) {
+  const base = store && Array.isArray(store.profiles) ? store : loadProfilesStore(lang);
+  const active = getActiveProfile(base);
+  const normalizedRules = normalizeRuleList(nextRules);
+  const nextStore = {
+    ...base,
+    profiles: base.profiles.map((p) =>
+      p.id === active.id ? { ...p, rules: normalizedRules } : p
+    ),
+  };
+  const savedStore = saveProfilesStore(nextStore, lang);
+  if (active.id === DEFAULT_PROFILE_ID || active.isDefault) {
+    saveRules(normalizedRules);
+  }
+  return {
+    store: savedStore,
+    rules: getActiveProfile(savedStore).rules,
+  };
+}
+
+export function createProfile(store, rawName, { isPro = false, lang = "ru" } = {}) {
+  const base = store && Array.isArray(store.profiles) ? store : loadProfilesStore(lang);
+  if (!isPro) {
+    return { ok: false, error: "pro_required", store: base };
+  }
+  const name = normalizeProfileName(rawName);
+  if (!name) {
+    return { ok: false, error: "empty", store: base };
+  }
+  const lower = name.toLowerCase();
+  if (
+    isReservedDefaultProfileName(name) ||
+    base.profiles.some((p) => String(p.name || "").trim().toLowerCase() === lower)
+  ) {
+    return { ok: false, error: "duplicate", store: base };
+  }
+  const newProfile = {
+    id: createProfileId(),
+    name,
+    isDefault: false,
+    rules: [],
+  };
+  const nextStore = saveProfilesStore(
+    {
+      ...base,
+      activeProfileId: newProfile.id,
+      profiles: [...base.profiles, newProfile],
+    },
+    lang
+  );
+  return {
+    ok: true,
+    error: "",
+    store: nextStore,
+    profile: nextStore.profiles.find((p) => p.id === newProfile.id) || newProfile,
+  };
+}
+
+export function renameProfile(store, profileId, rawName, { isPro = false, lang = "ru" } = {}) {
+  const base = store && Array.isArray(store.profiles) ? store : loadProfilesStore(lang);
+  if (!isPro) {
+    return { ok: false, error: "pro_required", store: base };
+  }
+  const target = base.profiles.find((p) => p.id === profileId);
+  if (!target) {
+    return { ok: false, error: "not_found", store: base };
+  }
+  if (target.isDefault || target.id === DEFAULT_PROFILE_ID) {
+    return { ok: false, error: "default_protected", store: base };
+  }
+  const name = normalizeProfileName(rawName);
+  if (!name) {
+    return { ok: false, error: "empty", store: base };
+  }
+  const lower = name.toLowerCase();
+  if (
+    isReservedDefaultProfileName(name) ||
+    base.profiles.some(
+      (p) => p.id !== target.id && String(p.name || "").trim().toLowerCase() === lower
+    )
+  ) {
+    return { ok: false, error: "duplicate", store: base };
+  }
+  const nextStore = saveProfilesStore(
+    {
+      ...base,
+      profiles: base.profiles.map((p) => (p.id === target.id ? { ...p, name } : p)),
+    },
+    lang
+  );
+  return {
+    ok: true,
+    error: "",
+    store: nextStore,
+    profile: nextStore.profiles.find((p) => p.id === target.id) || null,
+  };
+}
+
+export function switchProfile(store, profileId, { isPro = false, lang = "ru" } = {}) {
+  const base = store && Array.isArray(store.profiles) ? store : loadProfilesStore(lang);
+  if (!isPro && profileId !== DEFAULT_PROFILE_ID) {
+    return { ok: false, error: "pro_required", store: base };
+  }
+  const target = base.profiles.find((p) => p.id === profileId);
+  if (!target) {
+    return { ok: false, error: "not_found", store: base };
+  }
+  const nextStore = isPro
+    ? saveProfilesStore({ ...base, activeProfileId: target.id }, lang)
+    : { ...base, activeProfileId: target.id };
+  return {
+    ok: true,
+    error: "",
+    store: nextStore,
+    profile: nextStore.profiles.find((p) => p.id === target.id) || target,
+  };
+}
+
+export function deleteProfile(store, profileId, { isPro = false, lang = "ru" } = {}) {
+  const base = store && Array.isArray(store.profiles) ? store : loadProfilesStore(lang);
+  if (!isPro) {
+    return { ok: false, error: "pro_required", store: base };
+  }
+  if (base.profiles.length <= 1) {
+    return { ok: false, error: "last_profile", store: base };
+  }
+  const target = base.profiles.find((p) => p.id === profileId);
+  if (!target) {
+    return { ok: false, error: "not_found", store: base };
+  }
+  if (target.isDefault || target.id === DEFAULT_PROFILE_ID) {
+    return { ok: false, error: "default_protected", store: base };
+  }
+  const remaining = base.profiles.filter((p) => p.id !== target.id);
+  const nextActiveId =
+    base.activeProfileId === target.id ? DEFAULT_PROFILE_ID : base.activeProfileId;
+  const nextStore = saveProfilesStore(
+    {
+      ...base,
+      activeProfileId: nextActiveId,
+      profiles: remaining,
+    },
+    lang
+  );
+  return {
+    ok: true,
+    error: "",
+    store: nextStore,
+    deletedProfile: target,
+  };
+}
+
+export function exportProfileRulesJson(profile) {
+  const normalized = normalizeRuleList(profile?.rules || []);
+  return JSON.stringify(
+    {
+      schema: "promptveil.profile.v1",
+      exportedAt: new Date().toISOString(),
+      profile: {
+        id: typeof profile?.id === "string" && profile.id ? profile.id : DEFAULT_PROFILE_ID,
+        name: normalizeProfileName(profile?.name) || getDefaultProfileName("ru"),
+      },
+      rules: normalized,
+    },
+    null,
+    2
+  );
+}
+
+export function importProfileRulesJson(
+  store,
+  jsonStr,
+  targetProfileId = null,
+  { lang = "ru" } = {}
+) {
+  const base = store && Array.isArray(store.profiles) ? store : loadProfilesStore(lang);
+  const rawList = parseRulesImportPayload(jsonStr);
+  const target =
+    base.profiles.find((p) => p.id === (targetProfileId || base.activeProfileId)) ||
+    getActiveProfile(base);
+  const { merged, addedCount, skippedCount } = mergeRulesWithImportList(rawList, target.rules);
+  const nextStore = saveProfilesStore(
+    {
+      ...base,
+      profiles: base.profiles.map((p) =>
+        p.id === target.id ? { ...p, rules: merged } : p
+      ),
+    },
+    lang
+  );
+  if (target.id === DEFAULT_PROFILE_ID || target.isDefault) {
+    saveRules(merged);
+  }
+  const updatedProfile = nextStore.profiles.find((p) => p.id === target.id) || target;
+  return {
+    store: nextStore,
+    profile: updatedProfile,
+    rules: updatedProfile.rules,
     addedCount,
     skippedCount,
   };

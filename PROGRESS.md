@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-21T14:44+03:00  
-**Session Status:** PRO UPGRADE M2 ITERATION 2 FIXES COMPLETE — Local Batch & Office/PDF Document Scrubber (R3)  
-**Exact Stop Point:** Completed Milestone M2 (R3) Iteration 2 fixes (build `ffc2518889`, `69/69` JS tests, `25/25` pytest): fixed real browser `File.prototype.bytes()` handling in `parseDocumentFile`, `.docx` nested `<w:txbxContent><w:tbl>`/`<w:p>` separation, `.pdf` indirect `/Resources`/`/Font` resolution, `parseXmlPureJs` out-of-range numeric entity guard, `RU["banner.pdfScannedNotice"]` + `aria-live="polite"` on `#input-error-banner`, `MutationObserver` `attributeOldValue` guard in `pipeline.js`, `data-testid="batch-queue-preview"`, and static HTML parity. Next: M2 Gate re-verification & Milestone M3 (Multi-Project Rulebook Profiles, Extended Packs & Templates).
+**Checkpoint Date:** 2026-11-21T15:09+03:00  
+**Session Status:** PRO UPGRADE M3 COMPLETE — Multi-Project Rulebook Profiles, Extended Pro Dictionaries & Templates (R5)  
+**Exact Stop Point:** Completed Milestone M3 (R5) (build `22cecb109f`, `75/75` JS tests across `18` suites, `26/26` pytest, `app.js` `719` lines `< 750`, targeted Playwright E2E Tier 1 `F13`/`F8_15` `6/6` + Tier 2 `F13` `5/5` + Tier 5 `T5_11`/`T5_18` `2/2` passing). Next: M3 Gate & Milestone M4B (Extension ZIP packaging, Pro Downloads modal, Server/Netlify/SW).
 
 ---
 
@@ -299,3 +299,15 @@ git push -u origin master
   - Updated `#file-upload-input` (`accept=".txt,.md,.csv,.json,.log,.env,.docx,.pdf,.xlsx" multiple`), added `#file-pro-upgrade-banner` (`role="status"`, `#file-pro-upgrade-btn` opening `#modal-pro-license`) while preserving Free `> 2 MB` `role="alert"` (`"2 МБ"` / `"2 MB"`) and `.png` unsupported format contracts, and kept `app.js` under `< 750` lines (`728` lines).
   - Added `#batch-queue-panel` (`#batch-queue-list`, `#batch-clear-btn`, `#batch-download-txt-btn`, `#batch-download-zip-btn`, `#batch-rehydrate-btn`) with shared `SessionVault` (`{ resetOnEmpty: false }`), masked previews, honest scanned-PDF notices, and `MutationObserver` sync on `#open-pro-license-btn[data-pro-state]`.
 - **Verification:** `npm run build` (`9e9f991fbb`), `node --test tests\js\*.test.mjs` (`64/64` across `17` suites), `pytest tests\test_server.py -v` (`25/25`).
+
+---
+
+## 11. PromptVeil Pro Upgrade — Milestone M3 (R5)
+- **Multi-Project Rulebook Profiles & Privacy Proof (`app/static/js/{storage,privacy-proof,render-drawers,pipeline,app}.js`, `app/static/{index,en/index}.html`, `app/static/css/drawers.css`):**
+  - Implemented `PROFILES_STORAGE_KEY` (`promptveil_profiles_v1`) in `storage.js` with `loadProfilesStore`, `saveProfilesStore`, `getActiveProfile`, `setActiveProfileRules`, `createProfile`, `renameProfile`, `switchProfile`, `deleteProfile`, `exportProfileRulesJson`, and `importProfileRulesJson`, including legacy `promptveil_rules_v1` migration, corruption recovery (`"{broken"`, `"[null, {}]"`), duplicate/empty/reserved-name validation, default/last-profile delete protection, and Free-tier mutation blocking without writing `localStorage`.
+  - Allowlisted `PROFILES_STORAGE_KEY` in `privacy-proof.js` and exempted it alongside `RULES_STORAGE_KEY` in the active secret-needle scan so custom rule keywords in profiles never produce false-positive `leakedSecretBytes`.
+  - Added `.profiles-box` (`#profile-select`, `#profile-name-input`, `#profile-create-btn`, `#profile-rename-btn`, `#profile-delete-btn`, `#rulebook-pro-upgrade-banner`) inside `#drawer-rulebook` while preserving single `<input type="file">` (`#import-rules-input`), zero `role="switch"` above `#rulebook-list`, non-closing inline Free upgrade prompts, zero `window.confirm()` on delete, and `app.js` at `719` lines (`< 750`).
+- **Extended Pro Word Packs & 1-Click Prompt Templates (`app/static/js/{presets,render-workbench,i18n-ru,i18n-en}.js`, `app/static/css/components.css`, `tests/js/profiles-presets.test.mjs`, `tests/test_server.py`):**
+  - Exported `PRO_INDUSTRY_WORD_PACKS` (`corporate_ma`, `devsecops`, `banking_fintech`, `crossborder_nda` — 6 clean literal terms each) and `PROMPT_TEMPLATES` (`contract_review`, `nda_redline`, `code_security_review` — anonymized RU/EN templates) in `presets.js` while keeping `INDUSTRY_WORD_PACKS` intact.
+  - Added `#prompt-templates-bar` (`#prompt-template-preview`, `#prompt-template-upgrade-btn`) above `.split-workbench` with Free lock badges/preview and Pro 1-click insert + sanitize, 100% RU/EN dictionary parity (`32` new keys per language, zero RU jargon/dev-codes), and `>= 44px` mobile `390×844` tap targets with zero overflow.
+- **Verification:** `npm run build` (`22cecb109f`), `"C:\Program Files\nodejs\node.exe" --test tests\js\*.test.mjs` (`75/75` across `18` suites), `.\.venv\Scripts\python.exe -m pytest tests\test_server.py -v` (`26/26`), `(Get-Content app\static\js\app.js).Count` (`719`), and targeted Playwright E2E (`T1_F13_01..05`, `T1_F8_15`, `T2_F13_01..05`, `T5_11`, `T5_18` — `13/13` passed).

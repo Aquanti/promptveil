@@ -36,9 +36,9 @@
     content="Free client-side masking and restoration workspace for AI prompts with zero data retention."
   />
   <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
-  <link rel="stylesheet" href="/dist/styles.INK2U5LN.css" />
-  <script type="module" src="/dist/app.DSDBCSDD.js"></script>
-  <link rel="modulepreload" href="/dist/i18n-ru-2JZZ6GZW.js" />
+  <link rel="stylesheet" href="/dist/styles.UPWFLDYZ.css" />
+  <script type="module" src="/dist/app.THW7EOP4.js"></script>
+  <link rel="modulepreload" href="/dist/i18n-ru-QVTAHR73.js" />
 </head>
 <body>
   <a href="#main-workbench" class="skip-link" data-i18n="a11y.skipLink">Skip to workbench</a>
@@ -392,6 +392,72 @@
       aria-labelledby="mode-btn-sanitize"
       data-testid="panel-sanitize"
     >
+      <section
+        id="prompt-templates-bar"
+        class="prompt-templates-bar"
+        data-testid="prompt-templates-bar"
+        aria-labelledby="prompt-templates-label"
+      >
+        <div class="prompt-templates-head">
+          <span id="prompt-templates-label" class="prompt-templates-label" data-i18n="templates.heading">1-Click Templates:</span>
+          <span id="prompt-templates-tier-badge" class="pro-lock-pill" data-i18n="templates.proBadge">Pro</span>
+        </div>
+        <div
+          id="prompt-templates-list"
+          class="prompt-templates-list"
+          role="group"
+          aria-label="Anonymized prompt templates"
+          data-i18n-aria="templates.groupAria"
+        >
+          <button
+            type="button"
+            class="prompt-template-btn is-locked"
+            data-template-id="contract_review"
+            data-testid="prompt-template-contract_review"
+            aria-pressed="false"
+          >
+            <span class="prompt-template-title" data-i18n="templates.item.contract_review">Contract Review</span>
+            <span class="pro-lock-pill prompt-template-lock" aria-hidden="true">Pro</span>
+          </button>
+          <button
+            type="button"
+            class="prompt-template-btn is-locked"
+            data-template-id="nda_redline"
+            data-testid="prompt-template-nda_redline"
+            aria-pressed="false"
+          >
+            <span class="prompt-template-title" data-i18n="templates.item.nda_redline">NDA Redline</span>
+            <span class="pro-lock-pill prompt-template-lock" aria-hidden="true">Pro</span>
+          </button>
+          <button
+            type="button"
+            class="prompt-template-btn is-locked"
+            data-template-id="code_security_review"
+            data-testid="prompt-template-code_security_review"
+            aria-pressed="false"
+          >
+            <span class="prompt-template-title" data-i18n="templates.item.code_security_review">Code Security Review</span>
+            <span class="pro-lock-pill prompt-template-lock" aria-hidden="true">Pro</span>
+          </button>
+        </div>
+        <div
+          id="prompt-template-preview"
+          class="prompt-template-preview inline-alert inline-alert--info"
+          role="status"
+          hidden
+          data-testid="prompt-template-preview"
+        >
+          <p id="prompt-template-preview-text" class="prompt-template-preview-text"></p>
+          <button
+            type="button"
+            id="prompt-template-upgrade-btn"
+            class="btn-lime"
+            data-testid="prompt-template-upgrade-btn"
+            data-i18n="pro.fileUpgradeBtn"
+          >Activate Pro</button>
+        </div>
+      </section>
+
       <div class="split-workbench">
         <section class="ledger-pane" aria-labelledby="raw-pane-title">
           <div class="pane-header">
@@ -1222,6 +1288,68 @@
     </div>
 
     <div class="drawer-body">
+      <section class="profiles-box" data-testid="profiles-box" aria-labelledby="profiles-box-label">
+        <div class="profiles-head">
+          <label id="profiles-box-label" for="profile-select" class="field-label" data-i18n="rulebook.profilesHeading">Rule profile</label>
+          <span id="profiles-tier-badge" class="pro-lock-pill" data-i18n="rulebook.profilesProHint">Pro</span>
+        </div>
+        <select id="profile-select" class="field-input" data-testid="profile-select">
+          <option value="default">Default</option>
+        </select>
+        <div class="profiles-manage-row">
+          <label for="profile-name-input" class="sr-only" data-i18n="rulebook.profileNameLabel">Profile name</label>
+          <input
+            type="text"
+            id="profile-name-input"
+            class="field-input"
+            maxlength="80"
+            data-testid="profile-name-input"
+            data-i18n-placeholder="rulebook.profileNamePlaceholder"
+            placeholder="e.g. Client A or NDA Alpha"
+          />
+          <div class="profiles-actions-row">
+            <button
+              type="button"
+              id="profile-create-btn"
+              class="btn-secondary profile-action-btn"
+              data-testid="profile-create-btn"
+              data-i18n="rulebook.profileCreateBtn"
+            >Create</button>
+            <button
+              type="button"
+              id="profile-rename-btn"
+              class="btn-secondary profile-action-btn"
+              data-testid="profile-rename-btn"
+              data-i18n="rulebook.profileRenameBtn"
+            >Rename</button>
+            <button
+              type="button"
+              id="profile-delete-btn"
+              class="btn-danger-ghost profile-action-btn"
+              disabled
+              data-testid="profile-delete-btn"
+              data-i18n="rulebook.profileDeleteBtn"
+            >Delete</button>
+          </div>
+        </div>
+        <div
+          id="rulebook-pro-upgrade-banner"
+          class="inline-alert inline-alert--warn file-pro-upgrade-banner"
+          role="status"
+          hidden
+          data-testid="rulebook-pro-upgrade-banner"
+        >
+          <span id="rulebook-pro-upgrade-text" data-i18n="rulebook.profilesProRequired">Multiple project profiles are unlocked in PromptVeil Pro.</span>
+          <button
+            type="button"
+            id="rulebook-pro-upgrade-btn"
+            class="btn-lime"
+            data-testid="rulebook-pro-upgrade-btn"
+            data-i18n="pro.fileUpgradeBtn"
+          >Activate Pro</button>
+        </div>
+      </section>
+
       <form id="add-rule-form" class="rule-form" novalidate>
         <div class="form-field">
           <label for="rule-term-input" class="field-label" data-i18n="rulebook.termLabel">Word or phrase</label>
@@ -1298,6 +1426,54 @@
             data-testid="word-pack-accounting"
             data-i18n="rulebook.pack.accounting"
           >Accounting</button>
+        </div>
+        <div class="word-packs-pro-group" data-testid="word-packs-pro-group">
+          <div class="word-packs-head word-packs-pro-head">
+            <span class="field-label" data-i18n="rulebook.proPacksHeading">Extended packs (Pro)</span>
+            <span id="pro-packs-tier-badge" class="pro-lock-pill">Pro</span>
+          </div>
+          <div class="word-packs-grid">
+            <button
+              type="button"
+              class="btn-secondary word-pack-btn word-pack-btn--pro is-locked"
+              data-pack="corporate_ma"
+              data-pro-pack="true"
+              data-testid="word-pack-corporate_ma"
+            >
+              <span data-i18n="rulebook.pack.corporate_ma">Corporate M&amp;A</span>
+              <span class="pro-lock-pill word-pack-lock" aria-hidden="true">Pro</span>
+            </button>
+            <button
+              type="button"
+              class="btn-secondary word-pack-btn word-pack-btn--pro is-locked"
+              data-pack="devsecops"
+              data-pro-pack="true"
+              data-testid="word-pack-devsecops"
+            >
+              <span data-i18n="rulebook.pack.devsecops">DevSecOps</span>
+              <span class="pro-lock-pill word-pack-lock" aria-hidden="true">Pro</span>
+            </button>
+            <button
+              type="button"
+              class="btn-secondary word-pack-btn word-pack-btn--pro is-locked"
+              data-pack="banking_fintech"
+              data-pro-pack="true"
+              data-testid="word-pack-banking_fintech"
+            >
+              <span data-i18n="rulebook.pack.banking_fintech">Banking &amp; FinTech</span>
+              <span class="pro-lock-pill word-pack-lock" aria-hidden="true">Pro</span>
+            </button>
+            <button
+              type="button"
+              class="btn-secondary word-pack-btn word-pack-btn--pro is-locked"
+              data-pack="crossborder_nda"
+              data-pro-pack="true"
+              data-testid="word-pack-crossborder_nda"
+            >
+              <span data-i18n="rulebook.pack.crossborder_nda">Cross-border NDA</span>
+              <span class="pro-lock-pill word-pack-lock" aria-hidden="true">Pro</span>
+            </button>
+          </div>
         </div>
       </div>
 

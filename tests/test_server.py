@@ -1131,4 +1131,71 @@ def test_stage_e_growth_contracts() -> None:
         )
 
 
+def test_m3_profiles_packs_and_templates_contracts() -> None:
+    """Verify M3 (R5) profiles, extended Pro packs, prompt templates, and drawer invariants."""
+    index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    en_html = (STATIC_DIR / "en" / "index.html").read_text(encoding="utf-8")
+    storage_js = (STATIC_DIR / "js" / "storage.js").read_text(encoding="utf-8")
+    proof_js = (STATIC_DIR / "js" / "privacy-proof.js").read_text(encoding="utf-8")
+    presets_js = (STATIC_DIR / "js" / "presets.js").read_text(encoding="utf-8")
+
+    m3_hooks = (
+        'id="profile-select"',
+        'data-testid="profile-select"',
+        'id="profile-name-input"',
+        'data-testid="profile-name-input"',
+        'id="profile-create-btn"',
+        'data-testid="profile-create-btn"',
+        'id="profile-rename-btn"',
+        'data-testid="profile-rename-btn"',
+        'id="profile-delete-btn"',
+        'data-testid="profile-delete-btn"',
+        'id="rulebook-pro-upgrade-banner"',
+        'data-testid="rulebook-pro-upgrade-banner"',
+        'id="rulebook-pro-upgrade-btn"',
+        'data-testid="word-pack-corporate_ma"',
+        'data-testid="word-pack-devsecops"',
+        'data-testid="word-pack-banking_fintech"',
+        'data-testid="word-pack-crossborder_nda"',
+        'id="prompt-templates-bar"',
+        'data-testid="prompt-templates-bar"',
+        'data-testid="prompt-template-contract_review"',
+        'data-testid="prompt-template-nda_redline"',
+        'data-testid="prompt-template-code_security_review"',
+        'id="prompt-template-preview"',
+        'id="prompt-template-upgrade-btn"',
+    )
+    for hook in m3_hooks:
+        assert hook in index_html, f"Missing M3 hook {hook} in index.html"
+        assert hook in en_html, f"Missing M3 hook {hook} in en/index.html"
+
+    for html_name, html_src in (("index.html", index_html), ("en/index.html", en_html)):
+        drawer_match = re.search(
+            r'<aside\s+id="drawer-rulebook".*?</aside>',
+            html_src,
+            re.DOTALL,
+        )
+        assert drawer_match is not None, f"Could not locate #drawer-rulebook in {html_name}"
+        drawer_html = drawer_match.group(0)
+        assert len(re.findall(r'<input\b[^>]*type="file"', drawer_html)) == 1, (
+            f"#drawer-rulebook must contain strictly one file input (#import-rules-input) in {html_name}"
+        )
+        assert 'role="switch"' not in drawer_html, (
+            f"Static #drawer-rulebook HTML must contain zero role='switch' in {html_name}"
+        )
+        packs_pos = drawer_html.find('data-testid="word-packs-box"')
+        rules_ul_pos = drawer_html.find('id="rulebook-list"')
+        assert 0 <= packs_pos < rules_ul_pos, (
+            f".word-packs-box must stay before and outside #rulebook-list in {html_name}"
+        )
+
+    assert "promptveil_profiles_v1" in storage_js
+    assert "PROFILES_STORAGE_KEY" in proof_js
+    assert "key === RULES_STORAGE_KEY || key === PROFILES_STORAGE_KEY" in proof_js
+    for pack_id in ("corporate_ma", "devsecops", "banking_fintech", "crossborder_nda"):
+        assert pack_id in presets_js
+    for tpl_id in ("contract_review", "nda_redline", "code_security_review"):
+        assert tpl_id in presets_js
+
+
 

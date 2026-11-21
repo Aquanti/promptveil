@@ -272,18 +272,228 @@ export const INDUSTRY_WORD_PACKS = Object.freeze([
   },
 ]);
 
+export const PRO_INDUSTRY_WORD_PACKS = Object.freeze([
+  {
+    id: "corporate_ma",
+    tier: "pro",
+    category: "CUSTOM",
+    titleByLang: Object.freeze({
+      ru: "Корпоративные сделки (M&A)",
+      en: "Corporate M&A",
+    }),
+    termsByLang: Object.freeze({
+      ru: Object.freeze([
+        "слияние и поглощение",
+        "соглашение о намерениях",
+        "оценка стоимости бизнеса",
+        "корпоративный договор",
+        "акционерное соглашение",
+        "раскрытие бенефициаров",
+      ]),
+      en: Object.freeze([
+        "merger agreement",
+        "letter of intent",
+        "enterprise valuation",
+        "shareholder agreement",
+        "beneficial owner",
+        "earn-out provision",
+      ]),
+    }),
+  },
+  {
+    id: "devsecops",
+    tier: "pro",
+    category: "CUSTOM",
+    titleByLang: Object.freeze({
+      ru: "DevSecOps и код",
+      en: "DevSecOps",
+    }),
+    termsByLang: Object.freeze({
+      ru: Object.freeze([
+        "приватный ключ",
+        "сервисный токен",
+        "производственный кластер",
+        "переменная окружения",
+        "внутренний реестр",
+        "учётные данные",
+      ]),
+      en: Object.freeze([
+        "private key",
+        "service token",
+        "production cluster",
+        "environment variable",
+        "internal registry",
+        "deployment credential",
+      ]),
+    }),
+  },
+  {
+    id: "banking_fintech",
+    tier: "pro",
+    category: "CUSTOM",
+    titleByLang: Object.freeze({
+      ru: "Банки и финтех",
+      en: "Banking & FinTech",
+    }),
+    termsByLang: Object.freeze({
+      ru: Object.freeze([
+        "платёжный шлюз",
+        "корреспондентский счёт",
+        "реестр транзакций",
+        "банковская тайна",
+        "эмитент карты",
+        "межбанковский перевод",
+      ]),
+      en: Object.freeze([
+        "payment gateway",
+        "correspondent account",
+        "settlement ledger",
+        "banking secrecy",
+        "cardholder data",
+        "interbank transfer",
+      ]),
+    }),
+  },
+  {
+    id: "crossborder_nda",
+    tier: "pro",
+    category: "CUSTOM",
+    titleByLang: Object.freeze({
+      ru: "Трансграничный NDA",
+      en: "Cross-border NDA",
+    }),
+    termsByLang: Object.freeze({
+      ru: Object.freeze([
+        "трансграничная передача",
+        "раскрывающая сторона",
+        "принимающая сторона",
+        "подсудность споров",
+        "применимое право",
+        "режим конфиденциальности",
+      ]),
+      en: Object.freeze([
+        "cross-border transfer",
+        "disclosing party",
+        "receiving party",
+        "governing law",
+        "exclusive jurisdiction",
+        "confidentiality obligation",
+      ]),
+    }),
+  },
+]);
+
 export function getLocalizedWordPack(packId, lang = "ru") {
-  const pack = INDUSTRY_WORD_PACKS.find((item) => item.id === packId);
+  const pack =
+    INDUSTRY_WORD_PACKS.find((item) => item.id === packId) ||
+    PRO_INDUSTRY_WORD_PACKS.find((item) => item.id === packId);
   if (!pack) return null;
   const normLang = lang === "en" ? "en" : "ru";
+  const tier = pack.tier === "pro" ? "pro" : "free";
   return {
     id: pack.id,
     category: pack.category,
+    tier,
+    isPro: tier === "pro",
     title: pack.titleByLang[normLang] || pack.titleByLang.ru,
     terms: pack.termsByLang[normLang] || pack.termsByLang.ru,
   };
 }
 
-export function getIndustryWordPacks(lang = "ru") {
-  return INDUSTRY_WORD_PACKS.map((pack) => getLocalizedWordPack(pack.id, lang));
+export function getIndustryWordPacks(lang = "ru", { includePro = true } = {}) {
+  const source = includePro
+    ? [...INDUSTRY_WORD_PACKS, ...PRO_INDUSTRY_WORD_PACKS]
+    : INDUSTRY_WORD_PACKS;
+  return source.map((pack) => getLocalizedWordPack(pack.id, lang));
+}
+
+export const PROMPT_TEMPLATES = Object.freeze([
+  {
+    id: "contract_review",
+    tier: "pro",
+    titleByLang: Object.freeze({
+      ru: "Аудит договора",
+      en: "Contract Review",
+    }),
+    descriptionByLang: Object.freeze({
+      ru: "Обезличенный запрос на проверку рисков, неустоек и условий расторжения договора",
+      en: "Anonymized contract audit prompt covering liability caps, payment terms, and termination",
+    }),
+    textByLang: Object.freeze({
+      ru: `Проверь проект договора между [ORG_1] и [ORG_2] (контакт [FIO_1], реквизит [RU_INN_1], счёт [RU_ACCOUNT_1]).
+1. Выяви односторонние штрафы, скрытые неустойки и условия досрочного расторжения.
+2. Проверь лимит ответственности сторон, порядок приёмки и сроки оплаты.
+3. Предложи сбалансированные формулировки для защиты интересов заказчика.`,
+      en: `Review the draft services agreement between [ORG_1] and [ORG_2] (contact [PERSON_1], account [IBAN_1]).
+1. Flag uncapped liability, asymmetric indemnities, and auto-renewal or termination traps.
+2. Summarize payment terms, acceptance milestones, and SLA remedies.
+3. Propose balanced redlines protecting the buyer.`,
+    }),
+  },
+  {
+    id: "nda_redline",
+    tier: "pro",
+    titleByLang: Object.freeze({
+      ru: "Проверка NDA",
+      en: "NDA Redline",
+    }),
+    descriptionByLang: Object.freeze({
+      ru: "Обезличенный разбор соглашения о конфиденциальности, исключений и подсудности",
+      en: "Anonymized NDA review for mutual obligations, exclusions, survival period, and governing law",
+    }),
+    textByLang: Object.freeze({
+      ru: `Проанализируй соглашение о неразглашении (NDA) между [ORG_1] и [ORG_2] по проекту [PROJECT_1].
+1. Оцени симметричность обязательств раскрывающей и принимающей стороны.
+2. Проверь срок действия обязательств, перечень исключений и размер штрафов.
+3. Подготовь правки по применимому праву, подсудности и возврату материалов.`,
+      en: `Audit the mutual NDA between [ORG_1] and [ORG_2] for [PROJECT_1].
+1. Check whether confidentiality obligations, exclusions, and residuals clauses are symmetric.
+2. Evaluate survival duration, injunctive relief scope, and liquidated damages.
+3. Suggest redlines for governing law, cross-border transfers, and record destruction.`,
+    }),
+  },
+  {
+    id: "code_security_review",
+    tier: "pro",
+    titleByLang: Object.freeze({
+      ru: "Ревью кода и ИБ",
+      en: "Code Security Review",
+    }),
+    descriptionByLang: Object.freeze({
+      ru: "Обезличенный аудит безопасности кода и конфигурации без раскрытия ключей",
+      en: "Anonymized DevSecOps audit for auth bypasses, secret handling, and injection vectors",
+    }),
+    textByLang: Object.freeze({
+      ru: `Проведи аудит безопасности кода и конфигурации для узла [IPV4_1] (ключ [API_KEY_1], параметр [ENV_SECRET_1]).
+1. Проверь риск обхода авторизации, инъекций и небезопасной обработки входных данных.
+2. Оцени изоляцию секретов, принцип минимальных привилегий и заголовки безопасности.
+3. Составь приоритизированный список исправлений с кратким обоснованием.`,
+      en: `Perform a security code and configuration review for host [IPV4_1] (credential [API_KEY_1], secret [ENV_SECRET_1]).
+1. Check for authentication bypasses, injection vectors, SSRF, and unsafe deserialization.
+2. Audit secret isolation, least-privilege IAM permissions, and HTTP security headers.
+3. Provide prioritized remediation steps with concise rationale.`,
+    }),
+  },
+]);
+
+export function getPromptTemplateById(id) {
+  return PROMPT_TEMPLATES.find((tpl) => tpl.id === id) || null;
+}
+
+export function getLocalizedPromptTemplate(idOrTpl, lang = "ru") {
+  const tpl = typeof idOrTpl === "string" ? getPromptTemplateById(idOrTpl) : idOrTpl;
+  if (!tpl) return null;
+  const normLang = lang === "en" ? "en" : "ru";
+  return {
+    id: tpl.id,
+    tier: tpl.tier || "pro",
+    isPro: (tpl.tier || "pro") === "pro",
+    title: tpl.titleByLang?.[normLang] || tpl.titleByLang?.ru || "",
+    description: tpl.descriptionByLang?.[normLang] || tpl.descriptionByLang?.ru || "",
+    text: tpl.textByLang?.[normLang] || tpl.textByLang?.ru || "",
+  };
+}
+
+export function getPromptTemplates(lang = "ru") {
+  return PROMPT_TEMPLATES.map((tpl) => getLocalizedPromptTemplate(tpl, lang));
 }

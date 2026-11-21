@@ -1446,8 +1446,98 @@ button:disabled {
 }
 
 .file-pro-upgrade-banner[hidden],
-.batch-queue-panel[hidden] {
+.batch-queue-panel[hidden],
+.prompt-template-preview[hidden] {
   display: none;
+}
+
+/* M3: Anonymized Prompt Templates Bar */
+.prompt-templates-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.48rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.72rem 0.95rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.prompt-templates-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.prompt-templates-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.prompt-templates-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.prompt-template-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.42rem 0.85rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  background-color: var(--bg-surface-subtle);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.25;
+  cursor: pointer;
+  max-width: 100%;
+  white-space: normal;
+  text-align: center;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.prompt-template-btn:hover {
+  border-color: var(--text-accent);
+  background-color: var(--bg-surface-pill);
+}
+
+.prompt-template-btn.is-active {
+  background-color: var(--bg-forest);
+  border-color: var(--bg-forest);
+  color: var(--text-on-rail);
+}
+
+.prompt-template-btn.is-locked {
+  border-style: dashed;
+}
+
+.prompt-template-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.prompt-template-preview-text {
+  margin: 0;
+  font-size: 0.8rem;
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .batch-queue-panel {
@@ -1587,8 +1677,14 @@ button:disabled {
 
   .file-pro-upgrade-banner button,
   .batch-queue-header-actions button,
-  .batch-queue-actions button {
+  .batch-queue-actions button,
+  .prompt-template-btn,
+  #prompt-template-upgrade-btn {
     min-height: 44px;
+  }
+
+  .prompt-templates-bar {
+    padding: 0.65rem 0.75rem;
   }
 
   .vault-row {

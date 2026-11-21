@@ -104,6 +104,51 @@
   background-color: var(--bg-surface-subtle);
 }
 
+/* Rulebook Profiles */
+.profiles-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-subtle);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.profiles-head,
+.word-packs-pro-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.profiles-manage-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.profiles-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.profile-action-btn {
+  flex: 1 1 auto;
+  min-height: 40px;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* Rule Form */
 .rule-form {
   display: flex;
@@ -188,6 +233,50 @@
   font-size: 0.8rem;
   text-align: center;
   justify-content: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.word-packs-pro-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.55rem;
+  margin-top: 0.25rem;
+  border-top: 1px dashed var(--border-strong);
+}
+
+.word-pack-btn--pro.is-locked {
+  border-style: dashed;
+}
+
+.pro-lock-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem 0.46rem;
+  border-radius: var(--radius-pill);
+  background-color: var(--bg-forest);
+  color: var(--brand-lime);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.pro-lock-pill[hidden] {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .profile-action-btn,
+  .word-pack-btn,
+  #profile-select,
+  #profile-name-input,
+  #rulebook-pro-upgrade-btn {
+    min-height: 44px;
+  }
 }
 
 @media (max-width: 359px) {

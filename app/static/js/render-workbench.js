@@ -57,6 +57,96 @@ export function renderPresetRuleSuggestion(btnEl, hintEl, unappliedRules, lang) 
   }
 }
 
+function buildSafeTemplatePreview(rawText, maxLen = 128) {
+  const collapsed = String(rawText || "").replace(/\s+/g, " ").trim();
+  if (collapsed.length <= maxLen) return collapsed;
+  let snippet = collapsed.slice(0, maxLen).trimEnd();
+  const openBracket = snippet.lastIndexOf("[");
+  const closeBracket = snippet.lastIndexOf("]");
+  if (openBracket > closeBracket) {
+    snippet = snippet.slice(0, openBracket).trimEnd();
+  }
+  return `${snippet}...`;
+}
+
+export function renderPromptTemplatesBar(
+  container,
+  templates = [],
+  {
+    isPro = false,
+    activeTemplateId = "",
+    previewTemplateId = "",
+    lang = "ru",
+    onSelectTemplate = null,
+  } = {}
+) {
+  if (!container) return;
+  if (typeof onSelectTemplate === "function") {
+    container._onSelectPromptTemplate = onSelectTemplate;
+  }
+
+  const tierBadge = getEl("prompt-templates-tier-badge");
+  if (tierBadge) {
+    tierBadge.hidden = Boolean(isPro);
+  }
+
+  const list = Array.isArray(templates) ? templates : [];
+  for (const tpl of list) {
+    const btn =
+      container.querySelector(`[data-testid="prompt-template-${tpl.id}"]`) ||
+      container.querySelector(`[data-template-id="${tpl.id}"]`);
+    if (!btn) continue;
+
+    const titleEl = btn.querySelector(".prompt-template-title");
+    if (titleEl) {
+      titleEl.textContent = tpl.title;
+    } else {
+      btn.textContent = tpl.title;
+    }
+    if (tpl.description) {
+      btn.setAttribute("title", tpl.description);
+    }
+    const isActive = Boolean(isPro && activeTemplateId === tpl.id);
+    btn.classList.toggle("is-locked", !isPro);
+    btn.classList.toggle("is-active", isActive);
+    btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+
+    const lockEl = btn.querySelector(".prompt-template-lock");
+    if (lockEl) {
+      lockEl.hidden = Boolean(isPro);
+    }
+
+    if (!btn.dataset.boundTemplate) {
+      btn.dataset.boundTemplate = "1";
+      btn.addEventListener("click", () => {
+        container._onSelectPromptTemplate?.(tpl.id);
+      });
+    }
+  }
+
+  const previewBox = getEl("prompt-template-preview");
+  const previewText = getEl("prompt-template-preview-text");
+  if (previewBox) {
+    const previewTpl =
+      !isPro && previewTemplateId
+        ? list.find((item) => item.id === previewTemplateId) || null
+        : null;
+    if (previewTpl && previewText) {
+      previewText.textContent = t(
+        "templates.previewLine",
+        {
+          title: previewTpl.title,
+          preview: buildSafeTemplatePreview(previewTpl.text),
+        },
+        lang
+      );
+      previewBox.hidden = false;
+    } else {
+      previewBox.hidden = true;
+    }
+  }
+}
+
 export function renderRawMetrics(el, text, lang) {
   if (!el) return;
   const charCount = text.length;

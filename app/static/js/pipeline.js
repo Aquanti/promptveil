@@ -5,17 +5,30 @@
 import { clearCopyFeedback, getEl } from "./dom.js";
 import { getLang, t } from "./i18n.js";
 import { hideInlineAlert, showInlineAlert, showStatusBanner } from "./notifications.js";
-import { getLocalizedPreset, getLocalizedWordPack } from "./presets.js";
+import {
+  getLocalizedPreset,
+  getLocalizedPromptTemplate,
+  getLocalizedWordPack,
+  getPresetById,
+} from "./presets.js";
 import { buildZipArchive } from "./pro-documents.js";
 import {
+  DEFAULT_PROFILE_ID,
   appendAuditReceipt,
   clearAuditLog,
+  createProfile,
   createRuleId,
+  deleteProfile,
   exportAuditJson,
+  exportProfileRulesJson,
   exportRulesJson,
+  getActiveProfile,
   makeRuleDedupKey,
+  renameProfile,
   saveRules,
+  setActiveProfileRules,
   setAuditPersistenceEnabled,
+  switchProfile,
 } from "./storage.js";
 
 function getTimerHost() {
@@ -104,6 +117,94 @@ export function createPipelineController({
     if (banner) {
       banner.hidden = true;
     }
+  }
+
+  function showRulebookProUpgradeBanner(key = "rulebook.profilesProRequired", title = "") {
+    const banner = getEl("rulebook-pro-upgrade-banner");
+    const textEl = getEl("rulebook-pro-upgrade-text");
+    if (textEl) {
+      textEl.textContent = t(key, title ? { title } : {}, getLang());
+    }
+    if (banner) {
+      banner.setAttribute("data-upgrade-key", key);
+      banner.setAttribute("data-upgrade-title", title || "");
+      banner.hidden = false;
+    }
+  }
+
+  function hideRulebookProUpgradeBanner() {
+    const banner = getEl("rulebook-pro-upgrade-banner");
+    if (banner) {
+      banner.hidden = true;
+    }
+  }
+
+  function commitActiveRules(nextRules) {
+    if (state.profilesStore && Array.isArray(state.profilesStore.profiles)) {
+      const res = setActiveProfileRules(state.profilesStore, nextRules, { lang: getLang() });
+      state.profilesStore = res.store;
+      state.rules = res.rules;
+    } else {
+      state.rules = saveRules(nextRules);
+    }
+    return state.rules;
+  }
+
+  function toggleRuleById(ruleId) {
+    commitActiveRules(
+      state.rules.map((r) => (r.id === ruleId ? { ...r, enabled: r.enabled === false } : r))
+    );
+    refreshDrawersUi();
+    runSanitizePipeline(false);
+  }
+
+  function deleteRuleById(ruleId) {
+    hideInlineAlert("rulebook-alert");
+    commitActiveRules(state.rules.filter((r) => r.id !== ruleId));
+    refreshDrawersUi();
+    runSanitizePipeline(false);
+  }
+
+  function handleRulesImported({ rules, addedCount, skippedCount }) {
+    if (state.profilesStore && Array.isArray(state.profilesStore.profiles)) {
+      const defaultProf = state.profilesStore.profiles.find(
+        (p) => p.id === DEFAULT_PROFILE_ID || p.isDefault
+      );
+      const prevDefaultRules = defaultProf ? defaultProf.rules : [];
+      const activeBefore = getActiveProfile(state.profilesStore);
+      commitActiveRules(rules);
+      if (activeBefore.id !== DEFAULT_PROFILE_ID && !activeBefore.isDefault) {
+        saveRules(prevDefaultRules);
+      }
+    } else {
+      state.rules = rules;
+    }
+    refreshDrawersUi();
+    runSanitizePipeline(false);
+    showInlineAlert(
+      "rulebook-alert",
+      "rulebook.imported",
+      { added: addedCount, skipped: skippedCount },
+      "success"
+    );
+  }
+
+  function applyPresetSuggestedRules() {
+    const preset = getPresetById(state.activePresetId);
+    const unapplied = getUnappliedPresetRules(preset, state.rules);
+    if (unapplied.length === 0) return;
+
+    const toAdd = unapplied.map((r) => ({
+      id: createRuleId(),
+      term: r.term,
+      category: r.category || "CUSTOM",
+      caseSensitive: Boolean(r.caseSensitive),
+      enabled: true,
+    }));
+    commitActiveRules([...state.rules, ...toAdd]);
+    refreshDrawersUi();
+    runSanitizePipeline(false);
+    showStatusBanner("banner.presetRulesAdded", { count: toAdd.length });
   }
 
   function sanitizeBatchItems() {
@@ -236,6 +337,8 @@ export function createPipelineController({
     state.showAllCategories = false;
     state.highlightedToken = "";
     state.pinnedToken = "";
+    state.activeTemplateId = "";
+    state.previewTemplateId = "";
     state.activePresetId = preset.id;
     state.rawText = preset.text;
     const rawInput = getEl("raw-prompt-input");
@@ -243,6 +346,38 @@ export function createPipelineController({
     runSanitizePipeline(true);
     showStatusBanner("banner.presetLoaded", (lang) => ({
       title: getLocalizedPreset(preset.id, lang)?.title || preset.title,
+    }));
+  }
+
+  function selectPromptTemplate(templateId) {
+    const lang = getLang();
+    const tpl = getLocalizedPromptTemplate(templateId, lang);
+    if (!tpl) return;
+    if (!state.proLicense?.isPro) {
+      state.previewTemplateId = tpl.id;
+      refreshWorkbenchUi();
+      showStatusBanner("templates.proRequired");
+      return;
+    }
+    getFileController()?.cancelPendingFileRead();
+    cancelPendingLiveSanitize();
+    cancelPendingLiveAudit();
+    hideInlineAlert("input-error-banner");
+    hideProUpgradePrompt();
+    state.batchItems = [];
+    state.vault.reset();
+    state.showAllCategories = false;
+    state.highlightedToken = "";
+    state.pinnedToken = "";
+    state.activePresetId = "";
+    state.previewTemplateId = "";
+    state.activeTemplateId = tpl.id;
+    state.rawText = tpl.text;
+    const rawInput = getEl("raw-prompt-input");
+    if (rawInput) rawInput.value = tpl.text;
+    runSanitizePipeline(true);
+    showStatusBanner("banner.templateLoaded", (curLang) => ({
+      title: getLocalizedPromptTemplate(tpl.id, curLang)?.title || tpl.title,
     }));
   }
 
@@ -261,6 +396,8 @@ export function createPipelineController({
     state.rawText = "";
     state.llmReply = "";
     state.activePresetId = "";
+    state.activeTemplateId = "";
+    state.previewTemplateId = "";
     state.lastSanitizeResult = null;
     state.lastSanitizedInput = "";
     state.lastRehydrateResult = null;
@@ -297,6 +434,17 @@ export function createPipelineController({
     const pack = getLocalizedWordPack(packKey, lang);
     if (!pack) return 0;
 
+    if (pack.isPro && !state.proLicense?.isPro) {
+      showRulebookProUpgradeBanner("rulebook.proPackRequired", pack.title);
+      showInlineAlert(
+        "rulebook-alert",
+        "rulebook.proPackRequired",
+        { title: pack.title },
+        "warn"
+      );
+      return 0;
+    }
+
     const existingKeys = new Set(state.rules.map(makeRuleDedupKey));
     const toAdd = [];
     for (const rawTerm of pack.terms) {
@@ -320,7 +468,7 @@ export function createPipelineController({
       return 0;
     }
 
-    state.rules = saveRules([...state.rules, ...toAdd]);
+    commitActiveRules([...state.rules, ...toAdd]);
     refreshDrawersUi();
     runSanitizePipeline(false);
     showInlineAlert(
@@ -333,6 +481,7 @@ export function createPipelineController({
   }
 
   function bindRulebookAndAuditEvents(downloadTextFile) {
+    getEl("apply-preset-rules-btn")?.addEventListener("click", applyPresetSuggestedRules);
     getEl("rule-term-input")?.addEventListener("input", () => {
       hideInlineAlert("rulebook-alert");
     });
@@ -341,6 +490,135 @@ export function createPipelineController({
     });
     getEl("rule-case-input")?.addEventListener("change", () => {
       hideInlineAlert("rulebook-alert");
+    });
+    getEl("profile-name-input")?.addEventListener("input", () => {
+      hideInlineAlert("rulebook-alert");
+    });
+
+    getEl("profile-select")?.addEventListener("change", (event) => {
+      hideInlineAlert("rulebook-alert");
+      hideRulebookProUpgradeBanner();
+      const targetId = String(event.currentTarget?.value || DEFAULT_PROFILE_ID);
+      const res = switchProfile(state.profilesStore, targetId, {
+        isPro: Boolean(state.proLicense?.isPro),
+        lang: getLang(),
+      });
+      if (!res.ok) {
+        if (res.error === "pro_required") {
+          showRulebookProUpgradeBanner("rulebook.profilesProRequired");
+          showInlineAlert("rulebook-alert", "rulebook.profilesProRequired", {}, "warn");
+        }
+        refreshDrawersUi();
+        return;
+      }
+      state.profilesStore = res.store;
+      state.rules = res.profile.rules;
+      refreshDrawersUi();
+      runSanitizePipeline(false);
+      const dispName = res.profile.isDefault
+        ? t("rulebook.defaultProfileName")
+        : res.profile.name;
+      showInlineAlert("rulebook-alert", "rulebook.profileSwitched", { name: dispName }, "info");
+    });
+
+    getEl("profile-create-btn")?.addEventListener("click", () => {
+      hideInlineAlert("rulebook-alert");
+      if (!state.proLicense?.isPro) {
+        showRulebookProUpgradeBanner("rulebook.profilesProRequired");
+        showInlineAlert("rulebook-alert", "rulebook.profilesProRequired", {}, "warn");
+        return;
+      }
+      const nameInput = getEl("profile-name-input");
+      const res = createProfile(state.profilesStore, nameInput?.value || "", {
+        isPro: true,
+        lang: getLang(),
+      });
+      if (!res.ok) {
+        const errKey =
+          res.error === "duplicate" ? "rulebook.profileErrorDuplicate" : "rulebook.profileErrorEmpty";
+        showInlineAlert("rulebook-alert", errKey, {}, "error");
+        nameInput?.focus();
+        return;
+      }
+      state.profilesStore = res.store;
+      state.rules = res.profile.rules;
+      if (nameInput) nameInput.value = "";
+      hideRulebookProUpgradeBanner();
+      refreshDrawersUi();
+      runSanitizePipeline(false);
+      showInlineAlert(
+        "rulebook-alert",
+        "rulebook.profileCreated",
+        { name: res.profile.name },
+        "success"
+      );
+    });
+
+    getEl("profile-rename-btn")?.addEventListener("click", () => {
+      hideInlineAlert("rulebook-alert");
+      if (!state.proLicense?.isPro) {
+        showRulebookProUpgradeBanner("rulebook.profilesProRequired");
+        showInlineAlert("rulebook-alert", "rulebook.profilesProRequired", {}, "warn");
+        return;
+      }
+      const active = getActiveProfile(state.profilesStore);
+      const nameInput = getEl("profile-name-input");
+      const res = renameProfile(state.profilesStore, active.id, nameInput?.value || "", {
+        isPro: true,
+        lang: getLang(),
+      });
+      if (!res.ok) {
+        const errKey =
+          res.error === "default_protected"
+            ? "rulebook.profileErrorRenameDefault"
+            : res.error === "duplicate"
+              ? "rulebook.profileErrorDuplicate"
+              : "rulebook.profileErrorEmpty";
+        showInlineAlert("rulebook-alert", errKey, {}, "error");
+        nameInput?.focus();
+        return;
+      }
+      state.profilesStore = res.store;
+      if (nameInput) nameInput.value = "";
+      refreshDrawersUi();
+      showInlineAlert(
+        "rulebook-alert",
+        "rulebook.profileRenamed",
+        { name: res.profile.name },
+        "success"
+      );
+    });
+
+    getEl("profile-delete-btn")?.addEventListener("click", () => {
+      hideInlineAlert("rulebook-alert");
+      if (!state.proLicense?.isPro) {
+        showRulebookProUpgradeBanner("rulebook.profilesProRequired");
+        showInlineAlert("rulebook-alert", "rulebook.profilesProRequired", {}, "warn");
+        return;
+      }
+      const active = getActiveProfile(state.profilesStore);
+      const res = deleteProfile(state.profilesStore, active.id, {
+        isPro: true,
+        lang: getLang(),
+      });
+      if (!res.ok) {
+        showInlineAlert("rulebook-alert", "rulebook.profileErrorDeleteDefault", {}, "error");
+        return;
+      }
+      state.profilesStore = res.store;
+      state.rules = getActiveProfile(res.store).rules;
+      refreshDrawersUi();
+      runSanitizePipeline(false);
+      showInlineAlert(
+        "rulebook-alert",
+        "rulebook.profileDeleted",
+        { name: res.deletedProfile?.name || "" },
+        "success"
+      );
+    });
+
+    getEl("rulebook-pro-upgrade-btn")?.addEventListener("click", () => {
+      getEl("open-pro-license-btn")?.click();
     });
 
     getEl("add-rule-form")?.addEventListener("submit", (event) => {
@@ -372,7 +650,7 @@ export function createPipelineController({
         return;
       }
 
-      state.rules = saveRules([...state.rules, newRule]);
+      commitActiveRules([...state.rules, newRule]);
       if (termInput) termInput.value = "";
       if (caseInput) caseInput.checked = false;
       refreshDrawersUi();
@@ -381,7 +659,10 @@ export function createPipelineController({
     });
 
     getEl("export-rules-btn")?.addEventListener("click", () => {
-      const json = exportRulesJson(state.rules);
+      const json =
+        state.profilesStore && Array.isArray(state.profilesStore.profiles)
+          ? exportProfileRulesJson(getActiveProfile(state.profilesStore))
+          : exportRulesJson(state.rules);
       downloadTextFile("promptveil-rules.json", json, "application/json;charset=utf-8");
       showInlineAlert("rulebook-alert", "rulebook.exported", {}, "success");
     });
@@ -468,6 +749,27 @@ export function createPipelineController({
     }
   }
 
+  function toggleCategoryFilter(category) {
+    state.pinnedToken = "";
+    state.highlightedToken = "";
+    state.vault.toggleCategory(category);
+    runSanitizePipeline(false);
+  }
+
+  function resetCategoryFilters() {
+    state.pinnedToken = "";
+    state.highlightedToken = "";
+    state.vault.disabledCategories.clear();
+    runSanitizePipeline(false);
+  }
+
+  function toggleVaultEntity(entry) {
+    state.pinnedToken = "";
+    state.highlightedToken = "";
+    state.vault.toggleValue(entry.category, entry.value, !entry.enabled);
+    runSanitizePipeline(false);
+  }
+
   function scrollToVaultItem(token) {
     if (!state.mobileVaultExpanded) {
       state.mobileVaultExpanded = true;
@@ -497,6 +799,8 @@ export function createPipelineController({
     hideProUpgradePrompt();
     state.vault.reset();
     state.activePresetId = "";
+    state.activeTemplateId = "";
+    state.previewTemplateId = "";
     state.showAllCategories = false;
     state.highlightedToken = "";
     state.pinnedToken = "";
@@ -601,6 +905,9 @@ export function createPipelineController({
     getEl("file-pro-upgrade-btn")?.addEventListener("click", () => {
       getEl("open-pro-license-btn")?.click();
     });
+    getEl("prompt-template-upgrade-btn")?.addEventListener("click", () => {
+      getEl("open-pro-license-btn")?.click();
+    });
     getEl("batch-clear-btn")?.addEventListener("click", () => clearBatchQueue());
     getEl("batch-download-txt-btn")?.addEventListener("click", () =>
       downloadBatchCombinedTxt(downloadTextFile)
@@ -620,9 +927,21 @@ export function createPipelineController({
         if (!stateChanged) return;
         if (isProActive?.()) {
           hideProUpgradePrompt();
+          hideRulebookProUpgradeBanner();
           hideInlineAlert("input-error-banner");
+          state.previewTemplateId = "";
+        } else if (
+          state.profilesStore &&
+          state.profilesStore.activeProfileId !== DEFAULT_PROFILE_ID
+        ) {
+          state.profilesStore = {
+            ...state.profilesStore,
+            activeProfileId: DEFAULT_PROFILE_ID,
+          };
+          state.rules = getActiveProfile(state.profilesStore).rules;
         }
-        refreshWorkbenchUi();
+        runSanitizePipeline(false);
+        refreshDrawersUi();
       });
       observer.observe(proBtn, {
         attributes: true,
@@ -641,13 +960,20 @@ export function createPipelineController({
     scheduleLiveSanitize,
     runRehydratePipeline,
     loadPresetById,
+    selectPromptTemplate,
     applyIndustryWordPack,
+    toggleRuleById,
+    deleteRuleById,
+    handleRulesImported,
     resetSessionToZero,
     bindRulebookAndAuditEvents,
     renderVaultCollapseState,
     setTokenHighlight,
     handleTokenHover,
     handleVaultItemBlur,
+    toggleCategoryFilter,
+    resetCategoryFilters,
+    toggleVaultEntity,
     scrollToVaultItem,
     showProUpgradePrompt,
     hideProUpgradePrompt,

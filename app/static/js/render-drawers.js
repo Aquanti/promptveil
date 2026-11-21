@@ -4,6 +4,84 @@
 
 import { clearEl, createEl, getEl, getVisibleFocusableElements } from "./dom.js";
 import { getCustomRuleTagLabel, t } from "./i18n.js";
+import { DEFAULT_PROFILE_ID } from "./storage.js";
+
+export function renderRulebookProfiles(
+  els = {},
+  { profiles = [], activeProfileId = DEFAULT_PROFILE_ID, isPro = false, lang = "ru" } = {}
+) {
+  const selectEl = els.selectEl || getEl("profile-select");
+  const deleteBtnEl = els.deleteBtnEl || getEl("profile-delete-btn");
+  const tierBadgeEl = els.tierBadgeEl || getEl("profiles-tier-badge");
+  const upgradeBannerEl = els.upgradeBannerEl || getEl("rulebook-pro-upgrade-banner");
+  const upgradeTextEl = els.upgradeTextEl || getEl("rulebook-pro-upgrade-text");
+
+  const safeProfiles = Array.isArray(profiles) && profiles.length > 0
+    ? profiles
+    : [{ id: DEFAULT_PROFILE_ID, name: t("rulebook.defaultProfileName", {}, lang), isDefault: true, rules: [] }];
+
+  const visibleProfiles = isPro
+    ? safeProfiles
+    : safeProfiles.filter((p) => p.isDefault || p.id === DEFAULT_PROFILE_ID);
+  const renderedProfiles = visibleProfiles.length > 0 ? visibleProfiles : [safeProfiles[0]];
+  const effectiveActiveId = isPro
+    ? (renderedProfiles.some((p) => p.id === activeProfileId) ? activeProfileId : renderedProfiles[0].id)
+    : renderedProfiles[0].id;
+
+  if (selectEl) {
+    clearEl(selectEl);
+    for (const profile of renderedProfiles) {
+      const displayName =
+        profile.isDefault || profile.id === DEFAULT_PROFILE_ID
+          ? t("rulebook.defaultProfileName", {}, lang)
+          : String(profile.name || "");
+      selectEl.appendChild(createEl("option", "", displayName, { value: profile.id }));
+    }
+    selectEl.value = effectiveActiveId;
+  }
+
+  const activeProfile =
+    renderedProfiles.find((p) => p.id === effectiveActiveId) || renderedProfiles[0];
+
+  if (tierBadgeEl) {
+    tierBadgeEl.hidden = Boolean(isPro);
+  }
+  if (deleteBtnEl) {
+    deleteBtnEl.disabled =
+      !isPro || Boolean(activeProfile?.isDefault) || activeProfile?.id === DEFAULT_PROFILE_ID || safeProfiles.length <= 1;
+  }
+  if (upgradeBannerEl) {
+    if (isPro) {
+      upgradeBannerEl.hidden = true;
+    } else if (!upgradeBannerEl.hidden && upgradeTextEl) {
+      const reasonKey = upgradeBannerEl.getAttribute("data-upgrade-key") || "rulebook.profilesProRequired";
+      const reasonTitle = upgradeBannerEl.getAttribute("data-upgrade-title") || "";
+      upgradeTextEl.textContent = t(reasonKey, reasonTitle ? { title: reasonTitle } : {}, lang);
+    }
+  }
+}
+
+export function renderRulebookWordPacks(boxEl = null, { isPro = false } = {}) {
+  const box =
+    boxEl ||
+    (typeof document !== "undefined"
+      ? document.querySelector('[data-testid="word-packs-box"]')
+      : null);
+  const tierBadge = getEl("pro-packs-tier-badge");
+  if (tierBadge) {
+    tierBadge.hidden = Boolean(isPro);
+  }
+  if (!box || typeof box.querySelectorAll !== "function") {
+    return;
+  }
+  for (const btn of box.querySelectorAll(".word-pack-btn--pro")) {
+    btn.classList.toggle("is-locked", !isPro);
+    const lockPill = btn.querySelector(".word-pack-lock");
+    if (lockPill) {
+      lockPill.hidden = Boolean(isPro);
+    }
+  }
+}
 
 export function renderRulebookList(
   { listEl, emptyEl, countBadgeEl },

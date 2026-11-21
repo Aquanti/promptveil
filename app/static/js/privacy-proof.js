@@ -9,6 +9,7 @@ import {
   AUDIT_PERSIST_STORAGE_KEY,
   AUDIT_STORAGE_KEY,
   LANG_STORAGE_KEY,
+  PROFILES_STORAGE_KEY,
   RULES_STORAGE_KEY,
   THEME_STORAGE_KEY,
 } from "./storage.js";
@@ -16,6 +17,7 @@ import {
 const ALLOWED_LOCAL_STORAGE_KEYS = new Set([
   LANG_STORAGE_KEY,
   RULES_STORAGE_KEY,
+  PROFILES_STORAGE_KEY,
   AUDIT_STORAGE_KEY,
   AUDIT_PERSIST_STORAGE_KEY,
   THEME_STORAGE_KEY,
@@ -164,7 +166,7 @@ export function runZeroRetentionSelfTest({
           unknownStorageKeys += 1;
         }
         for (const needle of secretNeedles) {
-          if (key === RULES_STORAGE_KEY) {
+          if (key === RULES_STORAGE_KEY || key === PROFILES_STORAGE_KEY) {
             continue;
           }
           if (needle && val.includes(needle)) {

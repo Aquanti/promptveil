@@ -35,17 +35,22 @@ import {
   showStatusBanner,
 } from "./notifications.js";
 import {
-  createRuleId,
+  DEFAULT_PROFILE_ID,
+  getActiveProfile,
   isAuditPersistenceEnabled,
   loadAuditLog,
   loadLanguage,
-  loadRules,
+  loadProfilesStore,
   onStorageWarning,
   purgeUnoptedAuditStorage,
   saveLanguage,
-  saveRules,
 } from "./storage.js";
-import { PRESETS, getPresetById } from "./presets.js";
+import {
+  PRESETS,
+  getLocalizedPromptTemplate,
+  getPresetById,
+  getPromptTemplates,
+} from "./presets.js";
 import {
   applyLanguage,
   ensureDictionary,
@@ -59,6 +64,7 @@ import {
   renderCategoryChips,
   renderPresetRuleSuggestion,
   renderPresetsBar,
+  renderPromptTemplatesBar,
   renderRawMetrics,
   renderRehydrateView,
   renderSanitizedOutput,
@@ -68,6 +74,8 @@ import {
 import {
   renderAuditList,
   renderRulebookList,
+  renderRulebookProfiles,
+  renderRulebookWordPacks,
 } from "./render-drawers.js";
 
 const state = {
@@ -76,6 +84,8 @@ const state = {
   rawText: "",
   llmReply: "",
   activePresetId: "",
+  activeTemplateId: "",
+  previewTemplateId: "",
   lastSanitizeResult: null,
   lastSanitizedInput: "",
   lastRehydrateResult: null,
@@ -84,6 +94,7 @@ const state = {
   showAllCategories: false,
   highlightedToken: "",
   pinnedToken: "",
+  profilesStore: null,
   rules: [],
   auditLog: [],
   auditPersist: false,
@@ -121,6 +132,8 @@ fileController = createFileController({
     state.batchItems = [];
     state.vault.reset();
     state.activePresetId = "";
+    state.activeTemplateId = "";
+    state.previewTemplateId = "";
     state.showAllCategories = false;
     state.highlightedToken = "";
     state.pinnedToken = "";
@@ -131,17 +144,7 @@ fileController = createFileController({
     showStatusBanner("banner.fileLoaded", { name: fileName });
   },
   onBatchFilesLoaded: pipeline.loadBatchFiles,
-  onRulesImported: ({ rules, addedCount, skippedCount }) => {
-    state.rules = rules;
-    refreshDrawersUi();
-    pipeline.runSanitizePipeline(false);
-    showInlineAlert(
-      "rulebook-alert",
-      "rulebook.imported",
-      { added: addedCount, skipped: skippedCount },
-      "success"
-    );
-  },
+  onRulesImported: pipeline.handleRulesImported,
 });
 
 function refreshPresetsUi() {
@@ -149,6 +152,13 @@ function refreshPresetsUi() {
   renderPresetsBar(getEl("preset-bar"), PRESETS, state.activePresetId, lang, pipeline.loadPresetById);
   const preset = getPresetById(state.activePresetId);
   renderPresetRuleSuggestion(getEl("apply-preset-rules-btn"), getEl("preset-rule-hint"), getUnappliedPresetRules(preset, state.rules), lang);
+  renderPromptTemplatesBar(getEl("prompt-templates-bar"), getPromptTemplates(lang), {
+    isPro: Boolean(state.proLicense?.isPro),
+    activeTemplateId: state.activeTemplateId,
+    previewTemplateId: state.previewTemplateId,
+    lang,
+    onSelectTemplate: pipeline.selectPromptTemplate,
+  });
 }
 
 function refreshWorkbenchUi() {
@@ -170,18 +180,8 @@ function refreshWorkbenchUi() {
     state.showAllCategories,
     lang,
     {
-      onToggleCategory: (category) => {
-        state.pinnedToken = "";
-        state.highlightedToken = "";
-        state.vault.toggleCategory(category);
-        pipeline.runSanitizePipeline(false);
-      },
-      onResetCategories: () => {
-        state.pinnedToken = "";
-        state.highlightedToken = "";
-        state.vault.disabledCategories.clear();
-        pipeline.runSanitizePipeline(false);
-      },
+      onToggleCategory: pipeline.toggleCategoryFilter,
+      onResetCategories: pipeline.resetCategoryFilters,
       onToggleShowAll: () => {
         state.showAllCategories = !state.showAllCategories;
         refreshWorkbenchUi();
@@ -192,12 +192,7 @@ function refreshWorkbenchUi() {
     revealValues: state.revealVaultValues,
     highlightedToken: state.highlightedToken,
     lang,
-    onToggleEntity: (entry) => {
-      state.pinnedToken = "";
-      state.highlightedToken = "";
-      state.vault.toggleValue(entry.category, entry.value, !entry.enabled);
-      pipeline.runSanitizePipeline(false);
-    },
+    onToggleEntity: pipeline.toggleVaultEntity,
     onSelectToken: pipeline.scrollToVaultItem,
     onTokenHover: pipeline.handleTokenHover,
     onVaultItemBlur: pipeline.handleVaultItemBlur,
@@ -256,6 +251,17 @@ function refreshWorkbenchUi() {
 
 function refreshDrawersUi() {
   const lang = getLang();
+  const isPro = Boolean(state.proLicense?.isPro);
+  renderRulebookProfiles(
+    {},
+    {
+      profiles: state.profilesStore?.profiles || [],
+      activeProfileId: state.profilesStore?.activeProfileId || DEFAULT_PROFILE_ID,
+      isPro,
+      lang,
+    }
+  );
+  renderRulebookWordPacks(null, { isPro });
   renderRulebookList(
     {
       listEl: getEl("rulebook-list"),
@@ -265,21 +271,8 @@ function refreshDrawersUi() {
     state.rules,
     lang,
     {
-      onToggleRule: (ruleId) => {
-        state.rules = saveRules(
-          state.rules.map((r) =>
-            r.id === ruleId ? { ...r, enabled: r.enabled === false } : r
-          )
-        );
-        refreshDrawersUi();
-        pipeline.runSanitizePipeline(false);
-      },
-      onDeleteRule: (ruleId) => {
-        hideInlineAlert("rulebook-alert");
-        state.rules = saveRules(state.rules.filter((r) => r.id !== ruleId));
-        refreshDrawersUi();
-        pipeline.runSanitizePipeline(false);
-      },
+      onToggleRule: pipeline.toggleRuleById,
+      onDeleteRule: pipeline.deleteRuleById,
     }
   );
   const mobileRulebookCount = getEl("mobile-rulebook-count");
@@ -392,24 +385,6 @@ function bindEvents() {
     pipeline.resetSessionToZero()
   );
 
-  getEl("apply-preset-rules-btn")?.addEventListener("click", () => {
-    const preset = getPresetById(state.activePresetId);
-    const unapplied = getUnappliedPresetRules(preset, state.rules);
-    if (unapplied.length === 0) return;
-
-    const toAdd = unapplied.map((r) => ({
-      id: createRuleId(),
-      term: r.term,
-      category: r.category || "CUSTOM",
-      caseSensitive: Boolean(r.caseSensitive),
-      enabled: true,
-    }));
-    state.rules = saveRules([...state.rules, ...toAdd]);
-    refreshDrawersUi();
-    pipeline.runSanitizePipeline(false);
-    showStatusBanner("banner.presetRulesAdded", { count: toAdd.length });
-  });
-
   const liveToggle = getEl("live-sanitize-toggle");
   liveToggle?.addEventListener("change", () => {
     if (!liveToggle.checked) {
@@ -446,6 +421,7 @@ function bindEvents() {
       pipeline.cancelPendingLiveSanitize();
       pipeline.cancelPendingLiveAudit();
       state.activePresetId = "";
+      state.activeTemplateId = "";
       state.showAllCategories = false;
       state.highlightedToken = "";
       state.pinnedToken = "";
@@ -457,6 +433,13 @@ function bindEvents() {
       const activePreset = getPresetById(state.activePresetId);
       if (!activePreset || state.rawText !== activePreset.text) {
         state.activePresetId = "";
+        refreshPresetsUi();
+      }
+    }
+    if (state.activeTemplateId) {
+      const activeTpl = getLocalizedPromptTemplate(state.activeTemplateId, getLang());
+      if (!activeTpl || state.rawText !== activeTpl.text) {
+        state.activeTemplateId = "";
         refreshPresetsUi();
       }
     }
@@ -485,6 +468,8 @@ function bindEvents() {
     state.batchItems = [];
     state.rawText = "";
     state.activePresetId = "";
+    state.activeTemplateId = "";
+    state.previewTemplateId = "";
     state.showAllCategories = false;
     state.highlightedToken = "";
     state.pinnedToken = "";
@@ -506,6 +491,8 @@ function bindEvents() {
         state.batchItems = [];
         state.vault.reset();
         state.activePresetId = "";
+        state.activeTemplateId = "";
+        state.previewTemplateId = "";
         state.showAllCategories = false;
         state.highlightedToken = "";
         state.pinnedToken = "";
@@ -693,11 +680,15 @@ export async function init() {
   setLang(state.lang);
   await ensureDictionary(state.lang);
   applyTheme(resolveInitialTheme(), state, { persist: false });
-  state.rules = loadRules();
   purgeUnoptedAuditStorage();
   state.auditPersist = isAuditPersistenceEnabled();
   state.auditLog = loadAuditLog();
   state.proLicense = await loadActiveProLicense();
+  state.profilesStore = loadProfilesStore(state.lang);
+  if (!state.proLicense?.isPro && state.profilesStore.activeProfileId !== DEFAULT_PROFILE_ID) {
+    state.profilesStore = { ...state.profilesStore, activeProfileId: DEFAULT_PROFILE_ID };
+  }
+  state.rules = getActiveProfile(state.profilesStore).rules;
   const detectUuidToggle = getEl("detect-uuid-toggle");
   if (detectUuidToggle) {
     detectUuidToggle.checked = Boolean(state.detectUuid);
