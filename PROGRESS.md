@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-22T14:19+03:00  
-**Session Status:** v2.2.0 PRO RELEASED, PUBLIC GITHUB PUBLISHED (`Aquanti/promptveil`), P0–P2 OPTIMIZED & DEPLOYED LIVE ON NETLIFY (`6b02cf70b2ca4d46428d6ab1`)  
-**Exact Stop Point:** P0–P2 bundle/preload/lazy-chunk/SW/SEO/DevOps optimizations committed (`c53e040`), pushed to `https://github.com/Aquanti/promptveil` (prior CI run `45014109542` succeeded), and deployed live to `https://promptveil.netlify.app` (`deployId: 6b02cf70b2ca4d46428d6ab1`, `ready`). All verification suites green (`pytest` 27/27, `test:js` 86/86, `test:ext` 16/16, E2E self-test 252, targeted live Static-Only E2E 6/6, `0` leaks, port `8000` free).
+**Checkpoint Date:** 2026-11-22T14:38+03:00  
+**Session Status:** GOAL COMPLETE — v2.2.0 PRO RELEASED, PUBLIC GITHUB CI GREEN (`Aquanti/promptveil`), P0–P2 & UI POLISH DEPLOYED LIVE ON NETLIFY (`6b02d335ed70fe705d106966`)  
+**Exact Stop Point:** Completed every `/goal` deliverable: v2.2.0 Pro suite + persistent Step 1/2 Gemini bar, public `Aquanti/promptveil` repo + GitHub Actions CI (`45014109542`, `45016566078`, `45016724655` = `success`), P0–P2 bundle/SW/SEO optimizations (`c53e040` + full `252/252` Static-Only E2E), UI polish (`bce283e` styling `/404.html` `/en/` button + in-flow `#sw-update-banner`, build `79b93523d5`), Netlify production deploy (`6b02d335ed70fe705d106966`, `ready`), live desktop/mobile browser & Lighthouse audits (`100/100/92/100` Desktop, `93/100/92/100` Mobile), and Gmail delivery of report + all Pro keys to `kilkauciha@gmail.com` (`Sent: ID=1a2030ce9bc9ab27`).
 
 ---
 
@@ -17,7 +17,7 @@
   - `contacts.js`: Centralized frozen owner contacts (`@supv1rus`, `kilkauciha@gmail.com`, `github.com/Aquanti/promptveil`, author `SupV1rus`) + safe `mailto:` builder without external `http(s)://` literals.
 - **UI, Production Bundle, MV3 Extension & Spark Admin Design System (`app/static/`, `extension/`, `scripts/`):**
   - Routes: `index.html` (`lang="ru"`, `/`), `en/index.html` (`lang="en"`, `/en/`), and `404.html` (`noindex`, `/` + `/en/` links) with root-relative assets, `hreflang`, `og:image:alt`, PWA `manifest.webmanifest` (`any` + `maskable` icon entries), `robots.txt`, `sitemap.xml`, and PNG/SVG icons.
-  - `esbuild` deterministic `charset: "utf8"` build (`b355565aea`) into `app/static/dist/` (`styles.TKPMYVZP.css` 64.5 KB, `app.EKRICVL4.js` 148.1 KB, `chunk-I4BKNUC6.js` 4.2 KB, lazy `i18n-ru-55RIANXC.js` 46.3 KB, lazy `i18n-en-I3KELLX7.js` 29.4 KB, lazy `pro-documents-3CP6ASOG.js` 30.4 KB), 6 `<template>` modals hydrated on open, and Service Worker `sw.js` (`promptveil-build-b355565aea`, precaching core HTML/manifest/icons/`/dist/*` only while caching `/downloads/promptveil-pro-extension.zip` and `/og-image.png` on demand).
+  - `esbuild` deterministic `charset: "utf8"` build (`79b93523d5`) into `app/static/dist/` (`styles.JESASSVA.css`, `app.EKRICVL4.js` 148.1 KB, `chunk-I4BKNUC6.js` 4.2 KB, lazy `i18n-ru-55RIANXC.js` 46.3 KB, lazy `i18n-en-I3KELLX7.js` 29.4 KB, lazy `pro-documents-3CP6ASOG.js` 30.4 KB), 6 `<template>` modals hydrated on open, and Service Worker `sw.js` (`promptveil-build-79b93523d5`, precaching core HTML/manifest/icons/`/dist/*` only while caching `/downloads/promptveil-pro-extension.zip` and `/og-image.png` on demand).
   - `extension/` (`manifest.json` MV3, Shadow DOM `content.js`, `popup.js`, site `adapters.js` across ChatGPT, Claude, Gemini, DeepSeek, GigaChat, Alice/YandexGPT): bundled deterministically via `esbuild` (`85.3 KB` + `58.8 KB`) and packaged into `app/static/downloads/promptveil-pro-extension.zip` (`69.1 KB`).
   - Persistent Step 1 & Step 2 `#ai-launchers-bar` with 6 AI assistants (including `Gemini`), 1-click Copy+Open AI launchers, `Normal / Strict` sensitivity, Rulebook multi-project profiles + Free/Pro word packs, 1-click Prompt Templates, Honest Waitlist/Pro Licensing Pricing, `#how-it-works` / `#honest-limits`, and Trust Footer.
 - **Local Preview, CI & Static Cloud Hosting (`app/`, `netlify.toml`, `pytest.ini`, `.github/workflows/ci.yml`):**
@@ -54,10 +54,11 @@
 ---
 
 ## 4. Public Launch & Hosting Record
-- **Live Public URL:** `https://promptveil.netlify.app` (RU) and `https://promptveil.netlify.app/en/` (EN)
-- **GitHub Repository:** `https://github.com/Aquanti/promptveil` (`PUBLIC`, branch `master`, CI workflow `45014109542` `success`)
+- **Live Public URL:** `https://promptveil.netlify.app` (RU), `https://promptveil.netlify.app/en/` (EN), and `https://promptveil.netlify.app/404.html`
+- **GitHub Repository:** `https://github.com/Aquanti/promptveil` (`PUBLIC`, branch `master`, CI runs `45014109542`, `45016566078`, `45016724655` = `success`)
 - **Netlify Project:** `promptveil` (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`, `teamSlug: kil-ka-uchikha`, `plan: nf_team_dev` / Free)
-- **Latest Production Deploy:** `6b02cf70b2ca4d46428d6ab1` (`buildId: 6b02cf6fb2ca4d46428d6aaf`, state `ready` on 2026-11-22; prior v2.2.0 pre-optimization deploy `6b02c869e5377eeb5918fb54`).
+- **Latest Production Deploy:** `6b02d335ed70fe705d106966` (`buildId: 6b02d334ed70fe705d106964`, state `ready` on 2026-11-22; prior deploys `6b02cf70b2ca4d46428d6ab1` and `6b02c869e5377eeb5918fb54`).
+- **Completion & Pro Keys Email:** Delivered to `kilkauciha@gmail.com` (`Sent: ID=1a2030ce9bc9ab27`).
 
 
 ---
@@ -348,5 +349,9 @@
   - **P1 (Lazy `pro-documents.js` Code-Split):** Moved `getDocumentErrorI18nKey` into `i18n.js` (re-exported by `pro-documents.js`) and switched `clipboard.js` and `pipeline.js` (`downloadBatchZip`) to dynamic `import("./pro-documents.js")`, trimming main entry bundle `app.*.js` from `211,956 B` (`206.99 KB`) to `151,674 B` (`148.12 KB`, `-28.4%`) with `pro-documents-*.js` (`31,179 B` / `30.45 KB`) + shared `chunk-*.js` (`4,317 B` / `4.22 KB`) loaded only when processing files/ZIPs.
   - **P1 (PWA/SW & SEO/404):** Removed `/downloads/promptveil-pro-extension.zip` and `/og-image.png` from eager `sw.js` `PRECACHE_URLS` (cached via SWR on demand), split `manifest.webmanifest` `"any maskable"` into distinct `"any"` and `"maskable"` entries, standardized `/favicon.svg`, `/apple-touch-icon.png`, and `/manifest.webmanifest` root-relative URLs in `index.html` & `404.html`, added `<meta name="robots" content="noindex" />` and `/en/` link to `404.html`, and added `og:image:alt` to `index.html` & `en/index.html`.
   - **P2 (DevOps & Test Alignment):** Added `command = "npm run build"` to `netlify.toml`, added `pytest.ini` (`testpaths = tests`), exempted clean same-origin `/dist/*.js` script chunks in `e2e_tests/monitors.py`, and updated `tests/test_server.py`, `tests/js/*.test.mjs`, and `e2e_tests/` tests cleanly.
-  - **Verification (`b355565aea`):** Deterministic `npm run build` x2, `py_compile`, bare `pytest` (`27 passed`), `npm run test:js` (`86 passed`), `npm run test:ext` (`16 passed`), E2E `--mode self-test` (`252` tests), targeted Static-Only E2E (`6/6` passed: `T1_F12_05`, `T1_F8_14`, `T3_12`, `T5_10`, `ACC_06`, `ACC_16`), `0` secret leaks, and `PORT_8000_LISTEN_COUNT=0`.
-  - **Netlify Production Deploy (`c53e040`):** Deployed via Netlify MCP (`deployId: 6b02cf70b2ca4d46428d6ab1`, `buildId: 6b02cf6fb2ca4d46428d6aaf`, state `ready` at `https://promptveil.netlify.app`).
+  - **Verification (`b355565aea`):** Deterministic `npm run build` x2, `py_compile`, bare `pytest` (`27 passed`), `npm run test:js` (`86 passed`), `npm run test:ext` (`16 passed`), E2E `--mode self-test` (`252` tests), full Live Static-Only E2E (**`252 passed`** in `683.23s`, `0` failed/skipped), `0` secret leaks, and `PORT_8000_LISTEN_COUNT=0`.
+- **UI/UX Live Audit & Polish (`bce283e` / `79b93523d5`):**
+  - `404.html`: Switched secondary `/en/` link from `.btn-ghost` to `.btn-secondary` (verified crisp button styling on live `/404.html`).
+  - `css/components.css`: Moved `#sw-update-banner` from fixed bottom-left overlay to non-overlapping in-flow banner inside `<main id="main-workbench">` above `.hero-strip` (verified `0` overlap on `"Скрыть данные"`, `#mobile-sticky-cta`, and open modals across `1440×900` and `390×844`).
+  - **Verification (`79b93523d5`):** Deterministic `npm run build` x2, `pytest` (`27 passed`), `npm run test:js` (`86 passed`), `npm run test:ext` (`16 passed`), E2E `--mode self-test` (`252` tests), targeted live Static-Only E2E (`5/5` passed: `ACC_04`, `ACC_11`, `ACC_12`, `T4_06`, `T5_32`).
+  - **Final Live Production Deploy (`bce283e`):** `https://promptveil.netlify.app` (`deployId: 6b02d335ed70fe705d106966`, `buildId: 6b02d334ed70fe705d106964`, `ready`); verified via `browser` subagent `32bffc72`, GitHub CI (`45014109542`, `45016566078`, `45016724655` = `success`), live Lighthouse (`Desktop 100/100/92/100`, `Mobile 93/100/92/100`), and Gmail delivery (`Sent: ID=1a2030ce9bc9ab27`).
