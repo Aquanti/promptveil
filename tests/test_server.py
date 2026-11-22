@@ -939,6 +939,8 @@ def test_seo_pwa_static_assets_and_meta_tags() -> None:
     assert 'name="robots" content="noindex"' in not_found_html
     assert 'href="/favicon.svg"' in not_found_html
     assert 'href="/en/"' in not_found_html
+    assert 'class="btn-secondary error-en-link"' in not_found_html
+    assert 'btn-ghost"' not in not_found_html
     assert './favicon.svg"' not in not_found_html
     assert "any maskable" not in manifest_src
     assert '"purpose": "any"' in manifest_src

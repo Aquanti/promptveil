@@ -1,6 +1,6 @@
 /* PromptVeil Self-Hosted Offline Service Worker (Network-First HTML, Cache-First /dist/*, SWR Static) */
 
-const CACHE_NAME = "promptveil-build-b355565aea";
+const CACHE_NAME = "promptveil-build-79b93523d5";
 
 const PRECACHE_URLS = [
   "/",
@@ -11,7 +11,7 @@ const PRECACHE_URLS = [
   "/apple-touch-icon.png",
   "/icon-192.png",
   "/icon-512.png",
-  "/dist/styles.TKPMYVZP.css",
+  "/dist/styles.JESASSVA.css",
   "/dist/app.EKRICVL4.js",
   "/dist/chunk-I4BKNUC6.js",
   "/dist/i18n-en-I3KELLX7.js",
