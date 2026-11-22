@@ -11,15 +11,6 @@ import {
   showCopyFeedback,
 } from "./dom.js";
 import { t } from "./i18n.js";
-import {
-  FREE_EXTENSIONS,
-  FREE_MAX_FILE_BYTES,
-  PRO_DOCUMENT_EXTENSIONS,
-  getDocumentErrorI18nKey,
-  getFileExtension,
-  parseDocumentFile,
-  validateBatchFiles,
-} from "./pro-documents.js";
 import { importRulesJson } from "./storage.js";
 
 export {
@@ -29,8 +20,20 @@ export {
   showCopyFeedback,
 };
 
-export const MAX_FILE_BYTES = FREE_MAX_FILE_BYTES;
-export const ALLOWED_EXTENSIONS = FREE_EXTENSIONS;
+export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+export const ALLOWED_EXTENSIONS = new Set([".txt", ".md", ".csv", ".json", ".log", ".env"]);
+
+let proDocsPromise = null;
+
+function loadProDocuments() {
+  if (!proDocsPromise) {
+    proDocsPromise = import("./pro-documents.js").catch((err) => {
+      proDocsPromise = null;
+      throw err;
+    });
+  }
+  return proDocsPromise;
+}
 
 export function translateImportError() {
   return "rulebook.importBadJson";
@@ -90,6 +93,27 @@ export function createFileController({
 
     const files = Array.from(fileList || []).filter(Boolean);
     if (files.length === 0) return;
+
+    const startReadId = activeFileReadId;
+    let proDocs;
+    try {
+      proDocs = await loadProDocuments();
+    } catch {
+      if (startReadId !== activeFileReadId) return;
+      showInlineAlert("input-error-banner", "banner.fileReadError", {
+        name: files[0]?.name || "",
+      });
+      return;
+    }
+    if (startReadId !== activeFileReadId) return;
+
+    const {
+      PRO_DOCUMENT_EXTENSIONS,
+      getDocumentErrorI18nKey,
+      getFileExtension,
+      parseDocumentFile,
+      validateBatchFiles,
+    } = proDocs;
 
     const isPro = Boolean(isProActive?.());
     const { accepted, rejection } = validateBatchFiles(files, { isPro });

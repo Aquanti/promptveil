@@ -1,6 +1,6 @@
 /* PromptVeil Self-Hosted Offline Service Worker (Network-First HTML, Cache-First /dist/*, SWR Static) */
 
-const CACHE_NAME = "promptveil-build-a62cd6cf47";
+const CACHE_NAME = "promptveil-build-b355565aea";
 
 const PRECACHE_URLS = [
   "/",
@@ -11,12 +11,12 @@ const PRECACHE_URLS = [
   "/apple-touch-icon.png",
   "/icon-192.png",
   "/icon-512.png",
-  "/og-image.png",
-  "/downloads/promptveil-pro-extension.zip",
-  "/dist/styles.UMY4UFFP.css",
-  "/dist/app.63TC2NCS.js",
-  "/dist/i18n-en-EY65K4KX.js",
-  "/dist/i18n-ru-ABT2WJB2.js"
+  "/dist/styles.TKPMYVZP.css",
+  "/dist/app.EKRICVL4.js",
+  "/dist/chunk-I4BKNUC6.js",
+  "/dist/i18n-en-I3KELLX7.js",
+  "/dist/i18n-ru-55RIANXC.js",
+  "/dist/pro-documents-3CP6ASOG.js"
 ];
 
 self.addEventListener("install", (event) => {

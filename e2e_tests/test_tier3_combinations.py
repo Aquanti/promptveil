@@ -636,6 +636,12 @@ def test_T3_14_pro_downloads_modal_extension_zip_headers_and_sw_offline(
         assert sw_ready is True
         sw_page.reload(wait_until="networkidle")
 
+        # Warm on-demand SWR cache for optional assets while online, then test offline access.
+        warmed_zip_status = sw_page.evaluate(
+            "async () => (await fetch('/downloads/promptveil-pro-extension.zip')).status"
+        )
+        assert warmed_zip_status == 200
+
         try:
             browser_context.set_offline(True)
             sw_page.reload(wait_until="domcontentloaded")

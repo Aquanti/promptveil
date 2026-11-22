@@ -202,6 +202,7 @@ async function build() {
     entryPoints: [path.join(STATIC_DIR, "styles.css")],
     bundle: true,
     minify: true,
+    charset: "utf8",
     entryNames: "[name].[hash]",
     outdir: DIST_DIR,
     metafile: true,
@@ -223,6 +224,7 @@ async function build() {
     splitting: true,
     format: "esm",
     minify: true,
+    charset: "utf8",
     target: ["es2022"],
     entryNames: "[name].[hash]",
     chunkNames: "[name]-[hash]",
@@ -248,8 +250,11 @@ async function build() {
   }
   const enChunkFile = jsFiles.find((f) => f.startsWith("i18n-en-"));
   const ruChunkFile = jsFiles.find((f) => f.startsWith("i18n-ru-"));
-  if (!enChunkFile || !ruChunkFile) {
-    throw new Error(`Expected split i18n-ru and i18n-en chunks in dist/, found: ${jsFiles.join(", ")}`);
+  const proDocsChunkFile = jsFiles.find((f) => f.startsWith("pro-documents-"));
+  if (!enChunkFile || !ruChunkFile || !proDocsChunkFile) {
+    throw new Error(
+      `Expected split i18n-ru, i18n-en, and pro-documents chunks in dist/, found: ${jsFiles.join(", ")}`
+    );
   }
 
   const distFiles = [cssFile, ...jsFiles].sort();
@@ -266,6 +271,7 @@ async function build() {
     format: "iife",
     target: ["es2022"],
     minify: true,
+    charset: "utf8",
     legalComments: "none",
     logLevel: "silent",
   });
@@ -277,6 +283,7 @@ async function build() {
     format: "iife",
     target: ["es2022"],
     minify: true,
+    charset: "utf8",
     legalComments: "none",
     logLevel: "silent",
   });
@@ -320,8 +327,8 @@ async function build() {
     /<script\s+type="module"\s+src="(?:\.?\/js\/app\.js|\/dist\/app\.[A-Za-z0-9_-]+\.js)"\s*><\/script>(?:\r?\n\s*<link\s+rel="modulepreload"\s+href="\/dist\/i18n-(?:en|ru)-[A-Za-z0-9_-]+\.js"\s*\/>)?/;
 
   for (const [htmlRel, preloadChunk] of [
-    ["index.html", enChunkFile],
-    [path.join("en", "index.html"), ruChunkFile],
+    ["index.html", ruChunkFile],
+    [path.join("en", "index.html"), enChunkFile],
   ]) {
     const htmlPath = path.join(STATIC_DIR, htmlRel);
     let htmlSrc = fs.readFileSync(htmlPath, "utf8");
@@ -368,8 +375,6 @@ async function build() {
     "/apple-touch-icon.png",
     "/icon-192.png",
     "/icon-512.png",
-    "/og-image.png",
-    "/downloads/promptveil-pro-extension.zip",
     `/dist/${cssFile}`,
     ...jsFiles.map((fileName) => `/dist/${fileName}`),
   ];

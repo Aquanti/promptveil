@@ -171,9 +171,11 @@ describe("PromptVeil M4B Deterministic Extension Build & PKZIP Archive", () => {
     }
   });
 
-  test("sw.js PRECACHE_URLS includes /downloads/promptveil-pro-extension.zip and openProDownloadsModal blocks Free mode", () => {
+  test("sw.js PRECACHE_URLS includes split pro-documents chunk, excludes heavy optional assets, and openProDownloadsModal blocks Free mode", () => {
     const swSrc = fs.readFileSync(SW_PATH, "utf8");
-    assert.match(swSrc, /"\/downloads\/promptveil-pro-extension\.zip"/);
+    assert.doesNotMatch(swSrc, /"\/downloads\/promptveil-pro-extension\.zip"/);
+    assert.doesNotMatch(swSrc, /"\/og-image\.png"/);
+    assert.match(swSrc, /"\/dist\/pro-documents-[A-Za-z0-9_-]+\.js"/);
 
     const freeBlocked = openProDownloadsModal(null, { proLicense: { isPro: false } });
     assert.equal(freeBlocked, null);

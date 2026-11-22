@@ -11,7 +11,6 @@ import {
   getLocalizedWordPack,
   getPresetById,
 } from "./presets.js";
-import { buildZipArchive } from "./pro-documents.js";
 import {
   DEFAULT_PROFILE_ID,
   appendAuditReceipt,
@@ -877,7 +876,7 @@ export function createPipelineController({
     showStatusBanner("banner.batchTxtDownloaded");
   }
 
-  function downloadBatchZip(downloadTextFile) {
+  async function downloadBatchZip(downloadTextFile) {
     ensureFreshSanitizedOutput();
     const okItems = (state.batchItems || []).filter(
       (it) => it.status === "ok" && !it.isScannedPdf && String(it.sanitizedText || "").trim().length > 0
@@ -898,6 +897,7 @@ export function createPipelineController({
       return { name: candidate, data: it.sanitizedText };
     });
 
+    const { buildZipArchive } = await import("./pro-documents.js");
     const zipBytes = buildZipArchive(entries);
     downloadTextFile("promptveil-batch-sanitized.zip", zipBytes, "application/zip");
     showStatusBanner("banner.batchZipDownloaded");
@@ -931,9 +931,9 @@ export function createPipelineController({
     getEl("batch-download-txt-btn")?.addEventListener("click", () =>
       downloadBatchCombinedTxt(downloadTextFile)
     );
-    getEl("batch-download-zip-btn")?.addEventListener("click", () =>
-      downloadBatchZip(downloadTextFile)
-    );
+    getEl("batch-download-zip-btn")?.addEventListener("click", () => {
+      void downloadBatchZip(downloadTextFile);
+    });
     getEl("batch-rehydrate-btn")?.addEventListener("click", () =>
       rehydrateBatchAndOpenStep2(switchMode)
     );

@@ -209,15 +209,25 @@ def test_root_serves_index_html_with_relative_assets_and_csp() -> None:
     assert "text/html" in response.headers["content-type"]
     _assert_security_headers(response.headers)
     body = response.text
-    assert './favicon.svg"' in body
+    assert 'href="/favicon.svg"' in body
+    assert 'href="/apple-touch-icon.png"' in body
+    assert 'href="/manifest.webmanifest"' in body
+    assert './favicon.svg"' not in body
     assert './styles.css"' not in body
     assert './js/app.js"' not in body
     css_match = re.search(r'<link\s+rel="stylesheet"\s+href="(/dist/styles\.[A-Za-z0-9_-]+\.css)"', body)
     js_match = re.search(r'<script\s+type="module"\s+src="(/dist/app\.[A-Za-z0-9_-]+\.js)"', body)
+    ru_preload_match = re.search(
+        r'<link\s+rel="modulepreload"\s+href="(/dist/i18n-ru-[A-Za-z0-9_-]+\.js)"',
+        body,
+    )
     assert css_match is not None, "Expected root-relative /dist/styles.<hash>.css in index.html"
     assert js_match is not None, "Expected root-relative /dist/app.<hash>.js in index.html"
+    assert ru_preload_match is not None, "Expected index.html to modulepreload /dist/i18n-ru-*.js"
+    assert "i18n-en-" not in body, "index.html must not preload English dictionary"
     assert client.get(css_match.group(1)).status_code == 200
     assert client.get(js_match.group(1)).status_code == 200
+    assert client.get(ru_preload_match.group(1)).status_code == 200
 
 
 def test_en_route_serves_english_index_with_root_assets_and_headers() -> None:
@@ -243,6 +253,11 @@ def test_en_route_serves_english_index_with_root_assets_and_headers() -> None:
             assert 'src="/js/app.js"' not in body
             assert f'href="{root_css.group(1)}"' in body
             assert f'src="{root_js.group(1)}"' in body
+            assert re.search(
+                r'<link\s+rel="modulepreload"\s+href="(/dist/i18n-en-[A-Za-z0-9_-]+\.js)"',
+                body,
+            ) is not None, "Expected en/index.html to modulepreload /dist/i18n-en-*.js"
+            assert "i18n-ru-" not in body, "en/index.html must not preload Russian dictionary"
             assert 'href="/manifest.webmanifest"' in body
             assert 'rel="canonical" href="https://promptveil.netlify.app/en/"' in body
             assert 'hreflang="ru" href="https://promptveil.netlify.app/"' in body
@@ -295,7 +310,8 @@ def test_static_assets_served_from_root() -> None:
     dist_css = sorted((STATIC_DIR / "dist").glob("*.css"))
     dist_js = sorted((STATIC_DIR / "dist").glob("*.js"))
     assert len(dist_css) == 1, f"Expected single bundled dist CSS, found {dist_css}"
-    assert len(dist_js) >= 3, f"Expected entry + split i18n dist JS chunks, found {dist_js}"
+    assert len(dist_js) >= 4, f"Expected entry + i18n + lazy pro-documents dist JS chunks, found {dist_js}"
+    assert len(list((STATIC_DIR / "dist").glob("pro-documents-*.js"))) == 1
     assert "@import" not in dist_css[0].read_text(encoding="utf-8")
 
 
@@ -452,6 +468,7 @@ def test_netlify_toml_matches_publish_dir_and_csp() -> None:
     """Verify netlify.toml publishes app/static with matching CSP, COOP, CORP, and immutable /dist/* headers."""
     netlify_path = BASE_DIR / "netlify.toml"
     data = tomllib.loads(netlify_path.read_text(encoding="utf-8"))
+    assert data["build"]["command"] == "npm run build"
     assert data["build"]["publish"] == "app/static"
 
     root_headers = next((h for h in data["headers"] if h.get("for") == "/*"), None)
@@ -896,6 +913,9 @@ def test_seo_pwa_static_assets_and_meta_tags() -> None:
     """Verify SEO/OG meta tags and robots.txt, sitemap.xml, 404.html, manifest, and branded PNG assets."""
     client = TestClient(app)
     index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    en_html = (STATIC_DIR / "en" / "index.html").read_text(encoding="utf-8")
+    not_found_html = (STATIC_DIR / "404.html").read_text(encoding="utf-8")
+    manifest_src = (STATIC_DIR / "manifest.webmanifest").read_text(encoding="utf-8")
 
     for meta_snippet in (
         'name="description"',
@@ -904,15 +924,25 @@ def test_seo_pwa_static_assets_and_meta_tags() -> None:
         'rel="alternate" hreflang="ru" href="https://promptveil.netlify.app/"',
         'rel="alternate" hreflang="en" href="https://promptveil.netlify.app/en/"',
         'rel="alternate" hreflang="x-default" href="https://promptveil.netlify.app/"',
-        'rel="manifest" href="./manifest.webmanifest"',
-        'rel="apple-touch-icon"',
+        'rel="manifest" href="/manifest.webmanifest"',
+        'rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png"',
         'property="og:type" content="website"',
         'property="og:url" content="https://promptveil.netlify.app/"',
         'property="og:image" content="https://promptveil.netlify.app/og-image.png"',
+        'property="og:image:alt"',
         'name="twitter:card" content="summary_large_image"',
         'name="twitter:image" content="https://promptveil.netlify.app/og-image.png"',
     ):
         assert meta_snippet in index_html, f"Missing SEO/OG tag {meta_snippet!r} in index.html"
+
+    assert 'property="og:image:alt"' in en_html
+    assert 'name="robots" content="noindex"' in not_found_html
+    assert 'href="/favicon.svg"' in not_found_html
+    assert 'href="/en/"' in not_found_html
+    assert './favicon.svg"' not in not_found_html
+    assert "any maskable" not in manifest_src
+    assert '"purpose": "any"' in manifest_src
+    assert '"purpose": "maskable"' in manifest_src
 
     routes = (
         ("/robots.txt", "text/plain", b"Sitemap: https://promptveil.netlify.app/sitemap.xml"),
@@ -964,7 +994,9 @@ def test_service_worker_and_stage2_p1_contracts() -> None:
     assert "eval(" not in sw_src
     assert 'CACHE_NAME = "promptveil-build-' in sw_src
     assert "/dist/styles." in sw_src and "/dist/app." in sw_src
-    assert '"/downloads/promptveil-pro-extension.zip"' in sw_src
+    assert "/dist/pro-documents-" in sw_src
+    assert '"/downloads/promptveil-pro-extension.zip"' not in sw_src
+    assert '"/og-image.png"' not in sw_src
     assert "SKIP_WAITING" in sw_src
     assert "self.clients.claim()" in sw_src
     install_block = re.search(r'addEventListener\("install".*?\}\);', sw_src, re.DOTALL)

@@ -1596,7 +1596,9 @@ def test_ACC_16_extension_zip_pro_downloads_profiles_and_templates(
 
     sw_status, _, sw_body = fetch_http_response(f"{pro_e2e_session.base_url.rstrip('/')}/sw.js")
     assert sw_status == 200
-    assert "/downloads/promptveil-pro-extension.zip" in sw_body
+    assert "/downloads/promptveil-pro-extension.zip" not in sw_body
+    assert "/og-image.png" not in sw_body
+    assert "/dist/pro-documents-" in sw_body
 
     # 2. Free gate on #open-pro-downloads-btn, then Pro unlock -> #modal-pro-downloads RU/EN & 1-click .zip download
     dl_trigger = page.locator("[data-testid='open-pro-downloads-btn'], #open-pro-downloads-btn")

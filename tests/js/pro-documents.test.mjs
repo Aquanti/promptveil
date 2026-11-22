@@ -645,7 +645,7 @@ describe("PromptVeil M2 Security Hygiene & Batch Vault/UI Integration", () => {
     setLang("ru");
   });
 
-  test("pro-documents.js contains zero unsafe sinks, network calls, or http(s) literals", () => {
+  test("pro-documents.js contains zero unsafe sinks, network calls, or http(s) literals and stays lazily split from core bundle", () => {
     const src = readFileSync(
       new URL("../../app/static/js/pro-documents.js", import.meta.url),
       "utf8"
@@ -667,6 +667,18 @@ describe("PromptVeil M2 Security Hygiene & Batch Vault/UI Integration", () => {
     }
     assert.equal(/(['"`])(?:https?|wss?):\/\//i.test(src), false);
     assert.equal(/https?:\/\//i.test(src), false);
+
+    for (const coreFile of ["app.js", "clipboard.js", "pipeline.js", "render-workbench.js"]) {
+      const coreSrc = readFileSync(
+        new URL(`../../app/static/js/${coreFile}`, import.meta.url),
+        "utf8"
+      );
+      assert.equal(
+        /\bimport\b[^;\n]*from\s*["']\.\/pro-documents\.js["']/.test(coreSrc),
+        false,
+        `Core module ${coreFile} must not statically import ./pro-documents.js`
+      );
+    }
   });
 
   test("multi-document batch parse -> SessionVault sanitize (resetOnEmpty: false) -> ZIP export -> Step 2 rehydrate", async () => {
@@ -765,7 +777,7 @@ describe("PromptVeil M2 Security Hygiene & Batch Vault/UI Integration", () => {
 
     // Download ZIP verification
     let savedZip = null;
-    pipeline.downloadBatchZip((name, data, mime) => {
+    await pipeline.downloadBatchZip((name, data, mime) => {
       savedZip = { name, data, mime };
     });
     assert.equal(savedZip.mime, "application/zip");

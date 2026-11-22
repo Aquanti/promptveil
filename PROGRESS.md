@@ -1,26 +1,29 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-21T18:17+03:00  
-**Session Status:** PRO UPGRADE M5 PHASE 1 — E2E Test & Page-Object Fixes Verified (`checkpoint: m5-phase1-fixes`)  
-**Exact Stop Point:** Fixed the 3 E2E defects (`test_T1_F8_14`, `PromptVeilUI.download_extension_zip`, `test_T4_09`) without touching `app/` or `extension/`; verified deterministic `npm run build` x2 (`bbad93a0d1`), `py_compile` (`17` files), `pytest tests/test_server.py` (`27/27`), `node --test` (`79/79` + `14/14`), E2E `--mode self-test` (`245` tests), and targeted Live FastAPI (`6/6`) + Static-Only (`6/6`) E2E runs (`0` listeners on port `8000`). Next: M5 Phase 1 full verification gate (Tiers 1–4 + Acceptance).
+**Checkpoint Date:** 2026-11-22T14:16+03:00  
+**Session Status:** v2.2.0 PRO RELEASED, PUBLIC GITHUB PUBLISHED (`Aquanti/promptveil`) & P0–P2 BUNDLE/SW/SEO OPTIMIZATIONS VERIFIED  
+**Exact Stop Point:** Completed P0–P2 post-audit optimization pass on `master` (bundle size & UTF-8 optimization, fixed RU/EN `modulepreload`, lazy `pro-documents-*.js` code-split, slimmed `sw.js` `PRECACHE_URLS`, split `manifest.webmanifest` icons, root-relative HTML/404 assets + `noindex` + `/en/` CTA + `og:image:alt`, `netlify.toml` `command = "npm run build"`, `pytest.ini`), rebuilt deterministically x2 (`b355565aea`), and passed `py_compile`, bare `pytest` (`27/27`), `npm run test:js` (`86/86`), `npm run test:ext` (`16/16`), E2E `--mode self-test` (`252` tests), and targeted live Static-Only E2E (`6/6`). Next: push to GitHub and deploy updated build to Netlify production.
 
 ---
 
-## 1. Current Architecture (Option A — 100% Client-Side Public Web Product)
+## 1. Current Architecture (Option A — 100% Client-Side Public Web & MV3 Product)
 - **Zero-Egress Browser Privacy Engine (`app/static/js/`):**
   - `detector.js`: **25** deterministic categories (`API_KEY`, `URL_TOKEN`, `JWT`, `IBAN` ISO 7064, `RU_ACCOUNT` BIK key, `RU_OMS` Luhn, `CREDIT_CARD` Luhn, `RU_SNILS`, `RU_INN` 10/12, `RU_OGRN`/OGRNIP, `RU_PASSPORT`, `RU_BIK`, `POSSIBLE_CARD` context-labeled fallback, `SSN`, `ENV_SECRET`, `CUSTOM` Unicode/Cyrillic, `EMAIL`, `PHONE` RU/CIS/intl, `RU_ORG`, `RU_AUTO_PLATE`, `RU_FIO` 2–3 words + cases, `RU_ADDRESS` + city capture, `IPV4`, opt-in `UUID`, `HIGH_ENTROPY`) with `"normal"` / `"strict"` sensitivity modes and per-match `reasonKey` explanations.
-  - `vault.js`: RAM-only `SessionVault` (`[PREFIX_N]` reversible tokens, transient live-typing evolution, category/item toggles, clean reset on empty input, single-pass longest-token `rehydrate`).
-  - `storage.js`: Per-browser `localStorage` custom rules (`promptveil_rules_v1`), language preference (`promptveil_lang_v1`), dark/light theme (`promptveil_theme_v1`), opt-in audit persistence toggle (`promptveil_audit_persist_v1`), and **RAM-only by default** SHA-256 hash-only audit receipts (`promptveil_audit_v1` written only when opted in).
+  - `vault.js`: RAM-only `SessionVault` (`[PREFIX_N]` reversible tokens, transient live-typing evolution, category/item toggles, clean reset on empty input or batch-aware `{ resetOnEmpty: false }`, single-pass longest-token `rehydrate`).
+  - `storage.js`: Per-browser `localStorage` multi-project Rulebook profiles (`promptveil_profiles_v1` + legacy `promptveil_rules_v1`), language preference (`promptveil_lang_v1`), dark/light theme (`promptveil_theme_v1`), opt-in audit persistence toggle (`promptveil_audit_persist_v1`), and **RAM-only by default** SHA-256 hash-only audit receipts (`promptveil_audit_v1` written only when opted in).
+  - `pro-license.js`: Offline asymmetric Ed25519 key verifier (`PV1.<payload>.<sig>`, WebCrypto Ed25519 + pure-JS RFC 8032/SHA-512 fallback, `promptveil_pro_license_v1`); public key only in client JS, private signing key & issued keys kept offline outside Git.
+  - `pro-documents.js` (lazily code-split chunk): 100% browser-local `.docx`, `.pdf`, `.xlsx` parser & deterministic PKZIP builder up to 50 MB per file (`DecompressionStream` + pure-JS RFC 1951/1950 inflate, `DOMParser` + pure-JS XML fallback, PDF `FlateDecode` / `ToUnicode` CMap decoding, zip-bomb & encrypted-PDF rejection, scanned-PDF warning).
   - `privacy-proof.js`: Passive live self-test verifying `0` server text requests (`connect-src 'self'`), `0` bytes stored texts/secrets (`sessionStorage`, `cookies`, audit/unknown storage keys), `0` trackers, `"нарушений CSP в документе приложения: 0"`, and transport protocol status (`HTTPS / TLS` vs local host).
   - `contacts.js`: Centralized frozen owner contacts (`@supv1rus`, `kilkauciha@gmail.com`, `github.com/Aquanti/promptveil`, author `SupV1rus`) + safe `mailto:` builder without external `http(s)://` literals.
-- **UI, Production Bundle & Spark Admin Design System (`app/static/`, `scripts/build.mjs`):**
-  - Routes: `index.html` (`lang="ru"`, `/` canonical) and `en/index.html` (`lang="en"`, `/en/` canonical) with `hreflang`, OG/Twitter metadata, `favicon.svg`, `404.html`, `robots.txt`, `sitemap.xml`, `manifest.webmanifest`, and PNG PWA/OG assets.
-  - `esbuild` deterministic production build (`7d1ffd0739`) into `app/static/dist/` (`styles.OSO7ZGEU.css`, `app.7ZFZXPFV.js`, lazy chunks `i18n-ru-XC3DQG4V.js`, `i18n-en-DA7RUS5J.js`), 4 `<template>` modals hydrated on open, and Service Worker `sw.js` (`promptveil-build-7d1ffd0739`, network-first HTML + cache-first `/dist/*` + `#sw-update-banner`).
-  - Modular ES6 UI controllers (`18` files in `app/static/js/`): `{app,clipboard,contacts,detector,dom,i18n,i18n-en,i18n-ru,modals,notifications,pipeline,presets,pricing,privacy-proof,render-drawers,render-workbench,storage,vault}.js` with full `RU | EN` parity, mobile `390×844` compact header (`56.25px`) + `>= 44px` tap targets + collapsible vault + sticky bottom bar, 1-click Copy+Open AI launchers, Honest Waitlist Pricing, `#how-it-works` / `#honest-limits`, and Trust Footer.
-- **Local Preview, CI & Static Cloud Hosting (`app/`, `netlify.toml`, `.github/workflows/ci.yml`):**
-  - `app/main.py`, `app/config.py`, `app/schemas.py`: FastAPI static host (`http://127.0.0.1:8000`) + `/health` + strict CSP, `COOP: same-origin`, `CORP: same-origin`, and security headers.
-  - `netlify.toml`: Static deployment config (`publish = "app/static"`) serving `/dist/*` with `immutable` cache, `/manifest.webmanifest` as `application/manifest+json; charset=utf-8`, `/sw.js` as `no-cache`, and matching `COOP`/`CORP`/CSP headers.
-  - Repo hygiene: MIT `LICENSE`, bilingual RU+EN `README.md`, `CHANGELOG.md`, `.gitattributes`, `package.json`, and GitHub Actions CI.
+- **UI, Production Bundle, MV3 Extension & Spark Admin Design System (`app/static/`, `extension/`, `scripts/`):**
+  - Routes: `index.html` (`lang="ru"`, `/`), `en/index.html` (`lang="en"`, `/en/`), and `404.html` (`noindex`, `/` + `/en/` links) with root-relative assets, `hreflang`, `og:image:alt`, PWA `manifest.webmanifest` (`any` + `maskable` icon entries), `robots.txt`, `sitemap.xml`, and PNG/SVG icons.
+  - `esbuild` deterministic `charset: "utf8"` build (`b355565aea`) into `app/static/dist/` (`styles.TKPMYVZP.css` 64.5 KB, `app.EKRICVL4.js` 148.1 KB, `chunk-I4BKNUC6.js` 4.2 KB, lazy `i18n-ru-55RIANXC.js` 46.3 KB, lazy `i18n-en-I3KELLX7.js` 29.4 KB, lazy `pro-documents-3CP6ASOG.js` 30.4 KB), 6 `<template>` modals hydrated on open, and Service Worker `sw.js` (`promptveil-build-b355565aea`, precaching core HTML/manifest/icons/`/dist/*` only while caching `/downloads/promptveil-pro-extension.zip` and `/og-image.png` on demand).
+  - `extension/` (`manifest.json` MV3, Shadow DOM `content.js`, `popup.js`, site `adapters.js` across ChatGPT, Claude, Gemini, DeepSeek, GigaChat, Alice/YandexGPT): bundled deterministically via `esbuild` (`85.3 KB` + `58.8 KB`) and packaged into `app/static/downloads/promptveil-pro-extension.zip` (`69.1 KB`).
+  - Persistent Step 1 & Step 2 `#ai-launchers-bar` with 6 AI assistants (including `Gemini`), 1-click Copy+Open AI launchers, `Normal / Strict` sensitivity, Rulebook multi-project profiles + Free/Pro word packs, 1-click Prompt Templates, Honest Waitlist/Pro Licensing Pricing, `#how-it-works` / `#honest-limits`, and Trust Footer.
+- **Local Preview, CI & Static Cloud Hosting (`app/`, `netlify.toml`, `pytest.ini`, `.github/workflows/ci.yml`):**
+  - `app/main.py`, `app/config.py`, `app/schemas.py`: FastAPI static host (`http://127.0.0.1:8000`) + `/health` + strict CSP, `COOP: same-origin`, `CORP: same-origin`, and `/downloads/*.zip` (`application/zip`).
+  - `netlify.toml`: `[build] command = "npm run build"`, `publish = "app/static"`, strict CSP/COOP/CORP headers, `immutable` cache on `/dist/*`, `no-cache` on `/sw.js`, `application/manifest+json` on `/manifest.webmanifest`, and `application/zip` on `/downloads/*.zip`.
+  - Repo hygiene: MIT `LICENSE`, bilingual RU+EN `README.md`, `CHANGELOG.md` (`2.2.0`), `.gitattributes`, `package.json` (`2.2.0`, `build`, `test:js`, `test:ext`), `pytest.ini` (`testpaths = tests`), and GitHub Actions CI.
 
 ---
 
@@ -262,23 +265,17 @@
 
 ---
 
-## 7. GitHub Remote & Push Instructions (Item 4)
-No GitHub credentials or `origin` remote are configured in this local environment. Once ready to publish the repository to `https://github.com/Aquanti/promptveil`, run:
-
-```powershell
-git remote add origin https://github.com/Aquanti/promptveil.git
-git branch -M master
-git push -u origin master
-```
-
-*(Note: If the GitHub repository's default branch is `main` instead of `master`, run `git push -u origin master:main`. Repository includes MIT `LICENSE`, bilingual RU+EN `README.md`, `.gitattributes`, `CHANGELOG.md`, and `.github/workflows/ci.yml` — recommended: pin the repo in the `Aquanti` GitHub profile README after pushing.)*
+## 7. GitHub Remote & Publication (`Aquanti/promptveil`)
+- **Public Repository:** `https://github.com/Aquanti/promptveil` (`visibility: PUBLIC`, default branch `master`, homepage `https://promptveil.netlify.app`).
+- **Topics:** `privacy`, `pii`, `llm`, `prompt-engineering`, `zero-retention`, `pwa`, `manifest-v3`.
+- **CI Workflow:** `.github/workflows/ci.yml` (`ubuntu-latest`, Node `24`, Python `3.13`, `npm run build`, `pytest`, `test:js`, `test:ext`, E2E `--mode self-test` + `--mode live --static-only --tier all`).
 
 ---
 
-## 8. Final Handover (Owner Manual Action Only)
-1. **GitHub Publish:** Create an empty public repository `Aquanti/promptveil` on GitHub and push local `master` using the commands in **Section 7** above, then optionally pin it to your GitHub profile README.
-2. **Production Live URL:** `https://promptveil.netlify.app` (`deployId: 6b009726fbb09a4a4c3fc4e3`, `ready`) — post-crash re-verified (`pytest 25/25`, `node --test 48/48`, FastAPI E2E `172/172`, Static E2E `172/172`, live browser verification `f2d75639`, live Lighthouse Desktop `100/100/92/100` & Mobile `96/100/92/100`).
-3. **Completion Email:** Delivered to `kilkauciha@gmail.com` (`Sent: ID=1a1fd8f07328cc77`).
+## 8. Final Handover & Security Posture
+1. **GitHub Public Repo:** `https://github.com/Aquanti/promptveil` published with zero tracked secrets (`0` leaks across tracked files and Git history; synthetic E2E Slack test string sanitized to non-secret format).
+2. **Production Live URL:** `https://promptveil.netlify.app` (RU `/` and EN `/en/`, with branded `404.html`).
+3. **Private Ed25519 Signing Key & Client Tokens:** Kept exclusively outside Git in local gitignored `.secrets/pro_keys_bundle.json` (plus scratch backup). Use `node scripts/issue-pro-key.mjs --issue --tier pro --key-id <id> --label "<label>"` to mint additional keys offline.
 
 ---
 
@@ -337,3 +334,17 @@ git push -u origin master
   - `node --test tests/js/*.test.mjs`: **`79 passed`** (`19` suites); `node --test extension/tests/*.test.mjs`: **`14 passed`**.
   - `.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode self-test`: **`ALL CHECKS PASSED`** (`245` unique tests collected).
   - Targeted Live FastAPI (`--base-url http://127.0.0.1:8000 --start-server`) & Static-Only (`--static-only`) for `test_T1_F8_14 or test_T1_F12_03 or test_T1_F12_05 or test_T3_14 or test_T4_09 or test_ACC_16`: **`6 passed` / `6 passed`**, `0` listeners on port `8000`.
+
+---
+
+## 14. PromptVeil v2.2.0 Release, Public GitHub Launch & P0–P2 Optimizations (2026-11-22)
+- **M5 Phase 2 Hardening & Full 252-Test Live Verification (`b07f5f9` / `21ecae6`):**
+  - Expanded suites to `27` server/CSP pytest checks, `86` web JS unit tests (`19` suites), `16` extension JS unit tests, and `252` Playwright E2E tests (`197` Tier 1–4 + `39` Tier 5 + `16` Acceptance).
+  - Re-verified full Live FastAPI E2E (**`252 passed`**, `0` failed/skipped) and full Live Static-Only E2E (**`252 passed`**, `0` failed/skipped).
+  - Updated `README.md` (RU + EN), `CHANGELOG.md` (`[2.2.0]`), `package.json` (`2.2.0`, `test:ext`), and `.github/workflows/ci.yml` (`python-version: "3.13"` + extension test step); created & pushed public `https://github.com/Aquanti/promptveil` (`master`).
+- **P0–P2 Audit Optimization Pass (`b355565aea`):**
+  - **P0 (`charset: "utf8"` & `modulepreload` Fix in `scripts/build.mjs`):** Added `charset: "utf8"` across all 4 `esbuild.build()` calls, shrinking `i18n-ru` from `108,213 B` (`105.68 KB`) to `47,408 B` (`46.30 KB`, `-56.2%`), `extension/dist/content.bundle.js` from `109,652 B` (`107.08 KB`) to `87,395 B` (`85.35 KB`), and `extension/dist/popup.bundle.js` from `82,019 B` (`80.10 KB`) to `60,246 B` (`58.83 KB`); fixed `modulepreload` so `index.html` preloads `i18n-ru-*.js` and `en/index.html` preloads `i18n-en-*.js`.
+  - **P1 (Lazy `pro-documents.js` Code-Split):** Moved `getDocumentErrorI18nKey` into `i18n.js` (re-exported by `pro-documents.js`) and switched `clipboard.js` and `pipeline.js` (`downloadBatchZip`) to dynamic `import("./pro-documents.js")`, trimming main entry bundle `app.*.js` from `211,956 B` (`206.99 KB`) to `151,674 B` (`148.12 KB`, `-28.4%`) with `pro-documents-*.js` (`31,179 B` / `30.45 KB`) + shared `chunk-*.js` (`4,317 B` / `4.22 KB`) loaded only when processing files/ZIPs.
+  - **P1 (PWA/SW & SEO/404):** Removed `/downloads/promptveil-pro-extension.zip` and `/og-image.png` from eager `sw.js` `PRECACHE_URLS` (cached via SWR on demand), split `manifest.webmanifest` `"any maskable"` into distinct `"any"` and `"maskable"` entries, standardized `/favicon.svg`, `/apple-touch-icon.png`, and `/manifest.webmanifest` root-relative URLs in `index.html` & `404.html`, added `<meta name="robots" content="noindex" />` and `/en/` link to `404.html`, and added `og:image:alt` to `index.html` & `en/index.html`.
+  - **P2 (DevOps & Test Alignment):** Added `command = "npm run build"` to `netlify.toml`, added `pytest.ini` (`testpaths = tests`), exempted clean same-origin `/dist/*.js` script chunks in `e2e_tests/monitors.py`, and updated `tests/test_server.py`, `tests/js/*.test.mjs`, and `e2e_tests/` tests cleanly.
+  - **Verification (`b355565aea`):** Deterministic `npm run build` x2, `py_compile`, bare `pytest` (`27 passed`), `npm run test:js` (`86 passed`), `npm run test:ext` (`16 passed`), E2E `--mode self-test` (`252` tests), targeted Static-Only E2E (`6/6` passed: `T1_F12_05`, `T1_F8_14`, `T3_12`, `T5_10`, `ACC_06`, `ACC_16`), `0` secret leaks, and `PORT_8000_LISTEN_COUNT=0`.

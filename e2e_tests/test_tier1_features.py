@@ -1571,7 +1571,9 @@ def test_T1_F12_05_sw_precaches_and_serves_extension_zip_metadata_cleanly(
     ui = pro_e2e_session.ui
     status, _, sw_body = fetch_http_response(f"{pro_e2e_session.base_url.rstrip('/')}/sw.js")
     assert status == 200
-    assert "/downloads/promptveil-pro-extension.zip" in sw_body
+    assert "/downloads/promptveil-pro-extension.zip" not in sw_body
+    assert "/og-image.png" not in sw_body
+    assert "/dist/pro-documents-" in sw_body
 
     ui.activate_pro_key(ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-SW"))
     ui.close_active_modal()

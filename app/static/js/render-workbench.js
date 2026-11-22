@@ -4,11 +4,11 @@
 
 import { CATEGORIES } from "./detector.js";
 import { clearCopyFeedback, clearEl, createEl, getEl } from "./dom.js";
-import { getDocumentErrorI18nKey } from "./pro-documents.js";
 import {
   getCategoryLabel,
   getCustomRuleTagLabel,
   getDetectionReasonLabel,
+  getDocumentErrorI18nKey,
   pluralizeRu,
   t,
 } from "./i18n.js";

@@ -113,6 +113,31 @@ export function getDetectionReasonLabel(entry, lang = currentLang) {
   return fallback === "reason.fallback" ? catLabel : fallback;
 }
 
+export function getDocumentErrorI18nKey(code) {
+  switch (String(code || "")) {
+    case "EMPTY_FILE":
+      return "doc.errorEmpty";
+    case "INVALID_ZIP":
+    case "CORRUPT_ARCHIVE":
+    case "UNSUPPORTED_COMPRESSION":
+    case "XML_PARSE_ERROR":
+      return "doc.errorCorruptZip";
+    case "INVALID_DOCX":
+      return "doc.errorInvalidDocx";
+    case "INVALID_XLSX":
+      return "doc.errorInvalidXlsx";
+    case "INVALID_PDF":
+    case "CORRUPT_PDF":
+      return "doc.errorInvalidPdf";
+    case "ENCRYPTED_PDF":
+      return "doc.errorEncryptedPdf";
+    case "ZIP_BOMB":
+      return "doc.errorZipBomb";
+    default:
+      return "doc.errorGeneric";
+  }
+}
+
 export function applyTranslationsToRoot(root, lang = currentLang) {
   if (!root || typeof root.querySelectorAll !== "function") {
     return;
