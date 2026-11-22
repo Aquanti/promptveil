@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-22T14:16+03:00  
-**Session Status:** v2.2.0 PRO RELEASED, PUBLIC GITHUB PUBLISHED (`Aquanti/promptveil`) & P0–P2 BUNDLE/SW/SEO OPTIMIZATIONS VERIFIED  
-**Exact Stop Point:** Completed P0–P2 post-audit optimization pass on `master` (bundle size & UTF-8 optimization, fixed RU/EN `modulepreload`, lazy `pro-documents-*.js` code-split, slimmed `sw.js` `PRECACHE_URLS`, split `manifest.webmanifest` icons, root-relative HTML/404 assets + `noindex` + `/en/` CTA + `og:image:alt`, `netlify.toml` `command = "npm run build"`, `pytest.ini`), rebuilt deterministically x2 (`b355565aea`), and passed `py_compile`, bare `pytest` (`27/27`), `npm run test:js` (`86/86`), `npm run test:ext` (`16/16`), E2E `--mode self-test` (`252` tests), and targeted live Static-Only E2E (`6/6`). Next: push to GitHub and deploy updated build to Netlify production.
+**Checkpoint Date:** 2026-11-22T14:19+03:00  
+**Session Status:** v2.2.0 PRO RELEASED, PUBLIC GITHUB PUBLISHED (`Aquanti/promptveil`), P0–P2 OPTIMIZED & DEPLOYED LIVE ON NETLIFY (`6b02cf70b2ca4d46428d6ab1`)  
+**Exact Stop Point:** P0–P2 bundle/preload/lazy-chunk/SW/SEO/DevOps optimizations committed (`c53e040`), pushed to `https://github.com/Aquanti/promptveil` (prior CI run `45014109542` succeeded), and deployed live to `https://promptveil.netlify.app` (`deployId: 6b02cf70b2ca4d46428d6ab1`, `ready`). All verification suites green (`pytest` 27/27, `test:js` 86/86, `test:ext` 16/16, E2E self-test 252, targeted live Static-Only E2E 6/6, `0` leaks, port `8000` free).
 
 ---
 
@@ -55,8 +55,9 @@
 
 ## 4. Public Launch & Hosting Record
 - **Live Public URL:** `https://promptveil.netlify.app` (RU) and `https://promptveil.netlify.app/en/` (EN)
+- **GitHub Repository:** `https://github.com/Aquanti/promptveil` (`PUBLIC`, branch `master`, CI workflow `45014109542` `success`)
 - **Netlify Project:** `promptveil` (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`, `teamSlug: kil-ka-uchikha`, `plan: nf_team_dev` / Free)
-- **Latest Production Deploy:** `6b009726fbb09a4a4c3fc4e3` (`buildId: 6b009724fbb09a4a4c3fc4e1`, state `ready`, re-verified live on 2026-11-21 across desktop `1440×900`, mobile `390×844`, and `/en/`).
+- **Latest Production Deploy:** `6b02cf70b2ca4d46428d6ab1` (`buildId: 6b02cf6fb2ca4d46428d6aaf`, state `ready` on 2026-11-22; prior v2.2.0 pre-optimization deploy `6b02c869e5377eeb5918fb54`).
 
 
 ---
@@ -348,3 +349,4 @@
   - **P1 (PWA/SW & SEO/404):** Removed `/downloads/promptveil-pro-extension.zip` and `/og-image.png` from eager `sw.js` `PRECACHE_URLS` (cached via SWR on demand), split `manifest.webmanifest` `"any maskable"` into distinct `"any"` and `"maskable"` entries, standardized `/favicon.svg`, `/apple-touch-icon.png`, and `/manifest.webmanifest` root-relative URLs in `index.html` & `404.html`, added `<meta name="robots" content="noindex" />` and `/en/` link to `404.html`, and added `og:image:alt` to `index.html` & `en/index.html`.
   - **P2 (DevOps & Test Alignment):** Added `command = "npm run build"` to `netlify.toml`, added `pytest.ini` (`testpaths = tests`), exempted clean same-origin `/dist/*.js` script chunks in `e2e_tests/monitors.py`, and updated `tests/test_server.py`, `tests/js/*.test.mjs`, and `e2e_tests/` tests cleanly.
   - **Verification (`b355565aea`):** Deterministic `npm run build` x2, `py_compile`, bare `pytest` (`27 passed`), `npm run test:js` (`86 passed`), `npm run test:ext` (`16 passed`), E2E `--mode self-test` (`252` tests), targeted Static-Only E2E (`6/6` passed: `T1_F12_05`, `T1_F8_14`, `T3_12`, `T5_10`, `ACC_06`, `ACC_16`), `0` secret leaks, and `PORT_8000_LISTEN_COUNT=0`.
+  - **Netlify Production Deploy (`c53e040`):** Deployed via Netlify MCP (`deployId: 6b02cf70b2ca4d46428d6ab1`, `buildId: 6b02cf6fb2ca4d46428d6aaf`, state `ready` at `https://promptveil.netlify.app`).
