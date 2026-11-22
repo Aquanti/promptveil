@@ -23,7 +23,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          python-version: "3.13"
           cache: "pip"
 
       - name: Install Node dependencies & build dist bundles
@@ -42,6 +42,9 @@ jobs:
 
       - name: Run Node.js unit tests
         run: node --test tests/js/*.test.mjs
+
+      - name: Run Browser Extension unit tests
+        run: node --test extension/tests/*.test.mjs
 
       - name: Run E2E self-test
         run: python e2e_tests/run_e2e.py --mode self-test --browser chromium

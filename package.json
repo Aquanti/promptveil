@@ -1,11 +1,12 @@
 {
   "name": "promptveil",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "test:js": "node --test tests/js/*.test.mjs"
+    "test:js": "node --test tests/js/*.test.mjs",
+    "test:ext": "node --test extension/tests/*.test.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.25.12"

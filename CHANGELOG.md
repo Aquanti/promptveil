@@ -2,6 +2,16 @@
 
 All notable changes to PromptVeil are documented in this file.
 
+## [2.2.0] - 2026-11-22
+
+### PromptVeil Pro Suite, Persistent AI Bar & Gemini Launcher
+- **Persistent Step 1 & Step 2 AI Launchers + Gemini (`R1`):** Hoisted `#ai-launchers-bar` outside `#panel-sanitize` into `<main id="main-workbench">` after `#panel-rehydrate` so quick AI pills remain accessible on both Sanitize and Restore steps, flushed pending live masking on tab switch, and added **Gemini** (`https://gemini.google.com/app`, `data-testid="ai-launcher-gemini"`).
+- **Offline Ed25519 Pro Licensing (`R2`):** Added `app/static/js/pro-license.js` (`PV1.<payload>.<sig>` verifier with WebCrypto Ed25519 + pure-JS RFC 8032 & SHA-512 fallback, stored in `promptveil_pro_license_v1` and allowlisted in `privacy-proof.js`), `#open-pro-license-btn`, `<template id="tpl-modal-pro-license">`, and offline issuance CLI `scripts/issue-pro-key.mjs` (public key only in Git/client code; private signing keys kept offline).
+- **Local Batch & Office/PDF Scrubber (`R3`):** Added `app/static/js/pro-documents.js` parsing `.docx`, `.pdf`, and `.xlsx` up to **50 MB** per file completely in browser RAM (`DecompressionStream` + pure-JS RFC 1951/1950 inflate, `DOMParser` + pure-JS XML fallback, PDF `FlateDecode`/`ToUnicode` CMap decoding, zip-bomb & encrypted-PDF rejection, scanned-PDF warning), batch queue UI (`#batch-queue-panel`), `.txt`/`.zip` download, and Step 2 batch rehydration, while preserving Free 2 MB single-file text handling with friendly upgrade prompts.
+- **Manifest V3 Browser Extension & Deterministic Packaging (`R4`):** Added `extension/` (`manifest.json`, Shadow DOM `content.js`, `popup.js`, site `adapters.js`, `storage-ext.js`, `i18n-ext.js`) across `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `giga.chat`, and `alice.yandex.ru`; extended `scripts/build.mjs` to bundle `extension/dist/*` and emit deterministic `/downloads/promptveil-pro-extension.zip`, served with `application/zip` and CSP/COOP/CORP headers in `app/main.py` and `netlify.toml`, plus `<template id="tpl-modal-pro-downloads">`.
+- **Multi-Project Rulebook Profiles, Extended Packs & 1-Click Templates (`R5`):** Added `promptveil_profiles_v1` in `storage.js` (create/rename/switch/delete/import/export with prototype-pollution and Free-tier guards, exempted alongside `RULES_STORAGE_KEY` in `privacy-proof.js`), `PRO_INDUSTRY_WORD_PACKS` (`corporate_ma`, `devsecops`, `banking_fintech`, `crossborder_nda`), and `PROMPT_TEMPLATES` (`#prompt-templates-bar`).
+- **Security Hardening & Verification Expansion:** Completed adversarial hardening across `detector.js`, `pipeline.js`, `pro-documents.js`, `pro-license.js`, and `extension/src/adapters.js`, expanding verification to `27` server/CSP pytest checks, `86` web JS + `16` extension JS unit tests, and `252` Playwright E2E tests (FastAPI & Static-Only), and added `"test:ext"` + extension test CI step in `.github/workflows/ci.yml`.
+
 ## [2.1.0] - 2026-11-20
 
 ### Stage E — Safe Growth Features (Items 28, 31–34, 36)
