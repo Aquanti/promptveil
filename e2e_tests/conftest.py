@@ -126,6 +126,24 @@ class _StaticAppRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "public, max-age=300")
         super().end_headers()
 
+    def _rewrite_clean_route(self) -> None:
+        parsed = urllib.parse.urlsplit(self.path)
+        req_path = parsed.path
+        static_root = Path(self.directory)
+        for prefix, rel_parts in (
+            ("/en", ("en", "index.html")),
+            ("/pro", ("pro", "index.html")),
+            ("/en/pro", ("en", "pro", "index.html")),
+        ):
+            if req_path in (prefix, f"{prefix}/") and static_root.joinpath(*rel_parts).is_file():
+                query = f"?{parsed.query}" if parsed.query else ""
+                self.path = "/" + "/".join(rel_parts) + query
+                break
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        self._rewrite_clean_route()
+        super().do_HEAD()
+
     def do_GET(self) -> None:  # noqa: N802
         parsed = urllib.parse.urlsplit(self.path)
         req_path = parsed.path
@@ -148,8 +166,7 @@ class _StaticAppRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(payload)
                 return
-        if req_path == "/en" and (Path(self.directory) / "en" / "index.html").is_file():
-            self.path = "/en/index.html" + (f"?{parsed.query}" if parsed.query else "")
+        self._rewrite_clean_route()
         super().do_GET()
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
@@ -694,7 +711,9 @@ def install_pro_key_route(browser_context: BrowserContext, ephemeral_pub_b64u: s
             pass
 
     browser_context.route("**/dist/*.js", _swap_pro_key)
+    browser_context.route("**/dist/**/*.js", _swap_pro_key)
     browser_context.route("**/js/pro-license.js", _swap_pro_key)
+    browser_context.route("**/js/pro-checkout.js", _swap_pro_key)
     return True
 
 

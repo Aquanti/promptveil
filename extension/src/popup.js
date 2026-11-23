@@ -5,7 +5,13 @@
 
 import { CATEGORIES } from "../../app/static/js/detector.js";
 import { getLocalizedWordPack, INDUSTRY_WORD_PACKS } from "../../app/static/js/presets.js";
-import { createFreeLicenseState, verifyProLicenseToken } from "../../app/static/js/pro-license.js";
+import {
+  PRO_PUBLIC_KEY_B64U,
+  createFreeLicenseState,
+  extractProToken,
+  inspectProLicenseToken,
+  verifyProLicenseToken,
+} from "../../app/static/js/pro-license.js";
 import { createRuleId, makeRuleDedupKey, normalizeRule } from "../../app/static/js/storage.js";
 import { detectSupportedHost, getHostLabel } from "./adapters.js";
 import { getCategoryLabel, t } from "./i18n-ext.js";
@@ -22,6 +28,7 @@ import {
 } from "./storage-ext.js";
 
 const TOGGLEABLE_CATEGORIES = CATEGORIES.filter((cat) => cat.category !== "CUSTOM");
+const MAX_PVKEY_FILE_BYTES = 256 * 1024;
 
 function queryActiveTab(tabsApi) {
   if (!tabsApi || typeof tabsApi.query !== "function") {
@@ -53,19 +60,159 @@ function queryActiveTab(tabsApi) {
   });
 }
 
-function formatIsoDate(iso, lang) {
-  if (!iso) return "";
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) return String(iso);
+function normalizeTimestampMs(value) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return NaN;
+    return value > 1e12 ? value : value * 1000;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return NaN;
+    if (/^[+-]?\d+(?:\.\d+)?$/.test(trimmed)) {
+      const num = Number(trimmed);
+      if (Number.isFinite(num)) {
+        return num > 1e12 ? num : num * 1000;
+      }
+    }
+    return Date.parse(trimmed);
+  }
+  return NaN;
+}
+
+function hasExpClaim(exp) {
+  return exp !== null && exp !== undefined && (typeof exp !== "string" || exp.trim() !== "");
+}
+
+function formatClaimDate(value, lang) {
+  if (!hasExpClaim(value)) return "";
+  const ms = normalizeTimestampMs(value);
+  if (Number.isNaN(ms)) return String(value);
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return String(value);
   try {
     return new Intl.DateTimeFormat(lang === "en" ? "en-US" : "ru-RU", {
       year: "numeric",
       month: "short",
       day: "numeric",
-    }).format(new Date(ms));
+      timeZone: "UTC",
+    }).format(date);
   } catch {
-    return String(iso).slice(0, 10);
+    return date.toISOString().slice(0, 10);
   }
+}
+
+async function readUploadedFileBytes(file) {
+  if (!file) return new Uint8Array(0);
+  if (typeof file.arrayBuffer === "function") {
+    const buf = await file.arrayBuffer();
+    return new Uint8Array(buf);
+  }
+  if (typeof file.text === "function") {
+    const txt = await file.text();
+    return new TextEncoder().encode(String(txt ?? ""));
+  }
+  if (typeof FileReader !== "undefined") {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result instanceof ArrayBuffer) {
+          resolve(new Uint8Array(reader.result));
+        } else {
+          resolve(new TextEncoder().encode(String(reader.result || "")));
+        }
+      };
+      reader.onerror = () => reject(new Error("FILE_READ_ERROR"));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+  return new Uint8Array(0);
+}
+
+function parsePvKeyUploadBytes(bytes, byteLength = null) {
+  const actualLen = bytes ? bytes.length : 0;
+  const size =
+    typeof byteLength === "number" && Number.isFinite(byteLength) && byteLength >= 0
+      ? Math.max(byteLength, actualLen)
+      : actualLen;
+  if (size > MAX_PVKEY_FILE_BYTES) {
+    return { ok: false, reason: "file_too_large", text: "", token: "" };
+  }
+  if (!bytes || bytes.length === 0) {
+    return { ok: false, reason: "file_empty", text: "", token: "" };
+  }
+  for (let i = 0; i < bytes.length; i += 1) {
+    if (bytes[i] === 0) {
+      return { ok: false, reason: "file_read", text: "", token: "" };
+    }
+  }
+  let text = "";
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes).replace(/^\uFEFF/, "");
+  } catch {
+    return { ok: false, reason: "file_read", text: "", token: "" };
+  }
+  if (!text.trim()) {
+    return { ok: false, reason: "file_empty", text: "", token: "" };
+  }
+  const token = extractProToken(text);
+  if (!token) {
+    return { ok: false, reason: "file_no_token", text, token: "" };
+  }
+  return { ok: true, reason: "", text, token };
+}
+
+function getProReasonDescriptor(info) {
+  const reason = String(info?.reason || "");
+  switch (reason) {
+    case "empty":
+      return { key: "pro.errorEmpty" };
+    case "format":
+      return { key: "pro.errorFormat" };
+    case "encoding":
+      return { key: "pro.errorEncoding" };
+    case "length":
+      return { key: "pro.errorLength" };
+    case "signature":
+      return { key: "pro.errorSignature" };
+    case "payload":
+      return { key: "pro.errorPayload" };
+    case "expired":
+      return hasExpClaim(info?.exp)
+        ? { key: "pro.errorExpiredDate", exp: info.exp }
+        : { key: "pro.errorExpired" };
+    case "clipboard_denied":
+      return { key: "pro.errorClipboardDenied" };
+    case "clipboard_empty":
+      return { key: "pro.errorClipboardEmpty" };
+    case "clipboard_no_token":
+      return { key: "pro.errorClipboardNoToken" };
+    case "file_too_large":
+      return { key: "pro.errorFileTooLarge" };
+    case "file_empty":
+      return { key: "pro.errorFileEmpty" };
+    case "file_no_token":
+      return { key: "pro.errorFileNoToken" };
+    case "file_read":
+      return { key: "pro.errorFileRead" };
+    default:
+      return { key: "pro.errorInvalid" };
+  }
+}
+
+function resolveFeedbackVars(feedback, lang) {
+  if (!feedback) return null;
+  if (hasExpClaim(feedback.exp)) {
+    return {
+      ...(feedback.vars && typeof feedback.vars === "object" ? feedback.vars : {}),
+      date: formatClaimDate(feedback.exp, lang),
+    };
+  }
+  return feedback.vars || null;
+}
+
+function getProReasonMessage(info, lang) {
+  const descriptor = getProReasonDescriptor(info);
+  return t(lang, descriptor.key, resolveFeedbackVars(descriptor, lang));
 }
 
 export async function initPopupController({
@@ -73,7 +220,9 @@ export async function initPopupController({
   storageArea = getChromeStorageLocal(),
   tabsApi = globalThis.chrome?.tabs,
   storageEvents = globalThis.chrome?.storage?.onChanged,
-  publicKeyB64U,
+  publicKeyB64U = PRO_PUBLIC_KEY_B64U,
+  clipboard = globalThis.navigator?.clipboard,
+  nowMs,
 } = {}) {
   if (!doc || !doc.getElementById("pv-popup-root")) {
     return null;
@@ -132,9 +281,14 @@ export async function initPopupController({
     proStatusTitle: doc.getElementById("popup-pro-status-title"),
     proStatusDesc: doc.getElementById("popup-pro-status-desc"),
     proMetaList: doc.getElementById("popup-pro-meta-list"),
+    proPasteBtn: doc.getElementById("popup-pro-paste-btn"),
+    proFileInput: doc.getElementById("popup-pro-file-input"),
+    proFileBtn: doc.getElementById("popup-pro-file-btn"),
     proKeyInput: doc.getElementById("popup-pro-key-input"),
     proAlert: doc.getElementById("popup-pro-alert"),
+    proDiagnostics: doc.getElementById("popup-pro-diagnostics"),
     proActivateBtn: doc.getElementById("popup-pro-activate-btn"),
+    proVerifyBtn: doc.getElementById("popup-pro-verify-btn"),
     proRemoveBtn: doc.getElementById("popup-pro-remove-btn"),
 
     footerText: doc.getElementById("popup-footer-text"),
@@ -143,16 +297,33 @@ export async function initPopupController({
   const state = {
     settings: await loadExtSettings(storageArea),
     license: createFreeLicenseState("none"),
+    hasStoredLicenseToken: false,
     activeTabHostname: "",
     activeTabAdapter: null,
     customFeedback: null,
     proFeedback: null,
+    proInspection: null,
   };
+
+  function getVerifyOptions() {
+    const opts = {
+      publicKeyB64U: publicKeyB64U || PRO_PUBLIC_KEY_B64U,
+    };
+    if (typeof nowMs === "number" && Number.isFinite(nowMs)) {
+      opts.nowMs = nowMs;
+    }
+    return opts;
+  }
 
   let settingsSaveChain = Promise.resolve();
   let pendingSettingsSaves = 0;
+  let pendingLicenseSaves = 0;
+  let proActionSeq = 0;
+  let licenseRefreshSeq = 0;
+  let settingsRefreshSeq = 0;
 
   function updateSettings(updater) {
+    settingsRefreshSeq += 1;
     const nextDraft =
       typeof updater === "function" ? updater(state.settings) : { ...state.settings, ...updater };
     state.settings = normalizeExtSettings(nextDraft);
@@ -167,15 +338,20 @@ export async function initPopupController({
   }
 
   async function refreshLicenseFromStorage() {
+    const seq = ++licenseRefreshSeq;
+    const actionSeqAtStart = proActionSeq;
     const rawToken = await loadExtProLicenseToken(storageArea);
+    if (seq !== licenseRefreshSeq || actionSeqAtStart !== proActionSeq) return false;
+    state.hasStoredLicenseToken = Boolean(rawToken);
     if (!rawToken) {
       state.license = createFreeLicenseState("empty");
-      return;
+      return true;
     }
-    state.license = await verifyProLicenseToken(
-      rawToken,
-      publicKeyB64U ? { publicKeyB64U } : undefined
-    );
+    const candidate = extractProToken(rawToken) || rawToken;
+    const verified = await verifyProLicenseToken(candidate, getVerifyOptions());
+    if (seq !== licenseRefreshSeq || actionSeqAtStart !== proActionSeq) return false;
+    state.license = verified;
+    return true;
   }
 
   async function refreshActiveTab() {
@@ -192,8 +368,14 @@ export async function initPopupController({
     state.activeTabAdapter = detectSupportedHost(hostname);
   }
 
-  function showCustomAlert(text, tone = "warn") {
-    state.customFeedback = { text, tone };
+  function showCustomAlert(text, tone = "warn", extra = {}) {
+    state.customFeedback = {
+      text,
+      tone,
+      key: extra.key || "",
+      vars: extra.vars || null,
+      action: extra.action || "",
+    };
     renderCustomAlert();
   }
 
@@ -202,9 +384,34 @@ export async function initPopupController({
     renderCustomAlert();
   }
 
-  function showProAlert(text, tone = "error") {
-    state.proFeedback = { text, tone };
+  function showProAlert(text, tone = "error", extra = {}) {
+    state.proFeedback = {
+      text,
+      tone,
+      key: extra.key || "",
+      vars: extra.vars || null,
+      exp: hasExpClaim(extra.exp) ? extra.exp : null,
+    };
     renderProAlert();
+  }
+
+  function focusProActivation({
+    alertTarget = "pro",
+    messageKey = "",
+    messageVars = null,
+    tone = "warn",
+  } = {}) {
+    const lang = state.settings.lang;
+    if (messageKey) {
+      const msg = t(lang, messageKey, messageVars);
+      if (alertTarget === "custom") {
+        showCustomAlert(msg, tone, { key: messageKey, vars: messageVars, action: "focusPro" });
+      } else {
+        showProAlert(msg, tone, { key: messageKey, vars: messageVars });
+      }
+    }
+    els.proSection?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+    els.proKeyInput?.focus?.();
   }
 
   function renderCustomAlert() {
@@ -212,17 +419,31 @@ export async function initPopupController({
       els.customAlert.hidden = true;
       els.customAlert.textContent = "";
       els.customAlert.className = "pv-inline-alert";
+      els.customAlert.removeAttribute?.("tabindex");
+      els.customAlert.removeAttribute?.("role");
+      els.customAlert.setAttribute("role", "alert");
       return;
     }
+    const lang = state.settings.lang;
+    const isFocusPro = state.customFeedback.action === "focusPro" && !state.license.isPro;
     els.customAlert.hidden = false;
-    els.customAlert.textContent = state.customFeedback.text;
+    els.customAlert.textContent = state.customFeedback.key
+      ? t(lang, state.customFeedback.key, state.customFeedback.vars)
+      : state.customFeedback.text;
     els.customAlert.className = `pv-inline-alert ${
       state.customFeedback.tone === "success"
         ? "is-success"
         : state.customFeedback.tone === "warn"
           ? "is-warn"
           : ""
-    }`.trim();
+    }${isFocusPro ? " is-actionable" : ""}`.trim();
+    if (isFocusPro) {
+      els.customAlert.setAttribute("tabindex", "0");
+      els.customAlert.setAttribute("title", t(lang, "pro.lockJumpTitle"));
+    } else {
+      els.customAlert.removeAttribute?.("tabindex");
+      els.customAlert.removeAttribute?.("title");
+    }
   }
 
   function renderProAlert() {
@@ -232,8 +453,11 @@ export async function initPopupController({
       els.proAlert.className = "pv-inline-alert";
       return;
     }
+    const lang = state.settings.lang;
     els.proAlert.hidden = false;
-    els.proAlert.textContent = state.proFeedback.text;
+    els.proAlert.textContent = state.proFeedback.key
+      ? t(lang, state.proFeedback.key, resolveFeedbackVars(state.proFeedback, lang))
+      : state.proFeedback.text;
     els.proAlert.className = `pv-inline-alert ${
       state.proFeedback.tone === "success"
         ? "is-success"
@@ -241,6 +465,104 @@ export async function initPopupController({
           ? "is-warn"
           : ""
     }`.trim();
+  }
+
+  function renderProDiagnostics() {
+    if (!els.proDiagnostics) return;
+    const info = state.proInspection;
+    if (!info) {
+      els.proDiagnostics.hidden = true;
+      els.proDiagnostics.className = "pv-pro-diagnostics";
+      els.proDiagnostics.replaceChildren();
+      return;
+    }
+
+    const lang = state.settings.lang;
+    const isValid = Boolean(info.valid);
+    const isExpired = !isValid && info.reason === "expired";
+    const toneClass = isValid ? "is-valid" : isExpired ? "is-warn" : "is-error";
+    els.proDiagnostics.className = `pv-pro-diagnostics ${toneClass}`;
+
+    const nodes = [];
+    const titleEl = doc.createElement("div");
+    titleEl.className = "pv-pro-diag-title";
+    titleEl.textContent = t(
+      lang,
+      isValid ? "pro.diagValidTitle" : isExpired ? "pro.diagExpiredTitle" : "pro.diagInvalidTitle"
+    );
+    nodes.push(titleEl);
+
+    const detailEl = doc.createElement("p");
+    detailEl.className = "pv-pro-diag-detail";
+    if (isValid) {
+      const tierLabel = info.isOwner ? "Owner Pro" : "Pro";
+      const detailKey =
+        info.mode === "activate"
+          ? "pro.activatedSuccess"
+          : info.mode === "verify-active"
+            ? "pro.verifyActiveSuccess"
+            : "pro.verifySuccess";
+      detailEl.textContent = t(lang, detailKey, { tier: tierLabel, keyId: info.keyId });
+    } else {
+      detailEl.textContent = getProReasonMessage(info, lang);
+    }
+    nodes.push(detailEl);
+
+    if (info.extractedFromText) {
+      const extNote = doc.createElement("p");
+      extNote.className = "pv-pro-diag-detail";
+      extNote.textContent = t(lang, "pro.diagExtractedNote");
+      nodes.push(extNote);
+    }
+
+    const claims = isValid
+      ? info
+      : info.unverifiedClaims && typeof info.unverifiedClaims === "object"
+        ? info.unverifiedClaims
+        : null;
+
+    if (claims && (claims.keyId || claims.label || claims.tier || claims.issuedAt)) {
+      const heading = doc.createElement("div");
+      heading.className = "pv-pro-diag-claims-title";
+      heading.textContent = t(
+        lang,
+        isValid ? "pro.diagClaimsHeading" : "pro.diagClaimsUnverifiedHeading"
+      );
+      nodes.push(heading);
+
+      const list = doc.createElement("ul");
+      list.className = "pv-pro-diag-list";
+      const hasExp = hasExpClaim(claims.exp);
+      const methodLabel = info.method
+        ? t(lang, info.method === "webcrypto" ? "pro.methodWebCrypto" : "pro.methodPureJs")
+        : "";
+      const rows = [
+        claims.tier
+          ? t(lang, "pro.metaTier", {
+              tier: claims.tier === "owner" ? "Owner Pro" : claims.tier === "pro" ? "Pro" : claims.tier,
+            })
+          : "",
+        claims.keyId ? t(lang, "pro.metaKeyId", { keyId: claims.keyId }) : "",
+        claims.label ? t(lang, "pro.metaLabel", { label: claims.label }) : "",
+        claims.issuedAt
+          ? t(lang, "pro.metaIssuedAt", { date: formatClaimDate(claims.issuedAt, lang) })
+          : "",
+        hasExp
+          ? t(lang, "pro.metaExp", { date: formatClaimDate(claims.exp, lang) })
+          : t(lang, "pro.metaExpNever"),
+        methodLabel ? t(lang, "pro.metaMethod", { method: methodLabel }) : "",
+      ].filter(Boolean);
+
+      for (const row of rows) {
+        const li = doc.createElement("li");
+        li.textContent = row;
+        list.appendChild(li);
+      }
+      nodes.push(list);
+    }
+
+    els.proDiagnostics.replaceChildren(...nodes);
+    els.proDiagnostics.hidden = false;
   }
 
   function renderStaticCopy() {
@@ -306,10 +628,14 @@ export async function initPopupController({
 
     els.packsTitle.textContent = t(lang, "packs.title");
     els.packsLock.textContent = t(lang, "packs.proBadge");
+    els.packsLock.setAttribute("title", t(lang, "pro.lockJumpTitle"));
 
     els.proTitle.textContent = t(lang, "pro.sectionTitle");
+    if (els.proPasteBtn) els.proPasteBtn.textContent = t(lang, "pro.pasteBtn");
+    if (els.proFileBtn) els.proFileBtn.textContent = t(lang, "pro.fileBtn");
     els.proKeyInput.setAttribute("placeholder", t(lang, "pro.inputPlaceholder"));
     els.proActivateBtn.textContent = t(lang, "pro.activateBtn");
+    if (els.proVerifyBtn) els.proVerifyBtn.textContent = t(lang, "pro.verifyBtn");
     els.proRemoveBtn.textContent = t(lang, "pro.removeBtn");
 
     els.footerText.textContent = t(lang, "footer.zeroRetention");
@@ -324,9 +650,20 @@ export async function initPopupController({
 
     els.categoriesTitle.textContent = t(lang, "categories.title");
     els.categoriesLock.textContent = t(lang, "categories.proLockBadge");
+    els.categoriesLock.setAttribute("title", t(lang, "pro.lockJumpTitle"));
     els.categoriesLock.hidden = isPro;
     els.categoriesProHint.textContent = t(lang, "categories.proHint");
     els.categoriesProHint.hidden = isPro;
+    els.categoriesProHint.classList.toggle("is-actionable", !isPro);
+    if (!isPro) {
+      els.categoriesProHint.setAttribute("tabindex", "0");
+      els.categoriesProHint.setAttribute("role", "button");
+      els.categoriesProHint.setAttribute("title", t(lang, "pro.lockJumpTitle"));
+    } else {
+      els.categoriesProHint.removeAttribute?.("tabindex");
+      els.categoriesProHint.removeAttribute?.("role");
+      els.categoriesProHint.removeAttribute?.("title");
+    }
     els.categoriesReset.textContent = t(lang, "categories.reset");
     els.categoriesReset.disabled = !isPro || disabledSet.size === 0;
     els.categoriesSummary.textContent = t(lang, "categories.activeSummary", {
@@ -347,8 +684,7 @@ export async function initPopupController({
       btn.textContent = getCategoryLabel(lang, cat.category);
       btn.addEventListener("click", async () => {
         if (!state.license.isPro) {
-          showProAlert(t(state.settings.lang, "categories.proHint"), "warn");
-          els.proKeyInput.focus();
+          focusProActivation({ alertTarget: "pro", messageKey: "categories.proHint", tone: "warn" });
           return;
         }
         const savePromise = updateSettings((prev) => {
@@ -453,8 +789,7 @@ export async function initPopupController({
       btn.textContent = isPro ? `+ ${pack.title}` : `🔒 ${pack.title}`;
       btn.addEventListener("click", async () => {
         if (!state.license.isPro) {
-          showCustomAlert(t(state.settings.lang, "packs.lockedNotice"), "warn");
-          els.proKeyInput.focus();
+          focusProActivation({ alertTarget: "custom", messageKey: "packs.lockedNotice", tone: "warn" });
           return;
         }
         const existingKeys = new Set(state.settings.customRules.map(makeRuleDedupKey));
@@ -516,7 +851,7 @@ export async function initPopupController({
 
     els.proStatusCard.classList.toggle("is-active", lic.isPro);
     els.proStatusCard.classList.toggle("is-owner", lic.isOwner);
-    els.proRemoveBtn.disabled = !lic.isPro;
+    els.proRemoveBtn.disabled = !lic.isPro && !state.hasStoredLicenseToken;
 
     if (!lic.isPro) {
       els.proStatusTitle.textContent = t(lang, "pro.statusTitleFree");
@@ -532,14 +867,19 @@ export async function initPopupController({
       els.proMetaList.hidden = false;
 
       const metaRows = [
-        t(lang, "pro.metaTier", { tier: lic.isOwner ? "Owner" : "Pro" }),
+        t(lang, "pro.metaTier", { tier: lic.isOwner ? "Owner Pro" : "Pro" }),
         t(lang, "pro.metaKeyId", { keyId: lic.keyId }),
         t(lang, "pro.metaLabel", { label: lic.label }),
-        t(lang, "pro.metaIssuedAt", { date: formatIsoDate(lic.issuedAt, lang) }),
-        lic.exp
-          ? t(lang, "pro.metaExp", { date: formatIsoDate(lic.exp, lang) })
+        t(lang, "pro.metaIssuedAt", { date: formatClaimDate(lic.issuedAt, lang) }),
+        hasExpClaim(lic.exp)
+          ? t(lang, "pro.metaExp", { date: formatClaimDate(lic.exp, lang) })
           : t(lang, "pro.metaExpNever"),
-      ];
+        lic.method
+          ? t(lang, "pro.metaMethod", {
+              method: t(lang, lic.method === "webcrypto" ? "pro.methodWebCrypto" : "pro.methodPureJs"),
+            })
+          : "",
+      ].filter(Boolean);
 
       const items = metaRows.map((row) => {
         const li = doc.createElement("li");
@@ -550,6 +890,7 @@ export async function initPopupController({
     }
 
     renderProAlert();
+    renderProDiagnostics();
   }
 
   function renderAll() {
@@ -634,7 +975,12 @@ export async function initPopupController({
     if (!state.license.isPro && state.settings.customRules.length >= FREE_CUSTOM_RULE_LIMIT) {
       showCustomAlert(
         t(lang, "rules.limitReached", { limit: FREE_CUSTOM_RULE_LIMIT }),
-        "warn"
+        "warn",
+        {
+          key: "rules.limitReached",
+          vars: { limit: FREE_CUSTOM_RULE_LIMIT },
+          action: "focusPro",
+        }
       );
       return;
     }
@@ -663,54 +1009,347 @@ export async function initPopupController({
     await savePromise;
   });
 
-  els.proActivateBtn.addEventListener("click", async () => {
+  async function activateCandidateToken(rawText, actionSeq = ++proActionSeq) {
+    const trimmedRaw = typeof rawText === "string" ? rawText.trim() : "";
+    if (!trimmedRaw) {
+      const lang = state.settings.lang;
+      state.proInspection = null;
+      showProAlert(t(lang, "pro.errorEmpty"), "error", { key: "pro.errorEmpty" });
+      renderProDiagnostics();
+      els.proKeyInput?.focus?.();
+      return null;
+    }
+    const inspected = await inspectProLicenseToken(trimmedRaw, getVerifyOptions());
+    if (actionSeq !== proActionSeq) {
+      return null;
+    }
     const lang = state.settings.lang;
-    const candidate = String(els.proKeyInput.value || "").trim();
-    if (!candidate) {
-      showProAlert(t(lang, "pro.errorEmpty"), "error");
-      return;
-    }
-    const verified = await verifyProLicenseToken(
-      candidate,
-      publicKeyB64U ? { publicKeyB64U } : undefined
+    const extractedFromText = Boolean(
+      inspected.extractedToken && inspected.extractedToken !== trimmedRaw
     );
-    if (!verified.valid) {
+    state.proInspection = { ...inspected, mode: "activate", extractedFromText };
+    if (!inspected.valid) {
+      const reasonDesc = getProReasonDescriptor(inspected);
       showProAlert(
-        t(lang, verified.reason === "expired" ? "pro.errorExpired" : "pro.errorInvalid"),
-        "error"
+        getProReasonMessage(inspected, lang),
+        inspected.reason === "expired" ? "warn" : "error",
+        reasonDesc
       );
-      return;
+      renderProDiagnostics();
+      return inspected;
     }
-    await saveExtProLicenseToken(verified.token, storageArea);
-    state.license = verified;
+    pendingLicenseSaves += 1;
+    try {
+      await saveExtProLicenseToken(inspected.token, storageArea);
+    } finally {
+      pendingLicenseSaves = Math.max(0, pendingLicenseSaves - 1);
+    }
+    if (actionSeq !== proActionSeq) {
+      return null;
+    }
+    const currentLang = state.settings.lang;
+    state.hasStoredLicenseToken = true;
+    state.license = inspected;
     els.proKeyInput.value = "";
     clearCustomAlert();
+    const tierLabel = inspected.isOwner ? "Owner Pro" : "Pro";
     showProAlert(
-      t(lang, "pro.activatedSuccess", {
-        tier: verified.isOwner ? "Owner Pro" : "Pro",
-        keyId: verified.keyId,
+      t(currentLang, "pro.activatedSuccess", {
+        tier: tierLabel,
+        keyId: inspected.keyId,
       }),
-      "success"
+      "success",
+      {
+        key: "pro.activatedSuccess",
+        vars: { tier: tierLabel, keyId: inspected.keyId },
+      }
     );
     renderAll();
+    return inspected;
+  }
+
+  els.categoriesLock?.addEventListener("click", () => {
+    if (!state.license.isPro) {
+      focusProActivation({ alertTarget: "pro", messageKey: "categories.proHint", tone: "warn" });
+    }
+  });
+
+  els.categoriesProHint?.addEventListener("click", () => {
+    if (!state.license.isPro) {
+      focusProActivation({ alertTarget: "pro", messageKey: "categories.proHint", tone: "warn" });
+    }
+  });
+
+  els.categoriesProHint?.addEventListener("keydown", (event) => {
+    if (!state.license.isPro && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault?.();
+      focusProActivation({ alertTarget: "pro", messageKey: "categories.proHint", tone: "warn" });
+    }
+  });
+
+  els.packsLock?.addEventListener("click", () => {
+    if (!state.license.isPro) {
+      focusProActivation({ alertTarget: "custom", messageKey: "packs.lockedNotice", tone: "warn" });
+    }
+  });
+
+  els.customAlert?.addEventListener("click", () => {
+    if (state.customFeedback?.action === "focusPro" && !state.license.isPro) {
+      focusProActivation();
+    }
+  });
+
+  els.customAlert?.addEventListener("keydown", (event) => {
+    if (
+      state.customFeedback?.action === "focusPro" &&
+      !state.license.isPro &&
+      (event.key === "Enter" || event.key === " ")
+    ) {
+      event.preventDefault?.();
+      focusProActivation();
+    }
+  });
+
+  els.proActivateBtn.addEventListener("click", async () => {
+    const actionSeq = ++proActionSeq;
+    await activateCandidateToken(els.proKeyInput.value, actionSeq);
+  });
+
+  els.proVerifyBtn?.addEventListener("click", async () => {
+    const actionSeq = ++proActionSeq;
+    const raw = String(els.proKeyInput.value || "").trim();
+    if (!raw) {
+      const storedToken = await loadExtProLicenseToken(storageArea);
+      if (actionSeq !== proActionSeq) return;
+      state.hasStoredLicenseToken = Boolean(storedToken);
+      const storedCandidate = extractProToken(storedToken) || storedToken;
+      if (storedCandidate) {
+        const inspected = await inspectProLicenseToken(storedCandidate, getVerifyOptions());
+        if (actionSeq !== proActionSeq) return;
+        const lang = state.settings.lang;
+        state.license = inspected;
+        state.proInspection = {
+          ...inspected,
+          mode: inspected.valid ? "verify-active" : "verify",
+          extractedFromText: false,
+        };
+        if (inspected.valid) {
+          const tierLabel = inspected.isOwner ? "Owner Pro" : "Pro";
+          showProAlert(
+            t(lang, "pro.verifyActiveSuccess", {
+              tier: tierLabel,
+              keyId: inspected.keyId,
+            }),
+            "success",
+            {
+              key: "pro.verifyActiveSuccess",
+              vars: { tier: tierLabel, keyId: inspected.keyId },
+            }
+          );
+        } else {
+          const reasonDesc = getProReasonDescriptor(inspected);
+          showProAlert(
+            getProReasonMessage(inspected, lang),
+            inspected.reason === "expired" ? "warn" : "error",
+            reasonDesc
+          );
+        }
+        renderAll();
+        return;
+      }
+      const lang = state.settings.lang;
+      state.proInspection = null;
+      showProAlert(t(lang, "pro.errorEmpty"), "error", { key: "pro.errorEmpty" });
+      renderProStatus();
+      els.proKeyInput?.focus?.();
+      return;
+    }
+
+    const inspected = await inspectProLicenseToken(raw, getVerifyOptions());
+    if (actionSeq !== proActionSeq) return;
+    const lang = state.settings.lang;
+    const extractedFromText = Boolean(inspected.extractedToken && inspected.extractedToken !== raw);
+    state.proInspection = { ...inspected, mode: "verify", extractedFromText };
+    if (inspected.valid) {
+      const tierLabel = inspected.isOwner ? "Owner Pro" : "Pro";
+      showProAlert(
+        t(lang, "pro.verifySuccess", {
+          tier: tierLabel,
+          keyId: inspected.keyId,
+        }),
+        "success",
+        {
+          key: "pro.verifySuccess",
+          vars: { tier: tierLabel, keyId: inspected.keyId },
+        }
+      );
+    } else {
+      const reasonDesc = getProReasonDescriptor(inspected);
+      showProAlert(
+        getProReasonMessage(inspected, lang),
+        inspected.reason === "expired" ? "warn" : "error",
+        reasonDesc
+      );
+    }
+    renderProDiagnostics();
+  });
+
+  els.proPasteBtn?.addEventListener("click", async () => {
+    const actionSeq = ++proActionSeq;
+    if (!clipboard || typeof clipboard.readText !== "function") {
+      state.proInspection = null;
+      showProAlert(t(state.settings.lang, "pro.errorClipboardDenied"), "warn", {
+        key: "pro.errorClipboardDenied",
+      });
+      renderProDiagnostics();
+      els.proKeyInput?.focus?.();
+      return;
+    }
+    let clipText = "";
+    try {
+      clipText = await clipboard.readText();
+    } catch {
+      if (actionSeq !== proActionSeq) return;
+      state.proInspection = null;
+      showProAlert(t(state.settings.lang, "pro.errorClipboardDenied"), "warn", {
+        key: "pro.errorClipboardDenied",
+      });
+      renderProDiagnostics();
+      els.proKeyInput?.focus?.();
+      return;
+    }
+    if (actionSeq !== proActionSeq) return;
+    const text = typeof clipText === "string" ? clipText.trim() : "";
+    if (!text) {
+      state.proInspection = null;
+      showProAlert(t(state.settings.lang, "pro.errorClipboardEmpty"), "warn", {
+        key: "pro.errorClipboardEmpty",
+      });
+      renderProDiagnostics();
+      els.proKeyInput?.focus?.();
+      return;
+    }
+    const extracted = extractProToken(text);
+    if (extracted) {
+      els.proKeyInput.value = extracted;
+      await activateCandidateToken(text, actionSeq);
+      return;
+    }
+    if (text.startsWith("PV1.")) {
+      els.proKeyInput.value = text;
+      await activateCandidateToken(text, actionSeq);
+      return;
+    }
+    state.proInspection = null;
+    showProAlert(t(state.settings.lang, "pro.errorClipboardNoToken"), "warn", {
+      key: "pro.errorClipboardNoToken",
+    });
+    renderProDiagnostics();
+    els.proKeyInput?.focus?.();
+  });
+
+  els.proFileBtn?.addEventListener("click", () => {
+    els.proFileInput?.click?.();
+  });
+
+  els.proFileInput?.addEventListener("change", async (event) => {
+    const actionSeq = ++proActionSeq;
+    const inputEl = event?.target || els.proFileInput;
+    const files = inputEl?.files;
+    const file = files && files.length > 0 ? files[0] : null;
+    if (inputEl) {
+      inputEl.value = "";
+    }
+    if (!file) {
+      return;
+    }
+    if (typeof file.size === "number" && file.size > MAX_PVKEY_FILE_BYTES) {
+      state.proInspection = { valid: false, reason: "file_too_large", mode: "file" };
+      showProAlert(t(state.settings.lang, "pro.errorFileTooLarge"), "error", {
+        key: "pro.errorFileTooLarge",
+      });
+      renderProDiagnostics();
+      return;
+    }
+    let parsed;
+    try {
+      const bytes = await readUploadedFileBytes(file);
+      if (actionSeq !== proActionSeq) return;
+      parsed = parsePvKeyUploadBytes(
+        bytes,
+        typeof file.size === "number" ? file.size : bytes.length
+      );
+    } catch {
+      if (actionSeq !== proActionSeq) return;
+      parsed = { ok: false, reason: "file_read", text: "", token: "" };
+    }
+    if (actionSeq !== proActionSeq) return;
+    if (!parsed.ok) {
+      state.proInspection = { valid: false, reason: parsed.reason, mode: "file" };
+      const reasonDesc = getProReasonDescriptor({ reason: parsed.reason });
+      showProAlert(getProReasonMessage({ reason: parsed.reason }, state.settings.lang), "error", reasonDesc);
+      renderProDiagnostics();
+      return;
+    }
+    els.proKeyInput.value = parsed.token;
+    await activateCandidateToken(parsed.text || parsed.token, actionSeq);
   });
 
   els.proRemoveBtn.addEventListener("click", async () => {
-    const lang = state.settings.lang;
-    await clearExtProLicenseToken(storageArea);
+    const actionSeq = ++proActionSeq;
+    pendingLicenseSaves += 1;
+    try {
+      await clearExtProLicenseToken(storageArea);
+    } finally {
+      pendingLicenseSaves = Math.max(0, pendingLicenseSaves - 1);
+    }
+    if (actionSeq !== proActionSeq) return;
+    state.hasStoredLicenseToken = false;
     state.license = createFreeLicenseState("removed");
-    showProAlert(t(lang, "pro.removedSuccess"), "warn");
+    state.proInspection = null;
+    showProAlert(t(state.settings.lang, "pro.removedSuccess"), "warn", {
+      key: "pro.removedSuccess",
+    });
     renderAll();
   });
 
   const unsubscribe = subscribeExtStorageChanges(async ({ settingsChanged, licenseChanged }) => {
-    if (settingsChanged && pendingSettingsSaves === 0) {
-      state.settings = await loadExtSettings(storageArea);
+    try {
+      let updated = false;
+      if (settingsChanged && pendingSettingsSaves === 0) {
+        const seq = ++settingsRefreshSeq;
+        const nextSettings = await loadExtSettings(storageArea);
+        if (seq === settingsRefreshSeq && pendingSettingsSaves === 0) {
+          state.settings = nextSettings;
+          updated = true;
+        }
+      }
+      if (licenseChanged && pendingLicenseSaves === 0) {
+        const prevValid = Boolean(state.license?.valid);
+        const prevToken = state.license?.token || "";
+        const refreshed = await refreshLicenseFromStorage();
+        if (refreshed) {
+          updated = true;
+          const nextValid = Boolean(state.license?.valid);
+          const nextToken = state.license?.token || "";
+          const licenseModified = prevValid !== nextValid || prevToken !== nextToken;
+          const isOwnRemoveEcho =
+            !nextValid &&
+            !prevValid &&
+            !state.hasStoredLicenseToken &&
+            state.proFeedback?.key === "pro.removedSuccess";
+          if ((licenseModified || !nextValid) && !isOwnRemoveEcho) {
+            state.proInspection = null;
+            state.proFeedback = null;
+          }
+        }
+      }
+      if (updated) {
+        renderAll();
+      }
+    } catch {
+      // Ignore storage errors if popup/extension context is closing.
     }
-    if (licenseChanged) {
-      await refreshLicenseFromStorage();
-    }
-    renderAll();
   }, storageEvents);
 
   await Promise.all([refreshLicenseFromStorage(), refreshActiveTab()]);

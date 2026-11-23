@@ -411,6 +411,9 @@ body {
 }
 
 .pv-lock-badge {
+  appearance: none;
+  font-family: inherit;
+  line-height: 1.2;
   display: inline-flex;
   align-items: center;
   padding: 2px 7px;
@@ -420,6 +423,11 @@ body {
   background: var(--warn-bg);
   color: var(--warn-fg);
   border: 1px solid var(--warn-border);
+  cursor: pointer;
+}
+
+.pv-lock-badge:hover {
+  filter: brightness(0.96);
 }
 
 .pv-btn-link {
@@ -454,6 +462,16 @@ body {
   border: 1px solid var(--warn-border);
   color: var(--warn-fg);
   font-size: 11.5px;
+}
+
+.pv-pro-hint.is-actionable,
+.pv-inline-alert.is-actionable {
+  cursor: pointer;
+}
+
+.pv-pro-hint.is-actionable:hover,
+.pv-inline-alert.is-actionable:hover {
+  filter: brightness(0.97);
 }
 
 .pv-cat-grid {
@@ -561,6 +579,20 @@ body {
   background: var(--brand-lime);
   color: #051c12;
   font-weight: 800;
+}
+
+.pv-btn-lime:hover:not(:disabled) {
+  background: var(--brand-lime-hover);
+}
+
+.pv-btn-secondary {
+  background: var(--bg-surface-pill);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.pv-btn-secondary:hover:not(:disabled) {
+  background: var(--bg-surface-subtle);
 }
 
 .pv-btn-danger-ghost {
@@ -747,13 +779,91 @@ body {
   gap: 2px;
   font-family: var(--font-mono);
   font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.pv-pro-import-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .pv-pro-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
+}
+
+.pv-pro-import-row .pv-btn,
+.pv-pro-actions .pv-btn {
+  padding: 6px 11px;
+  font-size: 11.5px;
+}
+
+.pv-pro-diagnostics {
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.pv-pro-diagnostics.is-valid {
+  background: var(--accent-safe-bg);
+  border-color: var(--accent-safe-border);
+  color: var(--accent-safe-fg);
+}
+
+.pv-pro-diagnostics.is-warn {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn-fg);
+}
+
+.pv-pro-diagnostics.is-error {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+  color: var(--danger-fg);
+}
+
+.pv-pro-diag-title {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pv-pro-diag-detail {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.pv-pro-diag-claims-title {
+  margin: 4px 0 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}
+
+.pv-pro-diag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
 }
 
 .pv-footer {

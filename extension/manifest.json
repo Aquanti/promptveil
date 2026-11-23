@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PromptVeil",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Local zero-egress PII & secret masking and reply rehydration for AI chats.",
   "icons": {
     "16": "icons/icon-16.png",

@@ -23,6 +23,8 @@ from playwright.sync_api import Download, Locator, Page
 
 ModeType = Literal["sanitize", "rehydrate"]
 LangType = Literal["ru", "en"]
+CheckoutPlanType = Literal["pro-monthly", "pro-annual", "pro-lifetime", "team-pack"]
+CheckoutPaymentType = Literal["card", "sbp", "invoice"]
 
 
 class LocatorLookupError(AssertionError):
@@ -3099,3 +3101,373 @@ class PromptVeilUI:
         )
         btn.click()
         self.page.wait_for_timeout(150)
+
+    # -----------------------------------------------------------------------
+    # R1-R3: Pro Checkout & Activation Page (/pro/, /en/pro/)
+    # -----------------------------------------------------------------------
+
+    def get_pricing_pro_checkout_link(self) -> Locator:
+        """Locate #pricing-pro-checkout-link inside #pricing-card-pro / #pricing-section."""
+        pricing_scope = self.page.locator("[data-testid='pricing-card-pro'], #pricing-card-pro, #pricing-section")
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='pricing-pro-checkout-link']"),
+                self.page.locator("#pricing-pro-checkout-link"),
+                pricing_scope.locator("a[href$='/pro/'], a[href$='/en/pro/'], a[href*='/pro/']"),
+            ],
+            "Pricing Pro Checkout link ([data-testid='pricing-pro-checkout-link'])",
+        )
+
+    def open_pro_checkout_from_pricing(self) -> None:
+        """Scroll to #pricing-section and click #pricing-pro-checkout-link."""
+        section = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='pricing-section']"),
+                self.page.locator("#pricing-section"),
+            ]
+        )
+        if section is not None:
+            section.scroll_into_view_if_needed()
+        link = self.get_pricing_pro_checkout_link()
+        link.scroll_into_view_if_needed()
+        link.click()
+        self.page.wait_for_load_state("networkidle")
+
+    def get_checkout_plan_locator(self, plan: CheckoutPlanType) -> Locator:
+        """Locate tariff card/radio option matching data-plan='{plan}'."""
+        return self._first_visible(
+            [
+                self.page.locator(f"[data-testid='plan-{plan}']"),
+                self.page.locator(f"[data-plan='{plan}']"),
+            ],
+            f"Checkout tariff option ([data-plan='{plan}'])",
+        )
+
+    def select_checkout_plan(self, plan: CheckoutPlanType) -> None:
+        """Select a tariff option on /pro/ or /en/pro/."""
+        opt = self.get_checkout_plan_locator(plan)
+        opt.scroll_into_view_if_needed()
+        opt.click()
+        self.page.wait_for_timeout(100)
+
+    def get_checkout_payment_locator(self, method: CheckoutPaymentType) -> Locator:
+        """Locate payment method option matching data-payment='{method}'."""
+        return self._first_visible(
+            [
+                self.page.locator(f"[data-testid='payment-{method}']"),
+                self.page.locator(f"[data-payment='{method}']"),
+            ],
+            f"Checkout payment option ([data-payment='{method}'])",
+        )
+
+    def select_checkout_payment(self, method: CheckoutPaymentType) -> None:
+        """Select a payment method option on /pro/ or /en/pro/."""
+        opt = self.get_checkout_payment_locator(method)
+        opt.scroll_into_view_if_needed()
+        opt.click()
+        self.page.wait_for_timeout(100)
+
+    def is_checkout_option_active(self, locator: Locator) -> bool:
+        """Return True iff a tariff or payment control (or its nested radio/input) is active/selected."""
+        return bool(
+            locator.evaluate(
+                """el => {
+                    const checkEl = (node) => {
+                        if (!node) return false;
+                        if (typeof node.checked === 'boolean' && node.checked) return true;
+                        if (node.getAttribute('aria-checked') === 'true') return true;
+                        if (node.getAttribute('aria-pressed') === 'true') return true;
+                        if (node.getAttribute('data-active') === 'true') return true;
+                        if (node.getAttribute('data-selected') === 'true') return true;
+                        const cls = node.classList;
+                        if (cls && (cls.contains('is-active') || cls.contains('active') || cls.contains('is-selected') || cls.contains('selected'))) {
+                            return true;
+                        }
+                        return false;
+                    };
+                    if (checkEl(el)) return true;
+                    const inp = el.querySelector('input[type="radio"], input[type="checkbox"]');
+                    return checkEl(inp);
+                }"""
+            )
+        )
+
+    def fill_checkout_buyer(
+        self,
+        *,
+        name: str | None = None,
+        email: str | None = None,
+        company: str | None = None,
+        accept_terms: bool | None = None,
+    ) -> None:
+        """Fill checkout buyer inputs (#checkout-name, #checkout-email, #checkout-company, #checkout-terms)."""
+        if name is not None:
+            name_inp = self._first_visible_editable_input(
+                [
+                    self.page.locator("[data-testid='checkout-name']"),
+                    self.page.locator("#checkout-name"),
+                ],
+                "Checkout buyer name (#checkout-name)",
+            )
+            self._set_textarea_with_events(name_inp, name)
+        if email is not None:
+            email_inp = self._first_visible_editable_input(
+                [
+                    self.page.locator("[data-testid='checkout-email']"),
+                    self.page.locator("#checkout-email"),
+                ],
+                "Checkout buyer email (#checkout-email)",
+            )
+            self._set_textarea_with_events(email_inp, email)
+        if company is not None:
+            comp_inp = self._first_visible_or_none(
+                [
+                    self.page.locator("[data-testid='checkout-company']"),
+                    self.page.locator("#checkout-company"),
+                ]
+            )
+            if comp_inp is not None:
+                self._set_textarea_with_events(comp_inp, company)
+        if accept_terms is not None:
+            terms_cb = self._first_visible(
+                [
+                    self.page.locator("[data-testid='checkout-terms']"),
+                    self.page.locator("#checkout-terms"),
+                ],
+                "Checkout terms checkbox (#checkout-terms)",
+            )
+            currently_checked = terms_cb.is_checked()
+            if accept_terms and not currently_checked:
+                terms_cb.check()
+            elif not accept_terms and currently_checked:
+                terms_cb.uncheck()
+        self.page.wait_for_timeout(80)
+
+    def submit_checkout_order(self) -> None:
+        """Click #checkout-submit-btn to submit the checkout order form."""
+        btn = self._first_visible(
+            [
+                self.page.locator("[data-testid='checkout-submit-btn']"),
+                self.page.locator("#checkout-submit-btn"),
+            ],
+            "Checkout submit button (#checkout-submit-btn)",
+        )
+        btn.scroll_into_view_if_needed()
+        btn.click()
+        self.page.wait_for_timeout(150)
+
+    def get_checkout_order_panel(self) -> Locator:
+        """Locate visible #checkout-order-panel."""
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='checkout-order-panel']"),
+                self.page.locator("#checkout-order-panel"),
+            ],
+            "Checkout order panel (#checkout-order-panel)",
+        )
+
+    def get_checkout_order_id(self) -> str:
+        """Read generated PV-ORD-... order ID from #checkout-order-id."""
+        panel = self.get_checkout_order_panel()
+        el = self._first_visible(
+            [
+                panel.locator("[data-testid='checkout-order-id']"),
+                panel.locator("#checkout-order-id"),
+            ],
+            "Checkout order ID (#checkout-order-id)",
+        )
+        return (el.inner_text() or "").strip()
+
+    def copy_checkout_receipt(self) -> None:
+        """Click #checkout-copy-receipt-btn inside #checkout-order-panel."""
+        panel = self.get_checkout_order_panel()
+        btn = self._first_visible(
+            [
+                panel.locator("[data-testid='checkout-copy-receipt-btn']"),
+                panel.locator("#checkout-copy-receipt-btn"),
+            ],
+            "Checkout copy receipt button (#checkout-copy-receipt-btn)",
+        )
+        btn.click()
+        self.page.wait_for_timeout(120)
+
+    def download_checkout_receipt(self, target_dir: Path) -> Path:
+        """Click #checkout-download-receipt-btn and save the downloaded receipt file."""
+        panel = self.get_checkout_order_panel()
+        btn = self._first_visible(
+            [
+                panel.locator("[data-testid='checkout-download-receipt-btn']"),
+                panel.locator("#checkout-download-receipt-btn"),
+            ],
+            "Checkout download receipt button (#checkout-download-receipt-btn)",
+        )
+        with self.page.expect_download(timeout=self.timeout_ms) as dl_info:
+            btn.click()
+        download: Download = dl_info.value
+        dest = target_dir / (download.suggested_filename or "promptveil-order.txt")
+        download.save_as(str(dest))
+        return dest
+
+    def get_checkout_activation_panel(self) -> Locator:
+        """Locate visible #checkout-activation-panel."""
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='checkout-activation-panel']"),
+                self.page.locator("#checkout-activation-panel"),
+            ],
+            "Checkout activation panel (#checkout-activation-panel)",
+        )
+
+    def enter_checkout_token(self, token: str) -> None:
+        """Fill #checkout-token-input inside #checkout-activation-panel."""
+        panel = self.get_checkout_activation_panel()
+        inp = self._first_visible_editable_input(
+            [
+                panel.locator("[data-testid='checkout-token-input']"),
+                panel.locator("#checkout-token-input"),
+            ],
+            "Checkout token input (#checkout-token-input)",
+        )
+        self._set_textarea_with_events(inp, token)
+
+    def activate_checkout_token(self, token: str | None = None) -> None:
+        """Optionally enter token and click #checkout-activate-btn."""
+        if token is not None:
+            self.enter_checkout_token(token)
+        panel = self.get_checkout_activation_panel()
+        btn = self._first_visible(
+            [
+                panel.locator("[data-testid='checkout-activate-btn']"),
+                panel.locator("#checkout-activate-btn"),
+            ],
+            "Checkout activate button (#checkout-activate-btn)",
+        )
+        btn.click()
+        self.page.wait_for_timeout(250)
+
+    def verify_checkout_token_only(self, token: str | None = None) -> None:
+        """Optionally enter token and click #checkout-verify-only-btn."""
+        if token is not None:
+            self.enter_checkout_token(token)
+        panel = self.get_checkout_activation_panel()
+        btn = self._first_visible(
+            [
+                panel.locator("[data-testid='checkout-verify-only-btn']"),
+                panel.locator("#checkout-verify-only-btn"),
+            ],
+            "Checkout verify-only button (#checkout-verify-only-btn)",
+        )
+        btn.click()
+        self.page.wait_for_timeout(250)
+
+    def upload_checkout_pvkey(self, file_path: Path) -> None:
+        """Upload a .pvkey/.txt file into #checkout-pvkey-file-input."""
+        file_inp = self._first_attached(
+            [
+                self.page.locator("[data-testid='checkout-pvkey-file-input']"),
+                self.page.locator("#checkout-pvkey-file-input"),
+            ],
+            "Checkout .pvkey file input (#checkout-pvkey-file-input)",
+        )
+        file_inp.set_input_files(str(file_path))
+        self.page.wait_for_timeout(250)
+
+    def get_checkout_token_diagnostics(self) -> str:
+        """Read visible text inside #checkout-token-diagnostics."""
+        el = self._first_visible(
+            [
+                self.page.locator("[data-testid='checkout-token-diagnostics']"),
+                self.page.locator("#checkout-token-diagnostics"),
+            ],
+            "Checkout token diagnostics (#checkout-token-diagnostics)",
+        )
+        return (el.inner_text() or "").strip()
+
+    def get_checkout_unlocked_panel(self) -> Locator:
+        """Locate visible #checkout-pro-unlocked panel."""
+        return self._first_visible(
+            [
+                self.page.locator("[data-testid='checkout-pro-unlocked']"),
+                self.page.locator("#checkout-pro-unlocked"),
+            ],
+            "Checkout Pro unlocked panel (#checkout-pro-unlocked)",
+        )
+
+    def download_checkout_pvkey(self, target_dir: Path) -> Path:
+        """Click #checkout-download-pvkey-btn inside #checkout-pro-unlocked and save .pvkey."""
+        panel = self.get_checkout_unlocked_panel()
+        btn = self._first_visible(
+            [
+                panel.locator("[data-testid='checkout-download-pvkey-btn']"),
+                panel.locator("#checkout-download-pvkey-btn"),
+            ],
+            "Checkout download .pvkey button (#checkout-download-pvkey-btn)",
+        )
+        with self.page.expect_download(timeout=self.timeout_ms) as dl_info:
+            btn.click()
+        download: Download = dl_info.value
+        dest = target_dir / (download.suggested_filename or "promptveil-pro.pvkey")
+        download.save_as(str(dest))
+        return dest
+
+    def download_checkout_extension_zip(self, target_dir: Path) -> Path:
+        """Click the extension .zip download link inside #checkout-pro-unlocked and save .zip."""
+        panel = self.get_checkout_unlocked_panel()
+        btn = self._first_visible(
+            [
+                panel.locator("[data-testid='checkout-download-extension-btn']"),
+                panel.locator("#checkout-download-extension-btn"),
+                panel.locator("a[href*='promptveil-pro-extension.zip']"),
+            ],
+            "Checkout extension ZIP download link",
+        )
+        with self.page.expect_download(timeout=self.timeout_ms) as dl_info:
+            btn.click()
+        download: Download = dl_info.value
+        dest = target_dir / (download.suggested_filename or "promptveil-pro-extension.zip")
+        download.save_as(str(dest))
+        return dest
+
+    def return_to_workbench_from_checkout(self) -> None:
+        """Follow the return-to-workbench link inside #checkout-pro-unlocked (or header brand link)."""
+        unlocked = self._first_visible_or_none(
+            [
+                self.page.locator("[data-testid='checkout-pro-unlocked']"),
+                self.page.locator("#checkout-pro-unlocked"),
+            ]
+        )
+        candidates: list[Locator] = []
+        if unlocked is not None:
+            candidates.extend(
+                [
+                    unlocked.locator("[data-testid='checkout-return-workbench-link']"),
+                    unlocked.locator("#checkout-return-workbench-link"),
+                    unlocked.locator("a[href='/'], a[href='/en/'], a[href='../']"),
+                ]
+            )
+        candidates.extend(
+            [
+                self.page.locator("header a[href='/'], header a[href='/en/']"),
+                self.page.locator("a[href='/'], a[href='/en/']"),
+            ]
+        )
+        link = self._first_visible(candidates, "Return to workbench link from checkout")
+        link.click()
+        self.page.wait_for_load_state("networkidle")
+
+    def switch_checkout_language(self, lang: LangType) -> None:
+        """Switch language on /pro/ or /en/pro/ via toggle button or RU<->EN route link."""
+        if self.get_document_lang().lower() == lang.lower():
+            return
+        target_href = "/en/pro/" if lang == "en" else "/pro/"
+        candidates = [
+            self.page.locator(f"[data-testid='lang-{lang}']"),
+            self.page.locator(f"header a[href='{target_href}'], nav a[href='{target_href}']"),
+            self.page.locator(f"a[href='{target_href}']"),
+            self.page.locator("[data-testid='lang-mobile-toggle']"),
+            self.page.locator("#lang-mobile-toggle"),
+        ]
+        ctrl = self._first_visible(candidates, f"Checkout language switch '{lang}'")
+        ctrl.click()
+        self.page.wait_for_load_state("networkidle")
+        self.page.wait_for_timeout(120)

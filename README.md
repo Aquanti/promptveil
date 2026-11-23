@@ -26,13 +26,13 @@
 - **Режим чувствительности («Обычный / Строгий») и подсказки «почему это скрыто»:** Режим «Строгий» дополнительно маскирует `UUID`, организации без кавычек (`ООО Вектор`), более широкий набор пар `Имя + Фамилия` и короткие высокоэнтропийные строки (`>= 16` знаков); каждый элемент в списке «Что скрыто» показывает понятную причину срабатывания.
 - **Отраслевые наборы в «Свои слова»:** В выдвижной панели доступны 4 бесплатных набора терминов (`Юриспруденция`, `Кадры и найм`, `Медицина`, `Бухгалтерия`) с добавлением в 1 клик без дублей.
 - **Разделы «Как это работает» и «Что мы пока НЕ ловим»:** Визуальная схема трёх шагов и честный список ограничений клиентских правил со ссылкой на добавление своих слов.
-- **Заявка и активация Pro / Команда:** Локальная генерация текста заявки с кнопкой **«Скопировать заявку и открыть Telegram»** (`@supv1rus`), резервной отправкой на `kilkauciha@gmail.com` и вводом офлайн-ключа активации прямо в интерфейсе.
+- **Оформление, оплата и активация Pro (`/pro/` и `/en/pro/`):** Отдельные страницы оформления Pro с выбором тарифа (`pro-monthly`, `pro-annual`, `pro-lifetime`, `team-pack`), способа оплаты (карта / СБП / счёт без сбора данных карты), генерацией квитанции `PV-ORD-...` только в RAM вкладки, экспортом `.pvkey` и встроенным терминалом офлайн-активации Ed25519 (включая автоподстановку через `#code=PV1...`), а также резервной отправкой заявки на `kilkauciha@gmail.com` и в Telegram (`@supv1rus`).
 
 ### PromptVeil Pro (офлайн-активация без сервера)
 
-- **Асимметричная офлайн-проверка ключей (Ed25519):** Токены формата `PV1.<payload>.<sig>` проверяются локально в браузере модулем `app/static/js/pro-license.js` через WebCrypto Ed25519 с pure-JS резервом (RFC 8032 + SHA-512) и сохраняются в `localStorage` (`promptveil_pro_license_v1`). В клиентском коде и репозитории хранится только публичный ключ; генерация ключей выполняется офлайн утилитой `scripts/issue-pro-key.mjs`.
+- **Асимметричная офлайн-проверка ключей (Ed25519) и инструмент владельца:** Токены формата `PV1.<payload>.<sig>` проверяются локально в браузере модулем `app/static/js/pro-license.js` через WebCrypto Ed25519 с pure-JS резервом (RFC 8032 + SHA-512) и сохраняются в `localStorage` (`promptveil_pro_license_v1`). В клиентском коде и репозитории хранится только публичный ключ; выпуск, пакетная генерация и проверка кодов выполняются офлайн через CLI `scripts/issue-pro-key.mjs` и локальную loopback-консоль владельца `scripts/owner-console.mjs` (`127.0.0.1`, вне `app/static/` и Git).
 - **Локальная пакетная обработка `.docx`, `.pdf`, `.xlsx` до 50 МБ:** Модуль `app/static/js/pro-documents.js` полностью локально разбирает Офис-документы (ZIP/Deflate через `DecompressionStream` + pure-JS RFC 1951/1950, XML через `DOMParser` + pure-JS резерв) и PDF (`FlateDecode`, `ToUnicode` CMap, защита от zip-бомб и зашифрованных PDF, предупреждение для сканов), поддерживая очередь файлов, экспорт в `.txt`/`.zip` и восстановление батча на шаге 2 (в Free — 1 текстовый файл до 2 МБ).
-- **Браузерное расширение Manifest V3 (`extension/`):** Плавающая Shadow DOM панель и popup-контроллер для `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `giga.chat` и `alice.yandex.ru`. Настройки, свои слова и ключ Pro хранятся локально в `chrome.storage.local`, а словарь `SessionVault` остаётся только в RAM вкладки. Детерминированный архив собирается в `app/static/downloads/promptveil-pro-extension.zip` и скачивается из `#modal-pro-downloads`.
+- **Браузерное расширение Manifest V3 v2.2.0 (`extension/`):** Плавающая Shadow DOM панель с интерактивным индикатором тарифа и popup-контроллер для `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `giga.chat` и `alice.yandex.ru` с бесшовной активацией (вставка кода из буфера обмена в 1 клик, импорт `.pvkey`/`.txt`, детальная диагностика и повторная проверка). Настройки, свои слова и ключ Pro хранятся локально в `chrome.storage.local`, а словарь `SessionVault` остаётся только в RAM вкладки. Детерминированный архив собирается в `app/static/downloads/promptveil-pro-extension.zip` и скачивается из `/pro/` или `#modal-pro-downloads`.
 - **Профили проектов, Pro-паки и 1-клик шаблоны промптов:** Несколько именованных наборов правил (`promptveil_profiles_v1` в `storage.js`), 4 расширенных пака слов (`Корпоративные сделки (M&A)`, `DevSecOps и код`, `Банки и финтех`, `Трансграничный NDA`) и быстрые обезличенные шаблоны промптов (`#prompt-templates-bar`: аудит договора, проверка NDA, ревью кода и ИБ).
 
 ### Архитектурные решения и статус дорожной карты
@@ -82,14 +82,14 @@ Copy-Item .env.example .env
 npm ci
 npm run build
 
-# 3. Серверные тесты и проверка CSP/гигиены (27 тестов)
-.\.venv\Scripts\python.exe -m pytest tests\test_server.py -v
+# 3. Серверные тесты и проверка CSP/гигиены (28 тестов)
+.\.venv\Scripts\python.exe -m pytest -v
 
-# 4. Модульные JS-тесты веб-движка (86 тестов) и расширения MV3 (16 тестов)
+# 4. Модульные JS-тесты веб-движка (110 тестов) и расширения MV3 (27 тестов)
 npm run test:js
 npm run test:ext
 
-# 5. E2E-тесты (Playwright, 252 теста)
+# 5. E2E-тесты (Playwright, 292 теста)
 .\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all
 ```
 
@@ -117,13 +117,13 @@ npm run test:ext
 - **Sensitivity Mode (`Normal / Strict`) & Detection Reasons:** `Strict` mode enables `UUID` detection, unquoted Russian legal entities, broader capitalized two-word name pairs, and shorter high-entropy secrets (`>= 16` chars); every entry in *What was hidden* explains why it was masked.
 - **Industry Custom Word Packs:** One-click deduplicating packs (`Legal`, `HR & Hiring`, `Medical`, `Accounting`) inside *Custom Words* (`#drawer-rulebook`).
 - **How It Works & Honest Limits:** Static HTML+SVG 3-step visual flow and transparent boundaries linking directly to *Custom Words*.
-- **Plan Inquiry & Instant Key Activation:** Client-side inquiry builder with **Copy inquiry & open Telegram** (`@supv1rus`), prominent direct email fallback (`kilkauciha@gmail.com`), and direct offline key activation modal (`#modal-pro-license`).
+- **Pro Checkout & Offline Key Activation (`/pro/` & `/en/pro/`):** Dedicated bilingual checkout & activation pages featuring tariff (`pro-monthly`, `pro-annual`, `pro-lifetime`, `team-pack`) and payment method (`card`, `sbp`, `invoice`, zero raw card fields) selection, RAM-only `PV-ORD-...` receipt export, `.pvkey` download, and an in-page Ed25519 Activation & Validation Terminal (`#code=PV1...` fragment hydration + `.pvkey`/`.txt` upload), alongside Telegram (`@supv1rus`) / email (`kilkauciha@gmail.com`) fallback inquiry flow.
 
 ### PromptVeil Pro Suite (Zero-Server Offline Activation)
 
-- **Ed25519 Offline License Verification:** `PV1.<payload>.<sig>` keys are verified locally in `app/static/js/pro-license.js` via WebCrypto Ed25519 with a pure-JS RFC 8032 + SHA-512 fallback and persisted in `localStorage` (`promptveil_pro_license_v1`). Only the public key resides in client source/Git; offline signing is performed via `scripts/issue-pro-key.mjs`.
+- **Ed25519 Offline License Verification & Owner Tooling:** `PV1.<payload>.<sig>` keys are verified locally in `app/static/js/pro-license.js` via WebCrypto Ed25519 with a pure-JS RFC 8032 + SHA-512 fallback and persisted in `localStorage` (`promptveil_pro_license_v1`). Only the public key resides in client source/Git; offline single/batch signing, verification, and order-to-key fulfillment are performed locally via `scripts/issue-pro-key.mjs` and the `127.0.0.1` loopback Owner Console (`scripts/owner-console.mjs`, outside `app/static/`).
 - **Local Batch & Office/PDF Scrubber (up to 50 MB / file):** `app/static/js/pro-documents.js` parses `.docx`, `.pdf`, and `.xlsx` files 100% locally (`DecompressionStream` + pure-JS RFC 1951/1950 inflate, XML via `DOMParser` + pure-JS fallback, PDF `FlateDecode` / `ToUnicode` CMap decoding, zip-bomb & encrypted-PDF rejection, and honest scanned-PDF warnings), supporting batch queue masking, `.txt`/`.zip` downloads, and Step 2 batch rehydration (Free remains single text file up to 2 MB).
-- **Manifest V3 Browser Extension (`extension/`):** Floating Shadow DOM pill & popup settings controller across `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `giga.chat`, and `alice.yandex.ru`. Preferences, custom rules, and Pro license tokens live in `chrome.storage.local` while `SessionVault` mappings stay strictly in tab RAM. Deterministically packaged by `scripts/build.mjs` into `/downloads/promptveil-pro-extension.zip` for `#modal-pro-downloads`.
+- **Manifest V3 Browser Extension v2.2.0 (`extension/`):** Interactive Shadow DOM tier pill & popup controller across `chatgpt.com`, `claude.ai`, `gemini.google.com`, `chat.deepseek.com`, `giga.chat`, and `alice.yandex.ru` with seamless activation (1-click clipboard paste-and-activate, `.pvkey`/`.txt` import, detailed claim/expiry diagnostics, and actionable Pro upgrade hints). Preferences, custom rules, and Pro license tokens live in `chrome.storage.local` while `SessionVault` mappings stay strictly in tab RAM. Deterministically packaged by `scripts/build.mjs` into `/downloads/promptveil-pro-extension.zip` for `/pro/` and `#modal-pro-downloads`.
 - **Multi-Project Rulebook Profiles, Pro Packs & 1-Click Templates:** Named rulebook workspaces (`promptveil_profiles_v1` in `storage.js`), 4 Pro industry word packs (`Corporate M&A`, `DevSecOps`, `Banking & FinTech`, `Cross-border NDA`), and pre-anonymized 1-click prompt templates (`#prompt-templates-bar`).
 
 ### Architecture Decisions & Deferred Scope
@@ -176,29 +176,32 @@ npm run test:ext
 │   └── static/
 │       ├── index.html
 │       ├── en/index.html    # English route (/en/)
+│       ├── pro/index.html   # Russian Pro checkout & activation route (/pro/)
+│       ├── en/pro/index.html# English Pro checkout & activation route (/en/pro/)
 │       ├── 404.html
 │       ├── manifest.webmanifest
-│       ├── sw.js            # Network-first HTML, cache-first /dist/*, SWR static + zip precache
+│       ├── sw.js            # Network-first HTML, cache-first /dist/*, SWR static precache
 │       ├── styles.css
-│       ├── css/             # tokens.css, layout.css, components.css, drawers.css, modals.css, sections.css
-│       ├── js/              # 20 ES modules (detector, vault, storage, pro-license, pro-documents, pipeline, ...)
+│       ├── css/             # tokens.css, layout.css, components.css, drawers.css, modals.css, sections.css, pro-checkout.css
+│       ├── js/              # 22 ES modules (detector, vault, storage, pro-license, pro-checkout, pro-documents, theme, ...)
 │       ├── dist/            # Content-hashed esbuild CSS & code-split ESM JS bundles
 │       └── downloads/       # Deterministic promptveil-pro-extension.zip package
 ├── extension/
-│   ├── manifest.json        # Manifest V3 config for 6 supported AI hosts
+│   ├── manifest.json        # Manifest V3 config (v2.2.0) for 6 supported AI hosts
 │   ├── popup.{html,css}     # Extension toolbar UI
 │   ├── content.css          # Shadow DOM host positioning
 │   ├── src/                 # adapters.js, content.js, popup.js, i18n-ext.js, storage-ext.js
 │   ├── dist/                # esbuild IIFE extension bundles
-│   └── tests/               # 16 Node.js unit tests (adapters, gating, manifest/CSP)
+│   └── tests/               # 27 Node.js unit tests (adapters, gating, manifest/CSP)
 ├── scripts/
-│   ├── build.mjs            # esbuild web + extension bundler, zip builder, HTML/SW injector
-│   └── issue-pro-key.mjs    # Offline Ed25519 keypair & PV1 activation token utility
+│   ├── build.mjs            # esbuild multi-entry web + extension bundler, zip builder, HTML/SW injector
+│   ├── issue-pro-key.mjs    # Offline Ed25519 keypair, batch PV1 token & bundle verification CLI
+│   └── owner-console.mjs    # Local loopback 127.0.0.1 Owner Pro-Code Web Console (outside app/static/)
 ├── tests/
-│   ├── test_server.py       # 27 FastAPI, CSP/COOP/CORP, zero-egress, zip, and static hygiene tests
+│   ├── test_server.py       # 28 FastAPI, CSP/COOP/CORP, zero-egress, zip, and static hygiene tests
 │   └── js/
-│       └── *.test.mjs       # 86 Node.js unit tests (detectors, vault, licensing, docs, profiles, i18n)
-└── e2e_tests/               # 252 Playwright E2E tests (Tiers 1–5 + Acceptance, FastAPI & Static-Only)
+│       └── *.test.mjs       # 110 Node.js unit tests (detectors, vault, licensing, checkout, CLI/console, docs, profiles, i18n)
+└── e2e_tests/               # 292 Playwright E2E tests (Tiers 1–5 + Acceptance, FastAPI & Static-Only)
 ```
 
 ### Local Setup & Verification
@@ -214,14 +217,14 @@ cp .env.example .env
 npm ci
 npm run build
 
-# Static security, ZIP header & FastAPI tests (27 tests)
-.venv/bin/python -m pytest tests/test_server.py -v
+# Static security, ZIP header & FastAPI tests (28 tests)
+.venv/bin/python -m pytest -v
 
-# Node.js unit tests: web engine (86 tests) & extension (16 tests)
+# Node.js unit tests: web engine (110 tests) & extension (27 tests)
 npm run test:js
 npm run test:ext
 
-# Playwright E2E suite (252 tests)
+# Playwright E2E suite (292 tests)
 ./e2e_tests/.venv_e2e/bin/python e2e_tests/run_e2e.py --mode live --base-url http://127.0.0.1:8000 --start-server --tier all
 ```
 

@@ -242,8 +242,14 @@
   gap: 0.45rem;
 }
 
-.pricing-card--featured .btn-lime {
+.pricing-card--featured .btn-lime,
+.pricing-card-footer a.btn-lime {
   width: 100%;
+  min-height: 44px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .pricing-card .btn-primary,
@@ -728,7 +734,8 @@ a.footer-contact-value:hover {
 }
 
 .error-home-link,
-.error-en-link {
+.error-en-link,
+.error-pro-link {
   min-height: 44px;
   display: inline-flex;
   align-items: center;

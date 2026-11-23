@@ -265,6 +265,47 @@ def test_en_route_serves_english_index_with_root_assets_and_headers() -> None:
             assert 'hreflang="x-default" href="https://promptveil.netlify.app/"' in body
 
 
+def test_pro_checkout_routes_and_assets_and_headers() -> None:
+    """Verify GET/HEAD /pro/ and /en/pro/ serve checkout pages with matching /dist/ assets, hreflang, and headers."""
+    client = TestClient(app)
+    root_body = client.get("/").text
+    root_css = re.search(r'href="(/dist/styles\.[A-Za-z0-9_-]+\.css)"', root_body)
+    assert root_css is not None
+
+    checkout_specs = (
+        ("/pro/", "ru", "https://promptveil.netlify.app/pro/", "i18n-ru-", "i18n-en-"),
+        ("/en/pro/", "en", "https://promptveil.netlify.app/en/pro/", "i18n-en-", "i18n-ru-"),
+    )
+    for route, lang, canonical_url, expected_preload, forbidden_preload in checkout_specs:
+        for method in ("GET", "HEAD"):
+            resp = client.request(method, route)
+            assert resp.status_code == 200, f"{method} {route} returned {resp.status_code}"
+            assert "text/html" in resp.headers["content-type"]
+            _assert_security_headers(resp.headers)
+            if method == "HEAD":
+                assert resp.content == b""
+                continue
+            body = resp.text
+            assert f'<html lang="{lang}">' in body
+            assert 'href="/styles.css"' not in body
+            assert 'src="/js/pro-checkout.js"' not in body
+            assert f'href="{root_css.group(1)}"' in body
+            js_match = re.search(r'src="(/dist/pro-checkout\.[A-Za-z0-9_-]+\.js)"', body)
+            assert js_match is not None, f"Missing /dist/pro-checkout.*.js in {route}"
+            assert client.get(js_match.group(1)).status_code == 200
+            preload_match = re.search(
+                rf'<link\s+rel="modulepreload"\s+href="(/dist/{expected_preload}[A-Za-z0-9_-]+\.js)"',
+                body,
+            )
+            assert preload_match is not None, f"Missing {expected_preload} modulepreload in {route}"
+            assert client.get(preload_match.group(1)).status_code == 200
+            assert forbidden_preload not in body
+            assert f'rel="canonical" href="{canonical_url}"' in body
+            assert 'hreflang="ru" href="https://promptveil.netlify.app/pro/"' in body
+            assert 'hreflang="en" href="https://promptveil.netlify.app/en/pro/"' in body
+            assert 'hreflang="x-default" href="https://promptveil.netlify.app/pro/"' in body
+
+
 def test_static_assets_served_from_root() -> None:
     """Verify CSS, SVG favicon, ES6 modules, and any static assets resolve with expected MIME & headers."""
     client = TestClient(app)
@@ -310,7 +351,8 @@ def test_static_assets_served_from_root() -> None:
     dist_css = sorted((STATIC_DIR / "dist").glob("*.css"))
     dist_js = sorted((STATIC_DIR / "dist").glob("*.js"))
     assert len(dist_css) == 1, f"Expected single bundled dist CSS, found {dist_css}"
-    assert len(dist_js) >= 4, f"Expected entry + i18n + lazy pro-documents dist JS chunks, found {dist_js}"
+    assert len(dist_js) >= 5, f"Expected app, pro-checkout, i18n, and lazy pro-documents dist JS chunks, found {dist_js}"
+    assert len(list((STATIC_DIR / "dist").glob("pro-checkout.*.js"))) == 1
     assert len(list((STATIC_DIR / "dist").glob("pro-documents-*.js"))) == 1
     assert "@import" not in dist_css[0].read_text(encoding="utf-8")
 
@@ -371,7 +413,13 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
         "https://claude.ai/",
         "https://gemini.google.com/app",
     }
-    for html_path in (STATIC_DIR / "index.html", STATIC_DIR / "en" / "index.html", STATIC_DIR / "404.html"):
+    for html_path in (
+        STATIC_DIR / "index.html",
+        STATIC_DIR / "en" / "index.html",
+        STATIC_DIR / "pro" / "index.html",
+        STATIC_DIR / "en" / "pro" / "index.html",
+        STATIC_DIR / "404.html",
+    ):
         html_src = html_path.read_text(encoding="utf-8")
         rel_html = html_path.relative_to(STATIC_DIR).as_posix()
 
@@ -399,7 +447,7 @@ def test_csp_strict_no_external_urls_or_inline_code() -> None:
             flags=re.IGNORECASE,
         )
         html_cleaned = re.sub(
-            r"""<(?:link|meta)\b[^>]*(?:rel\s*=\s*['"](?:canonical|alternate)['"]|property\s*=\s*['"]og:(?:url|image)['"]|name\s*=\s*['"]twitter:image['"])[^>]*https://promptveil\.netlify\.app/(?:en/|og-image\.png)?['"][^>]*>""",
+            r"""<(?:link|meta)\b[^>]*(?:rel\s*=\s*['"](?:canonical|alternate)['"]|property\s*=\s*['"]og:(?:url|image)['"]|name\s*=\s*['"]twitter:image['"])[^>]*https://promptveil\.netlify\.app/(?:en/pro/|pro/|en/|og-image\.png)?['"][^>]*>""",
             "",
             html_cleaned,
             flags=re.IGNORECASE | re.DOTALL,
@@ -588,7 +636,7 @@ def test_disallowed_http_methods_and_options_head_matrix() -> None:
     """Verify POST/PUT/DELETE/PATCH/OPTIONS/TRACE return 405 with Allow: GET, HEAD and HEAD returns 200 empty body."""
     client = TestClient(app)
 
-    for path in ("/", "/health", "/styles.css", "/js/app.js", "/favicon.svg", "/nonexistent"):
+    for path in ("/", "/pro/", "/en/pro/", "/health", "/styles.css", "/js/app.js", "/favicon.svg", "/nonexistent"):
         for method in ("POST", "PUT", "DELETE", "PATCH", "OPTIONS", "TRACE"):
             resp = client.request(method, path)
             assert resp.status_code == 405, f"{method} {path} returned {resp.status_code}"
@@ -598,6 +646,8 @@ def test_disallowed_http_methods_and_options_head_matrix() -> None:
 
     head_expectations = (
         ("/", "text/html"),
+        ("/pro/", "text/html"),
+        ("/en/pro/", "text/html"),
         ("/health", "application/json"),
         ("/styles.css", "text/css"),
         ("/css/tokens.css", "text/css"),
@@ -715,7 +765,7 @@ def test_cache_control_and_netlify_parity() -> None:
         assert block["values"]["Cache-Control"] == "public, max-age=300"
 
     client = TestClient(app)
-    for route in ("/", "/health", "/nonexistent"):
+    for route in ("/", "/pro/", "/en/pro/", "/health", "/nonexistent"):
         resp = client.get(route)
         cache_control = resp.headers.get("cache-control")
         assert "public" not in (cache_control or "").lower()
@@ -865,9 +915,55 @@ def test_r2_r3_r4_r5_contracts_and_centralized_contacts() -> None:
     assert "Have a key? • Activate" in en_html
 
     # Unimplemented billing claims and Stage D removed dead code must not remain.
+    pro_ru_html = (STATIC_DIR / "pro" / "index.html").read_text(encoding="utf-8")
+    pro_en_html = (STATIC_DIR / "en" / "pro" / "index.html").read_text(encoding="utf-8")
+    pro_checkout_js = (STATIC_DIR / "js" / "pro-checkout.js").read_text(encoding="utf-8")
+
+    assert 'id="pricing-pro-checkout-link"' in index_html and 'href="/pro/"' in index_html
+    assert 'id="pricing-pro-checkout-link"' in en_html and 'href="/en/pro/"' in en_html
+    assert 'href="/pro/"' in not_found_html and 'error-pro-link' in not_found_html
+
+    for checkout_hook in (
+        'data-plan="pro-monthly"',
+        'data-plan="pro-annual"',
+        'data-plan="pro-lifetime"',
+        'data-plan="team-pack"',
+        'data-payment="card"',
+        'data-payment="sbp"',
+        'data-payment="invoice"',
+        'id="checkout-name"',
+        'id="checkout-email"',
+        'id="checkout-company"',
+        'id="checkout-terms"',
+        'id="checkout-submit-btn"',
+        'id="checkout-order-panel"',
+        'id="checkout-order-id"',
+        'id="checkout-copy-receipt-btn"',
+        'id="checkout-download-receipt-btn"',
+        'id="checkout-activation-panel"',
+        'id="checkout-token-input"',
+        'id="checkout-pvkey-file-input"',
+        'id="checkout-activate-btn"',
+        'id="checkout-verify-only-btn"',
+        'id="checkout-token-diagnostics"',
+        'id="checkout-pro-unlocked"',
+        'id="checkout-download-pvkey-btn"',
+        'id="checkout-download-extension-btn"',
+        'id="checkout-return-workbench-link"',
+    ):
+        assert checkout_hook in pro_ru_html, f"Missing {checkout_hook} in pro/index.html"
+        assert checkout_hook in pro_en_html, f"Missing {checkout_hook} in en/pro/index.html"
+
+    for forbidden_pan in ("cc-number", "cc-csc", "cc-exp", "cardnumber"):
+        assert forbidden_pan not in pro_ru_html.lower()
+        assert forbidden_pan not in pro_en_html.lower()
+
     for forbidden_claim in ("30 дней бесплатно", "30 days free", "490 ₽", "390 ₽", "1 990 ₽", "1 590 ₽", "billing-month-btn"):
         assert forbidden_claim not in index_html, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in index.html"
         assert forbidden_claim not in en_html, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in en/index.html"
+        assert forbidden_claim not in pro_ru_html, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in pro/index.html"
+        assert forbidden_claim not in pro_en_html, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in en/pro/index.html"
+        assert forbidden_claim not in pro_checkout_js, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in pro-checkout.js"
         assert forbidden_claim not in i18n_all, f"Unexpected unimplemented pricing claim {forbidden_claim!r} in i18n"
 
     for dead_symbol in ("billingCycle", "renderPricingSection"):
@@ -950,6 +1046,8 @@ def test_seo_pwa_static_assets_and_meta_tags() -> None:
         ("/robots.txt", "text/plain", b"Sitemap: https://promptveil.netlify.app/sitemap.xml"),
         ("/sitemap.xml", "application/xml", b"<loc>https://promptveil.netlify.app/</loc>"),
         ("/sitemap.xml", "application/xml", b"<loc>https://promptveil.netlify.app/en/</loc>"),
+        ("/sitemap.xml", "application/xml", b"<loc>https://promptveil.netlify.app/pro/</loc>"),
+        ("/sitemap.xml", "application/xml", b"<loc>https://promptveil.netlify.app/en/pro/</loc>"),
         ("/sitemap.xml", "application/xml", b'hreflang="en"'),
         ("/404.html", "text/html", b"404"),
         ("/manifest.webmanifest", "application/manifest+json", b'"short_name": "PromptVeil"'),
@@ -995,7 +1093,8 @@ def test_service_worker_and_stage2_p1_contracts() -> None:
     assert "innerHTML" not in sw_src
     assert "eval(" not in sw_src
     assert 'CACHE_NAME = "promptveil-build-' in sw_src
-    assert "/dist/styles." in sw_src and "/dist/app." in sw_src
+    assert '"/pro/"' in sw_src and '"/en/pro/"' in sw_src
+    assert "/dist/styles." in sw_src and "/dist/app." in sw_src and "/dist/pro-checkout." in sw_src
     assert "/dist/pro-documents-" in sw_src
     assert '"/downloads/promptveil-pro-extension.zip"' not in sw_src
     assert '"/og-image.png"' not in sw_src

@@ -2,6 +2,24 @@
 
 All notable changes to PromptVeil are documented in this file.
 
+## [2.3.0] - 2026-11-23
+
+### Pro Checkout, Owner Pro-Code Console & Seamless MV3 Extension Activation
+- **Dedicated Pro Checkout & Activation Pages (`R1`):**
+  - Added bilingual static checkout & activation routes `/pro/` (`app/static/pro/index.html`, `<html lang="ru">`) and `/en/pro/` (`app/static/en/pro/index.html`, `<html lang="en">`) with `hreflang` alternates, `app/static/sitemap.xml` coverage, Spark Admin light/dark theme (`app/static/js/theme.js`), `390x844` mobile layout (`>= 44px` tap targets, zero horizontal overflow, zero `100vw`), and strict CSP (`script-src 'self'`, `connect-src 'self'`, zero inline scripts/styles, zero `innerHTML`/`fetch`).
+  - Implemented `app/static/js/pro-checkout.js` and `app/static/css/pro-checkout.css`: 4 tariff options (`pro-monthly`, `pro-annual`, `pro-lifetime`, `team-pack`), 3 payment methods (`card`, `sbp`, `invoice`, zero raw card PAN/CVV inputs), buyer form validation, RAM-only `PV-ORD-...` order receipt with copy/download actions, and an always-visible Ed25519 Activation & Validation Terminal (`#code=PV1...` fragment hydration, `.pvkey`/`.txt` file upload with `256 KB` size checks, claim viewer, `.pvkey` download, and immediate `/downloads/promptveil-pro-extension.zip` unlock).
+  - Connected `/pro/` and `/en/pro/` from `#pricing-pro-checkout-link` on `/` & `/en/`, footer navigation, and `app/static/404.html` while preserving all existing modal hooks (`#open-pro-modal-btn`, `#pricing-activate-pro-btn`, `#modal-plan-request`), achieving 100% RU/EN i18n key and placeholder parity (`615/615` keys); extended `scripts/build.mjs` for multi-entry `esbuild` (`app.js` + `pro-checkout.js`, `splitting: true`) and `app/static/sw.js` precaching of `/pro/` and `/en/pro/`.
+- **Transparent Owner Pro-Code CLI & Local Loopback Console (`R2`):**
+  - Extended `app/static/js/pro-license.js` with `extractProToken()`, `formatPvKeyFileContent()`, `decodeProTokenPayloadUnsafe()`, `inspectProLicenseToken()`, and fail-closed `nowMs` bounds while preserving `PRO_PUBLIC_KEY_B64U` and `promptveil_pro_license_v1`.
+  - Upgraded `scripts/issue-pro-key.mjs` with full payload schema + `exp` + `--now` verification, `PRO_PUBLIC_KEY_B64U` mismatch guard (`--pub` override), `--plan` presets, batch issuance (`--count`, `--prefix`), `--order` references, `.pvkey`/table exports, ledger appending, `--inspect-bundle`, `--verify-bundle`, `--redact`, `--json`, and strict `VALUE_FLAGS` validation.
+  - Added local-only `127.0.0.1` Owner Web Console (`scripts/owner-console.mjs`) outside `app/static/` for visual single/batch key issuance, order-to-key fulfillment, `#code=PV1...` activation link generation, `.pvkey` export, and token validation/inspection under strict `OWNER_CONSOLE_CSP` and `Host`/Origin/Referer CSRF guards (keeping all private signing keys strictly offline outside Git).
+- **PromptVeil Pro MV3 Extension v2.2.0 & Deterministic Packaging (`R3`):**
+  - Updated `extension/` (`manifest.json` `"2.2.0"`, keeping minimal `["storage", "activeTab"]` permissions, zero `host_permissions`, zero `localStorage`, and exact 6 `content_scripts` hosts): added smart `PV1.` extraction, 1-click **Paste & Activate** (`#popup-pro-paste-btn`), `.pvkey`/`.txt` file import (`#popup-pro-file-input`, `256 KB` pre/post-read guard, NUL/UTF-8 checks), `#popup-pro-verify-btn` + `#popup-pro-diagnostics`, actionable locked-feature focus hints, async race-sequence guards, `chrome.storage.local` + `onChanged` synchronization, and interactive `.pv-tier-chip` diagnostics in Shadow DOM `content.js`.
+  - Rebuilt deterministic web bundles, `sw.js`, `modulepreload` HTML tags, `extension/dist/*.bundle.js`, and 9-file `app/static/downloads/promptveil-pro-extension.zip` via `npm run build`.
+- **E2E Alignment, Tier 5 Hardening & Verification Expansion (`R4`):**
+  - Added narrow same-origin `/favicon.svg` & `/favicon.ico` exemption in `e2e_tests/monitors.py` (guarded by 4 negative leak checks in `e2e_tests/run_e2e.py`) and hardened `pro-checkout.js` / `pro-license.js` (`inspectSeq` & `licenseMutationSeq` race guards, `saveStoredProLicenseToken` quota/storage warning, `claims.tier` & `exp` UTC formatting), `owner-console.mjs` (loopback `Origin`+`Referer` validation, `//`/`/\` path rejection, `/favicon.ico` `204`, path-free ledger errors), `issue-pro-key.mjs` (bundle array/empty checks, generic ledger `409` errors), and `extension/src/popup.js` (external `storage.onChanged` inspection/feedback reset).
+  - Expanded automated verification to `28` pytest server/CSP checks, `110` web JS unit tests (`21` suites), `27` extension JS unit tests, and `292` Playwright E2E tests (`221` Tiers 1–4 + `53` Tier 5 + `18` Acceptance) across both FastAPI (`--start-server`) and Netlify-parity (`--static-only`) modes.
+
 ## [2.2.0] - 2026-11-22
 
 ### PromptVeil Pro Suite, Persistent AI Bar & Gemini Launcher

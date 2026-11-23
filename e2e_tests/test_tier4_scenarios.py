@@ -1,8 +1,11 @@
-"""Tier 4: Real-World Application Scenarios (9 Tests: T4-01..T4-09)."""
+"""Tier 4: Real-World Application Scenarios (11 Tests: T4-01..T4-11)."""
 
 from __future__ import annotations
 
+import io
+import json
 import re
+import urllib.request
 import zipfile
 from typing import Any
 
@@ -579,3 +582,200 @@ def test_T4_09_mobile_390x844_pro_workflow_and_key_deactivation_downgrade(
 
     pro_e2e_session.net.assert_zero_egress(["mob.a@example.com", "mob.b@example.org", "free.user@example.ru"])
     pro_e2e_session.console.assert_no_errors()
+
+
+def test_T4_10_full_buyer_journey_checkout_receipt_pv1_pvkey_zip_to_pro_workbench_ru(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    # 1. Start on / and navigate via #pricing-pro-checkout-link -> /pro/
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    verify_russian_purity(page)
+
+    ui.open_pricing()
+    pro_raw_session.net.phase = "load"
+    ui.open_pro_checkout_from_pricing()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    assert page.url.rstrip("/").endswith("/pro")
+    verify_russian_purity(page)
+
+    # 2. Select tariff & payment, fill buyer form, submit -> PV-ORD-...
+    ui.select_checkout_plan("pro-annual")
+    ui.select_checkout_payment("sbp")
+    ui.fill_checkout_buyer(
+        name="Елена Соколова",
+        email="elena.buyer@example.ru",
+        company="ООО «Восток-Право»",
+        accept_terms=True,
+    )
+    ui.submit_checkout_order()
+
+    assert ui.get_checkout_order_panel().is_visible()
+    order_id = ui.get_checkout_order_id()
+    assert re.match(r"^PV-ORD-[A-Za-z0-9-]+$", order_id)
+
+    # 3. Copy & download receipt
+    ui.copy_checkout_receipt()
+    clip = ui.read_clipboard_text()
+    if clip is not None:
+        assert order_id in clip
+    receipt_path = ui.download_checkout_receipt(pro_raw_session.io.downloads)
+    assert receipt_path.is_file() and order_id in receipt_path.read_text(encoding="utf-8")
+
+    # 4. Verify-only then activate ephemeral PV1. token
+    tok = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-T4-BUYER",
+        label=f"Годовая подписка ({order_id})",
+    )
+    ui.verify_checkout_token_only(tok)
+    assert "PV-T4-BUYER" in ui.get_checkout_token_diagnostics()
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    ui.activate_checkout_token()
+    assert ui.get_checkout_unlocked_panel().is_visible()
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") == tok
+
+    # 5. Download .pvkey & extension ZIP, verify HTTP 200 & PKZIP integrity
+    pvkey_path = ui.download_checkout_pvkey(pro_raw_session.io.downloads)
+    assert pvkey_path.suffix.lower() == ".pvkey" and tok in pvkey_path.read_text(encoding="utf-8")
+
+    zip_path = ui.download_checkout_extension_zip(pro_raw_session.io.downloads)
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        assert zf.testzip() is None
+        names = set(zf.namelist())
+        assert {"manifest.json", "dist/popup.bundle.js"}.issubset(names)
+        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+        assert manifest.get("manifest_version") == 3
+
+    with urllib.request.urlopen(f"{base}/downloads/promptveil-pro-extension.zip", timeout=5.0) as resp:
+        assert int(resp.status) == 200
+        with zipfile.ZipFile(io.BytesIO(resp.read()), "r") as zf_http:
+            assert zf_http.testzip() is None
+
+    # 6. Return to / and exercise unlocked Pro workbench (.docx batch + custom profile + pack)
+    pro_raw_session.net.phase = "load"
+    ui.return_to_workbench_from_checkout()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    ui.create_rulebook_profile("Аудит Соколовой")
+    ui.apply_industry_word_pack("corporate_ma")
+    ui.close_open_drawer()
+
+    docx_p = make_synthetic_docx(
+        pro_raw_session.io.uploads / "buyer_audit.docx",
+        paragraphs=["Контакт клиента: buyer.secret@example.ru"],
+    )
+    ui.upload_files([docx_p])
+    assert len(ui.get_batch_queue_items()) == 1
+    assert "buyer.secret@example.ru" not in ui.get_batch_queue_panel().inner_text()
+    ui.click_batch_rehydrate()
+    assert "buyer.secret@example.ru" in ui.get_rehydrate_output_text()
+
+    verify_allowed_local_storage_keys(page)
+    verify_russian_purity(page)
+
+    for req in pro_raw_session.net.requests:
+        hay = f"{req.url} {req.post_data or ''}"
+        for sensitive in (tok, "elena.buyer@example.ru", "Елена Соколова", "buyer.secret@example.ru"):
+            assert sensitive not in hay
+    pro_raw_session.net.assert_zero_egress(
+        [tok, "elena.buyer@example.ru", "buyer.secret@example.ru", "PV-T4-BUYER"]
+    )
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T4_11_en_buyer_fragment_code_pvkey_upload_and_mobile_checkout_workflow(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    # 1. Mobile 390x844 on /en/ -> /en/pro/
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/en/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    verify_responsive_layout(page, 390, 844)
+    ui.open_pricing()
+    pro_raw_session.net.phase = "load"
+    ui.open_pro_checkout_from_pricing()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert page.url.rstrip("/").endswith("/en/pro")
+    assert ui.get_document_lang().lower() == "en"
+    verify_responsive_layout(page, 390, 844)
+    verify_responsive_layout(page, 1440, 900)
+
+    # 2. Submit EN order
+    ui.select_checkout_plan("pro-lifetime")
+    ui.select_checkout_payment("invoice")
+    ui.fill_checkout_buyer(
+        name="Alice Mercer",
+        email="alice.mercer@example.com",
+        company="Mercer Legal LLC",
+        accept_terms=True,
+    )
+    ui.submit_checkout_order()
+    assert ui.get_checkout_order_panel().is_visible()
+    assert ui.get_checkout_order_id().startswith("PV-ORD-")
+
+    # 3. #code=PV1... fragment auto-fill & auto-verify without HTTP transmission
+    tok = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-T4-FRAG",
+        label="Alice Mercer Fragment",
+    )
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/en/pro/#code={tok}", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    page.wait_for_timeout(250)
+
+    inp = page.locator("[data-testid='checkout-token-input'], #checkout-token-input").first
+    assert tok in inp.input_value()
+    assert "PV-T4-FRAG" in ui.get_checkout_token_diagnostics()
+
+    for req in pro_raw_session.net.requests:
+        hay = f"{req.url} {req.post_data or ''}"
+        assert tok not in hay
+        assert "#code=" not in hay
+
+    # 4. Clear input & upload .pvkey file -> activate
+    ui.enter_checkout_token("")
+    pvkey_file = pro_raw_session.io.uploads / "mercer.pvkey"
+    pvkey_file.write_text(f"# PromptVeil Pro License\n{tok}\n", encoding="utf-8")
+    ui.upload_checkout_pvkey(pvkey_file)
+    assert tok in inp.input_value()
+
+    if page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") != tok:
+        ui.activate_checkout_token()
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    # 5. Return to /en/ and execute Pro prompt template
+    pro_raw_session.net.phase = "load"
+    ui.return_to_workbench_from_checkout()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert ui.get_pro_badge_text() == "Pro Active"
+    ui.click_prompt_template("contract_review")
+    assert ui.get_sanitize_output_text().strip()
+
+    verify_allowed_local_storage_keys(page)
+    pro_raw_session.net.assert_zero_egress(["alice.mercer@example.com", "PV-T4-FRAG", tok])
+    pro_raw_session.console.assert_no_errors()

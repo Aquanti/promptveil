@@ -325,6 +325,42 @@ export function base64UrlToBytes(b64u) {
   return out;
 }
 
+const PV1_EXTRACT_RE =
+  /(?:^|[^A-Za-z0-9_-])(PV1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)(?![A-Za-z0-9_=-]|\.[A-Za-z0-9_-])/;
+
+function safeDecodePercentSequences(text) {
+  return text.replace(/%(?:[0-9A-Fa-f]{2})+/g, (seq) => {
+    try {
+      return decodeURIComponent(seq);
+    } catch {
+      return seq;
+    }
+  });
+}
+
+export function extractProToken(rawText) {
+  if (typeof rawText !== "string" || rawText.trim().length === 0) {
+    return "";
+  }
+  const directMatch = rawText.match(PV1_EXTRACT_RE);
+  if (directMatch) {
+    return directMatch[1];
+  }
+  if (rawText.includes("%")) {
+    let decoded = "";
+    try {
+      decoded = decodeURIComponent(rawText);
+    } catch {
+      decoded = safeDecodePercentSequences(rawText);
+    }
+    const decodedMatch = decoded.match(PV1_EXTRACT_RE);
+    if (decodedMatch) {
+      return decodedMatch[1];
+    }
+  }
+  return "";
+}
+
 export function createFreeLicenseState(reason = "none") {
   return {
     valid: false,
@@ -355,10 +391,131 @@ function parseExpirationMs(exp) {
   return NaN;
 }
 
-export async function verifyProLicenseToken(
-  token,
-  { publicKeyB64U = PRO_PUBLIC_KEY_B64U, nowMs = Date.now() } = {}
-) {
+function isValidProPayloadObject(payload) {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      payload.v === 1 &&
+      (payload.tier === "pro" || payload.tier === "owner") &&
+      typeof payload.keyId === "string" &&
+      payload.keyId.trim().length > 0 &&
+      typeof payload.label === "string" &&
+      payload.label.trim().length > 0 &&
+      typeof payload.issuedAt === "string" &&
+      !Number.isNaN(Date.parse(payload.issuedAt))
+  );
+}
+
+export function decodeProTokenPayloadUnsafe(rawText) {
+  const extracted = extractProToken(rawText);
+  const candidate = extracted || (typeof rawText === "string" ? rawText.trim() : "");
+  if (!candidate) {
+    return { ok: false, token: "", payload: null, claims: null, reason: "empty" };
+  }
+
+  const parts = candidate.split(".");
+  if (parts.length !== 3 || parts[0] !== "PV1") {
+    return { ok: false, token: "", payload: null, claims: null, reason: "format" };
+  }
+  const [, payloadB64U, sigB64U] = parts;
+  const payloadBytes = base64UrlToBytes(payloadB64U);
+  const sigBytes = base64UrlToBytes(sigB64U);
+  if (!payloadBytes || !sigBytes) {
+    return { ok: false, token: "", payload: null, claims: null, reason: "encoding" };
+  }
+  if (sigBytes.length !== 64) {
+    return { ok: false, token: "", payload: null, claims: null, reason: "length" };
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(payloadBytes));
+  } catch {
+    return { ok: false, token: "", payload: null, claims: null, reason: "payload" };
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { ok: false, token: "", payload: null, claims: null, reason: "payload" };
+  }
+
+  const expMs = parseExpirationMs(payload.exp);
+  const schemaValid = isValidProPayloadObject(payload) && (expMs === null || !Number.isNaN(expMs));
+
+  return {
+    ok: true,
+    token: candidate,
+    payload,
+    claims: {
+      v: payload.v ?? null,
+      tier: typeof payload.tier === "string" ? payload.tier : "",
+      keyId: typeof payload.keyId === "string" ? payload.keyId.trim() : "",
+      label: typeof payload.label === "string" ? payload.label.trim() : "",
+      issuedAt: typeof payload.issuedAt === "string" ? payload.issuedAt : "",
+      exp: payload.exp ?? null,
+      plan: typeof payload.plan === "string" ? payload.plan.trim() : "",
+      orderId: typeof payload.orderId === "string" ? payload.orderId.trim() : "",
+      schemaValid,
+    },
+    reason: "unverified",
+  };
+}
+
+function sanitizePvKeyHeaderValue(value) {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  return String(value)
+    .replace(/[\r\n]+/g, " ")
+    .replace(/PV1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[REDACTED]")
+    .trim();
+}
+
+export function formatPvKeyFileContent(token, meta = {}) {
+  const cleanToken = extractProToken(token);
+  if (!cleanToken) {
+    return "";
+  }
+  const decoded = decodeProTokenPayloadUnsafe(cleanToken);
+  const claims = decoded.ok && decoded.claims ? decoded.claims : {};
+
+  const keyId = sanitizePvKeyHeaderValue(meta.keyId ?? claims.keyId);
+  const tier = sanitizePvKeyHeaderValue(meta.tier ?? claims.tier);
+  const label = sanitizePvKeyHeaderValue(meta.label ?? claims.label);
+  const plan = sanitizePvKeyHeaderValue(meta.plan ?? claims.plan);
+  const orderId = sanitizePvKeyHeaderValue(meta.orderId ?? claims.orderId);
+  const issuedAt = sanitizePvKeyHeaderValue(meta.issuedAt ?? claims.issuedAt);
+  const rawExp = meta.exp !== undefined ? meta.exp : claims.exp;
+  const expText =
+    rawExp === undefined || rawExp === null || rawExp === ""
+      ? "never"
+      : sanitizePvKeyHeaderValue(rawExp);
+  const note = sanitizePvKeyHeaderValue(meta.note);
+
+  const lines = [
+    "# PromptVeil Pro Offline License Key",
+    "# Format: PromptVeil Offline License (PV1)",
+  ];
+  if (keyId) lines.push(`# Key ID: ${keyId}`);
+  if (tier) lines.push(`# Tier: ${tier}`);
+  if (label) lines.push(`# Label: ${label}`);
+  if (plan) lines.push(`# Plan: ${plan}`);
+  if (orderId) lines.push(`# Order: ${orderId}`);
+  if (issuedAt) lines.push(`# Issued At: ${issuedAt}`);
+  lines.push(`# Expires At: ${expText}`);
+  if (note) lines.push(`# Note: ${note}`);
+  lines.push(cleanToken);
+  return `${lines.join("\n")}\n`;
+}
+
+export async function verifyProLicenseToken(token, options = {}) {
+  const safeOptions = options && typeof options === "object" ? options : {};
+  const publicKeyB64U =
+    safeOptions.publicKeyB64U === undefined ? PRO_PUBLIC_KEY_B64U : safeOptions.publicKeyB64U;
+  const nowMs = safeOptions.nowMs === undefined ? Date.now() : safeOptions.nowMs;
+  if (typeof nowMs !== "number" || !Number.isFinite(nowMs) || Math.abs(nowMs) > 8.64e15) {
+    return createFreeLicenseState("invalid_now");
+  }
+
   const trimmed = typeof token === "string" ? token.trim() : "";
   if (!trimmed) {
     return createFreeLicenseState("empty");
@@ -418,19 +575,7 @@ export async function verifyProLicenseToken(
     return createFreeLicenseState("payload");
   }
 
-  if (
-    !payload ||
-    typeof payload !== "object" ||
-    Array.isArray(payload) ||
-    payload.v !== 1 ||
-    (payload.tier !== "pro" && payload.tier !== "owner") ||
-    typeof payload.keyId !== "string" ||
-    payload.keyId.trim().length === 0 ||
-    typeof payload.label !== "string" ||
-    payload.label.trim().length === 0 ||
-    typeof payload.issuedAt !== "string" ||
-    Number.isNaN(Date.parse(payload.issuedAt))
-  ) {
+  if (!isValidProPayloadObject(payload)) {
     return createFreeLicenseState("payload");
   }
 
@@ -466,6 +611,18 @@ export async function verifyProLicenseToken(
   };
 }
 
+export async function inspectProLicenseToken(rawText, options = {}) {
+  const extractedToken = extractProToken(rawText);
+  const candidate = extractedToken || (typeof rawText === "string" ? rawText.trim() : "");
+  const verification = await verifyProLicenseToken(candidate, options);
+  const decoded = candidate ? decodeProTokenPayloadUnsafe(candidate) : null;
+  return {
+    ...verification,
+    extractedToken,
+    unverifiedClaims: decoded?.ok ? decoded.claims : null,
+  };
+}
+
 export function loadStoredProLicenseToken() {
   try {
     if (typeof window !== "undefined" && window.localStorage) {
@@ -488,11 +645,12 @@ export function saveStoredProLicenseToken(token) {
       } else {
         window.localStorage.removeItem(PRO_LICENSE_STORAGE_KEY);
       }
+      return true;
     }
   } catch {
     // Ignore storage quota/security error; keep memoryFallbackToken.
   }
-  return clean;
+  return false;
 }
 
 export function clearStoredProLicenseToken() {
@@ -521,7 +679,11 @@ export async function loadActiveProLicense(options = {}) {
 export async function activateProLicense(token, options = {}) {
   const result = await verifyProLicenseToken(token, options);
   if (result.valid) {
-    saveStoredProLicenseToken(result.token);
+    const persisted = saveStoredProLicenseToken(result.token);
+    return {
+      ...result,
+      persisted,
+    };
   }
   return result;
 }

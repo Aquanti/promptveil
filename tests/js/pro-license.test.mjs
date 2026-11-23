@@ -9,7 +9,12 @@ import {
   activateProLicense,
   base64UrlToBytes,
   deactivateProLicense,
+  decodeProTokenPayloadUnsafe,
+  extractProToken,
+  formatPvKeyFileContent,
+  inspectProLicenseToken,
   loadActiveProLicense,
+  saveStoredProLicenseToken,
   verifyEd25519PureJs,
   verifyProLicenseToken,
 } from "../../app/static/js/pro-license.js";
@@ -430,5 +435,268 @@ describe("PromptVeil M1 R2 Ed25519 Pro License Verifier", () => {
     const paddedRes = await verifyProLicenseToken(`${validTok}=`, { publicKeyB64U: pubA });
     assert.equal(paddedRes.valid, false);
     assert.equal(paddedRes.reason, "encoding");
+  });
+
+  test("extractProToken extracts PV1 tokens from raw text, markdown, receipts, .pvkey, and URL fragments while rejecting malformed forms", () => {
+    const token = signProToken(
+      {
+        v: 1,
+        tier: "pro",
+        keyId: "TEST-EXTRACT-01",
+        label: "Extract Test",
+        issuedAt: "2026-11-21T10:00:00.000Z",
+      },
+      keyPairA.privateKey
+    );
+
+    assert.equal(extractProToken(token), token);
+    assert.equal(extractProToken(`  \n\t${token}\r\n  `), token);
+    assert.equal(extractProToken(`Use key \`${token}\` to activate.`), token);
+    assert.equal(extractProToken(`\`\`\`\n${token}\n\`\`\``), token);
+    assert.equal(
+      extractProToken(
+        `Order: PV-ORD-2026-11\n# Comment line PV1\nActivation Key: ${token}\nThank you!`
+      ),
+      token
+    );
+    assert.equal(extractProToken(`#code=${token}&lang=en`), token);
+
+    const pctToken = token.replace(/\./g, "%2E");
+    assert.equal(extractProToken(`https://example.invalid/pro/#code=${pctToken}&lang=ru`), token);
+    assert.equal(extractProToken(`#code%3D${pctToken}`), token);
+    assert.equal(extractProToken(`Save 100% off today! #code%3D${pctToken}&ok=1`), token);
+
+    assert.equal(extractProToken(""), "");
+    assert.equal(extractProToken(null), "");
+    assert.equal(extractProToken(12345), "");
+    assert.equal(extractProToken("PV2.abc.def"), "");
+    assert.equal(extractProToken("pv1.abc.def"), "");
+    assert.equal(extractProToken("PV1.abc"), "");
+    assert.equal(extractProToken("PV1.abc+def.ghi"), "");
+    assert.equal(extractProToken(`${token}=`), "");
+    assert.equal(extractProToken(`${token}.extra`), "");
+    assert.equal(extractProToken(`prefix${token}`), "");
+    assert.equal(extractProToken(`#code=${pctToken}%3D`), "");
+  });
+
+  test("decodeProTokenPayloadUnsafe decodes claims with reason unverified and detects invalid structure", () => {
+    const payloadObj = {
+      v: 1,
+      tier: "pro",
+      keyId: "TEST-DECODE-01",
+      label: "Decode Test",
+      issuedAt: "2026-11-21T10:00:00.000Z",
+      exp: "2027-11-21T10:00:00.000Z",
+      plan: "pro-annual",
+      orderId: "PV-ORD-42",
+    };
+    const payloadB64U = Buffer.from(JSON.stringify(payloadObj), "utf8").toString("base64url");
+    const sig = cryptoSign(null, Buffer.from(`PV1.${payloadB64U}`, "utf8"), keyPairA.privateKey);
+    const customTok = `PV1.${payloadB64U}.${Buffer.from(sig).toString("base64url")}`;
+
+    const decoded = decodeProTokenPayloadUnsafe(`#code=${customTok}`);
+    assert.equal(decoded.ok, true);
+    assert.equal(decoded.reason, "unverified");
+    assert.equal(decoded.token, customTok);
+    assert.equal(decoded.claims.schemaValid, true);
+    assert.equal(decoded.claims.keyId, "TEST-DECODE-01");
+    assert.equal(decoded.claims.plan, "pro-annual");
+    assert.equal(decoded.claims.orderId, "PV-ORD-42");
+
+    assert.equal(decodeProTokenPayloadUnsafe("").reason, "empty");
+    assert.equal(decodeProTokenPayloadUnsafe("PV2.abc.def").reason, "format");
+    assert.equal(decodeProTokenPayloadUnsafe("PV1.abc+def.ghi").reason, "encoding");
+    assert.equal(decodeProTokenPayloadUnsafe("PV1.YWJj.ZGVm").reason, "length");
+
+    const badJsonB64U = Buffer.from("{bad-json", "utf8").toString("base64url");
+    const badJsonSig = Buffer.from(
+      cryptoSign(null, Buffer.from(`PV1.${badJsonB64U}`, "utf8"), keyPairA.privateKey)
+    ).toString("base64url");
+    assert.equal(decodeProTokenPayloadUnsafe(`PV1.${badJsonB64U}.${badJsonSig}`).reason, "payload");
+
+    const badSchemaB64U = Buffer.from(
+      JSON.stringify({ v: 2, tier: "admin", keyId: "X", label: "Y", issuedAt: "2026-01-01T00:00:00Z" }),
+      "utf8"
+    ).toString("base64url");
+    const badSchemaSig = Buffer.from(
+      cryptoSign(null, Buffer.from(`PV1.${badSchemaB64U}`, "utf8"), keyPairA.privateKey)
+    ).toString("base64url");
+    const badSchemaRes = decodeProTokenPayloadUnsafe(`PV1.${badSchemaB64U}.${badSchemaSig}`);
+    assert.equal(badSchemaRes.ok, true);
+    assert.equal(badSchemaRes.reason, "unverified");
+    assert.equal(badSchemaRes.claims.schemaValid, false);
+  });
+
+  test("formatPvKeyFileContent formats sanitized .pvkey files round-tripping cleanly with extractProToken", async () => {
+    const token = signProToken(
+      {
+        v: 1,
+        tier: "pro",
+        keyId: "TEST-PVKEY-01",
+        label: "PVKey Test",
+        issuedAt: "2026-11-21T10:00:00.000Z",
+      },
+      keyPairA.privateKey
+    );
+
+    const content = formatPvKeyFileContent(token, {
+      plan: "pro-annual",
+      orderId: "PV-ORD-77",
+      label: "Line1\r\n# FakeHeader: injected",
+      note: "Do not leak PV1.abc.def inside comments",
+    });
+    assert.ok(content.endsWith(`${token}\n`));
+    const commentLines = content.split("\n").filter((l) => l.startsWith("#"));
+    assert.ok(commentLines.some((l) => l.includes("# Key ID: TEST-PVKEY-01")));
+    assert.ok(commentLines.some((l) => l.includes("# Order: PV-ORD-77")));
+    assert.equal(commentLines.some((l) => l.startsWith("# FakeHeader:")), false);
+    assert.equal(commentLines.some((l) => /PV1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(l)), false);
+
+    const extracted = extractProToken(content);
+    assert.equal(extracted, token);
+    const verified = await verifyProLicenseToken(extracted, { publicKeyB64U: pubA });
+    assert.equal(verified.valid, true);
+    assert.equal(verified.keyId, "TEST-PVKEY-01");
+
+    assert.equal(formatPvKeyFileContent(""), "");
+    assert.equal(formatPvKeyFileContent("not-a-token"), "");
+  });
+
+  test("inspectProLicenseToken combines extraction, strict verification, and unverified claim inspection", async () => {
+    const token = signProToken(
+      {
+        v: 1,
+        tier: "owner",
+        keyId: "TEST-INSPECT-01",
+        label: "Inspect Test",
+        issuedAt: "2026-11-21T10:00:00.000Z",
+      },
+      keyPairA.privateKey
+    );
+    const pvkey = formatPvKeyFileContent(token, { orderId: "PV-ORD-900" });
+    assert.ok(pvkey.includes("# Order: PV-ORD-900"));
+
+    const okRes = await inspectProLicenseToken(pvkey, { publicKeyB64U: pubA });
+    assert.equal(okRes.valid, true);
+    assert.equal(okRes.isOwner, true);
+    assert.equal(okRes.extractedToken, token);
+    assert.equal(okRes.unverifiedClaims?.keyId, "TEST-INSPECT-01");
+    assert.equal(okRes.unverifiedClaims?.label, "Inspect Test");
+
+    const wrongKeyRes = await inspectProLicenseToken(`#code=${token}`, { publicKeyB64U: pubB });
+    assert.equal(wrongKeyRes.valid, false);
+    assert.equal(wrongKeyRes.isPro, false);
+    assert.equal(wrongKeyRes.keyId, "");
+    assert.equal(wrongKeyRes.reason, "signature");
+    assert.equal(wrongKeyRes.extractedToken, token);
+    assert.equal(wrongKeyRes.unverifiedClaims?.keyId, "TEST-INSPECT-01");
+
+    assert.equal((await inspectProLicenseToken("", { publicKeyB64U: pubA })).reason, "empty");
+    assert.equal((await inspectProLicenseToken("bad", { publicKeyB64U: pubA })).reason, "format");
+    assert.equal(
+      (await inspectProLicenseToken("PV1.abc+def.ghi", { publicKeyB64U: pubA })).reason,
+      "encoding"
+    );
+    assert.equal(
+      (await inspectProLicenseToken(`${token}=`, { publicKeyB64U: pubA })).reason,
+      "encoding"
+    );
+  });
+
+  test("verifyProLicenseToken fails closed on non-finite, null, string, or out-of-range nowMs options", async () => {
+    const expiredToken = signProToken(
+      {
+        v: 1,
+        tier: "pro",
+        keyId: "TEST-NOWMS-EXP",
+        label: "Expired NowMs Regression",
+        issuedAt: "2020-01-01T00:00:00.000Z",
+        exp: "2020-02-01T00:00:00.000Z",
+      },
+      keyPairA.privateKey
+    );
+    const lifetimeToken = signProToken(
+      {
+        v: 1,
+        tier: "owner",
+        keyId: "TEST-NOWMS-LIFE",
+        label: "Lifetime NowMs Regression",
+        issuedAt: "2026-11-21T10:00:00.000Z",
+      },
+      keyPairA.privateKey
+    );
+
+    const invalidNowValues = [
+      Number.NaN,
+      null,
+      Number.NEGATIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+      "2099-01-01",
+      8.64e15 + 1,
+      -8.64e15 - 1,
+      true,
+      {},
+    ];
+
+    for (const badNow of invalidNowValues) {
+      const expRes = await verifyProLicenseToken(expiredToken, {
+        publicKeyB64U: pubA,
+        nowMs: badNow,
+      });
+      assert.equal(expRes.valid, false, `Expected expired token to fail closed for nowMs=${String(badNow)}`);
+      assert.equal(expRes.isPro, false);
+      assert.equal(expRes.isOwner, false);
+      assert.equal(expRes.reason, "invalid_now");
+
+      const lifeRes = await verifyProLicenseToken(lifetimeToken, {
+        publicKeyB64U: pubA,
+        nowMs: badNow,
+      });
+      assert.equal(lifeRes.valid, false, `Expected lifetime token to fail closed for nowMs=${String(badNow)}`);
+      assert.equal(lifeRes.isPro, false);
+      assert.equal(lifeRes.reason, "invalid_now");
+    }
+
+    // Explicit undefined defaults cleanly to Date.now()
+    const expiredDefaultNow = await verifyProLicenseToken(expiredToken, {
+      publicKeyB64U: pubA,
+      nowMs: undefined,
+    });
+    assert.equal(expiredDefaultNow.valid, false);
+    assert.equal(expiredDefaultNow.reason, "expired");
+
+    const lifetimeDefaultNow = await verifyProLicenseToken(lifetimeToken, {
+      publicKeyB64U: pubA,
+      nowMs: undefined,
+    });
+    assert.equal(lifetimeDefaultNow.valid, true);
+  });
+
+  test("saveStoredProLicenseToken & activateProLicense return persisted boolean reflecting storage availability", async () => {
+    const token = signProToken(
+      {
+        v: 1,
+        tier: "pro",
+        keyId: "TEST-PERSIST-01",
+        label: "Persist Check",
+        issuedAt: "2026-11-21T10:00:00.000Z",
+      },
+      keyPairA.privateKey
+    );
+
+    const ls = createMemoryLocalStorage();
+    globalThis.window = { localStorage: ls, location: { pathname: "/" } };
+    assert.equal(saveStoredProLicenseToken(token), true);
+    assert.equal(ls.getItem(PRO_LICENSE_STORAGE_KEY), token);
+
+    const okAct = await activateProLicense(token, { publicKeyB64U: pubA });
+    assert.equal(okAct.valid, true);
+    assert.equal(okAct.persisted, true);
+
+    globalThis.window = { localStorage: createThrowingStorage(), location: { pathname: "/" } };
+    assert.equal(saveStoredProLicenseToken(token), false);
+    const quotaAct = await activateProLicense(token, { publicKeyB64U: pubA });
+    assert.equal(quotaAct.valid, true);
+    assert.equal(quotaAct.persisted, false);
   });
 });

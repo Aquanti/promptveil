@@ -37,7 +37,7 @@ test("manifest.json complies with MV3 minimal permissions, 6 AI hosts, and stric
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.name, "PromptVeil");
-  assert.equal(manifest.version, "2.1.0");
+  assert.equal(manifest.version, "2.2.0");
   assert.deepEqual(manifest.permissions, ["storage", "activeTab"]);
   assert.equal(manifest.host_permissions, undefined);
 
@@ -161,5 +161,64 @@ test("i18n-ext.js provides 100% RU/EN key parity and exact action labels", () =>
     assert.equal(EXTENSION_STRINGS.ru[key].trim().length > 0, true, `Empty RU string: ${key}`);
     assert.equal(EXTENSION_STRINGS.en[key].trim().length > 0, true, `Empty EN string: ${key}`);
     assert.equal(/\bRAM\b/.test(EXTENSION_STRINGS.ru[key]), false, `RU string must not use "RAM": ${key}`);
+    const ruPlaceholders = Array.from(EXTENSION_STRINGS.ru[key].matchAll(/\{([a-zA-Z0-9_]+)\}/g))
+      .map((m) => m[1])
+      .sort();
+    const enPlaceholders = Array.from(EXTENSION_STRINGS.en[key].matchAll(/\{([a-zA-Z0-9_]+)\}/g))
+      .map((m) => m[1])
+      .sort();
+    assert.deepEqual(ruPlaceholders, enPlaceholders, `Placeholder mismatch for i18n key: ${key}`);
   }
+});
+
+test("popup.html exposes required M3 Pro hooks, void <input> tags, and double-quoted attributes", () => {
+  const html = fs.readFileSync(path.join(EXT_DIR, "popup.html"), "utf8");
+
+  const requiredIds = [
+    "popup-categories-lock",
+    "popup-categories-pro-hint",
+    "popup-packs-lock",
+    "popup-custom-alert",
+    "popup-pro-paste-btn",
+    "popup-pro-file-input",
+    "popup-pro-file-btn",
+    "popup-pro-key-input",
+    "popup-pro-alert",
+    "popup-pro-diagnostics",
+    "popup-pro-activate-btn",
+    "popup-pro-verify-btn",
+    "popup-pro-remove-btn",
+  ];
+  for (const id of requiredIds) {
+    assert.equal(html.includes(`id="${id}"`), true, `Missing required popup element #${id}`);
+  }
+
+  assert.equal(
+    /<button\b[^>]*id="popup-categories-lock"/.test(html),
+    true,
+    "#popup-categories-lock must be a <button>"
+  );
+  assert.equal(
+    /<button\b[^>]*id="popup-packs-lock"/.test(html),
+    true,
+    "#popup-packs-lock must be a <button>"
+  );
+  assert.equal(/<\/input>/i.test(html), false, "popup.html must not contain </input> closing tags");
+  assert.equal(
+    /<input\b[^>]*id="popup-pro-file-input"[^>]*accept="\.pvkey,\.txt,text\/plain"[^>]*\/?>/s.test(
+      html
+    ),
+    true,
+    "#popup-pro-file-input must accept .pvkey,.txt,text/plain"
+  );
+  assert.equal(
+    /=[ \t]*'[^']*'/.test(html),
+    false,
+    "popup.html attributes must use double quotes for buildPopupDomFromHtml() compatibility"
+  );
+  assert.equal(
+    /PV1\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{32,}/.test(html),
+    false,
+    "popup.html must not contain long PV1. token literals"
+  );
 });

@@ -1,4 +1,4 @@
-"""Product Acceptance Gate Tests (R1..R6 + Stages A-E: ACC-01..ACC-16)."""
+"""Product Acceptance Gate Tests (R1..R6 + Stages A-E: ACC-01..ACC-18)."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from conftest import (
     EphemeralProKeys,
     STATIC_APP_DIR,
     TempIODirs,
+    install_pro_key_route,
     start_static_dir_server,
 )
 from doc_fixtures import (
@@ -1706,3 +1707,271 @@ def test_ACC_16_extension_zip_pro_downloads_profiles_and_templates(
 
     pro_e2e_session.net.assert_zero_egress(["AccSecretTerm"])
     pro_e2e_session.console.assert_no_errors()
+
+
+def test_ACC_17_r1_pro_checkout_routes_csp_ru_en_parity_and_static_netlify_server(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+    playwright_browser: Browser,
+) -> None:
+    """R1 Acceptance: /pro/ & /en/pro/ CSP, Netlify static parity, RU purity, zero PAN/CVV, order & activation."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    # 1. Verify CSP & security headers on active server and fresh Netlify static-only server
+    verify_csp_and_security_headers(f"{base}/pro/")
+    verify_csp_and_security_headers(f"{base}/en/pro/")
+    with start_static_dir_server(STATIC_APP_DIR) as static_url:
+        verify_csp_and_security_headers(f"{static_url}/pro/")
+        verify_csp_and_security_headers(f"{static_url}/en/pro/")
+
+        static_ctx = playwright_browser.new_context(
+            accept_downloads=True,
+            viewport={"width": 1440, "height": 900},
+            service_workers="block",
+        )
+        install_pro_key_route(static_ctx, ephemeral_pro_keys.public_key_b64u)
+        static_page = static_ctx.new_page()
+        static_net = NetworkMonitor(page=static_page)
+        static_console = ConsoleErrorMonitor(page=static_page)
+        static_net.attach()
+        static_console.attach()
+        try:
+            for route, expected_lang in (("/pro/", "ru"), ("/en/pro/", "en")):
+                static_net.phase = "load"
+                static_page.goto(f"{static_url.rstrip('/')}{route}", wait_until="networkidle")
+                static_net.assert_clean_load()
+                static_net.start_interactive_phase()
+                assert static_page.evaluate("() => (document.documentElement.lang || '').toLowerCase()") == expected_lang
+                if expected_lang == "ru":
+                    verify_russian_purity(static_page)
+            static_console.assert_no_errors()
+        finally:
+            static_console.detach()
+            static_net.detach()
+            static_page.close()
+            static_ctx.close()
+
+    # 2. Active server /pro/ hreflang, RU purity, zero raw PAN/CVV, responsive light & dark
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert ui.get_document_lang().lower() == "ru"
+    verify_russian_purity(page)
+    hreflangs = page.evaluate(
+        "() => Array.from(document.querySelectorAll('link[rel=\"alternate\"][hreflang]')).map(el => el.getAttribute('hreflang'))"
+    )
+    assert {"ru", "en", "x-default"}.issubset(set(hreflangs))
+    assert (
+        page.locator(
+            "input[autocomplete*='cc-'], input[name*='cardnumber' i], input[name*='cvv' i], input[name*='cvc' i]"
+        ).count()
+        == 0
+    )
+
+    verify_responsive_layout(page, 1440, 900)
+    verify_responsive_layout(page, 390, 844)
+    page.locator("[data-testid='theme-toggle-btn'], #theme-toggle-btn").first.click()
+    assert page.evaluate("() => document.documentElement.dataset.theme") == "dark"
+    verify_responsive_layout(page, 390, 844)
+    page.locator("[data-testid='theme-toggle-btn'], #theme-toggle-btn").first.click()
+    verify_responsive_layout(page, 1440, 900)
+
+    # 3. Invalid buyer rejection & valid order receipt
+    ui.fill_checkout_buyer(name="Ирина", email="bad-email", accept_terms=False)
+    ui.submit_checkout_order()
+    assert not page.locator("[data-testid='checkout-order-panel'], #checkout-order-panel").is_visible()
+
+    ui.select_checkout_plan("pro-annual")
+    ui.select_checkout_payment("sbp")
+    ui.fill_checkout_buyer(
+        name="Ирина Волкова",
+        email="irina.acc17@example.ru",
+        accept_terms=True,
+    )
+    ui.submit_checkout_order()
+    order_id = ui.get_checkout_order_id()
+    assert re.match(r"^PV-ORD-[A-Za-z0-9-]+$", order_id)
+    ui.copy_checkout_receipt()
+    receipt_file = ui.download_checkout_receipt(pro_raw_session.io.downloads)
+    assert order_id in receipt_file.read_text(encoding="utf-8")
+
+    # 4. Invalid token rejection & valid ephemeral PV1. activation + .pvkey + .zip
+    ui.activate_checkout_token("PV1.bad.sig")
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+    assert not page.locator("[data-testid='checkout-pro-unlocked'], #checkout-pro-unlocked").is_visible()
+
+    tok = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-ACC-17-RU",
+        label="Волкова Приёмка",
+    )
+    ui.activate_checkout_token(tok)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") == tok
+
+    dl_pvkey = ui.download_checkout_pvkey(pro_raw_session.io.downloads)
+    assert tok in dl_pvkey.read_text(encoding="utf-8")
+    dl_zip = ui.download_checkout_extension_zip(pro_raw_session.io.downloads)
+    with zipfile.ZipFile(dl_zip, "r") as zf:
+        assert zf.testzip() is None
+        assert "manifest.json" in zf.namelist()
+
+    verify_allowed_local_storage_keys(page)
+    for req in pro_raw_session.net.requests:
+        hay = f"{req.url} {req.post_data or ''}"
+        for secret in (tok, "irina.acc17@example.ru", "Ирина Волкова", order_id):
+            assert secret not in hay
+    pro_raw_session.net.assert_zero_egress([tok, "irina.acc17@example.ru", order_id, "PV-ACC-17-RU"])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_ACC_18_r1_r3_end_to_end_checkout_unlocks_workbench_and_extension_zip(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R1->R2->R3 Acceptance: / -> /pro/ -> checkout -> PV1. -> .zip -> Pro batch & Proof -> /en/pro/#code= -> Free."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    expected_domains = (
+        "chatgpt.com",
+        "claude.ai",
+        "gemini.google.com",
+        "chat.deepseek.com",
+        "giga.chat",
+        "alice.yandex.ru",
+    )
+
+    # 1. RU: / -> #pricing-pro-checkout-link -> /pro/ -> checkout -> activate -> .pvkey & .zip
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    ui.open_pricing()
+    pro_raw_session.net.phase = "load"
+    ui.open_pro_checkout_from_pricing()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    assert page.url.rstrip("/").endswith("/pro")
+
+    ui.select_checkout_plan("pro-monthly")
+    ui.select_checkout_payment("card")
+    ui.fill_checkout_buyer(
+        name="Артём Громов",
+        email="artem.acc18@example.ru",
+        accept_terms=True,
+    )
+    ui.submit_checkout_order()
+    assert ui.get_checkout_order_id().startswith("PV-ORD-")
+
+    tok_ru = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-ACC-CHK-RU",
+        label="Громов Приёмка",
+    )
+    ui.activate_checkout_token(tok_ru)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    pvkey_ru = ui.download_checkout_pvkey(pro_raw_session.io.downloads)
+    assert tok_ru in pvkey_ru.read_text(encoding="utf-8")
+
+    zip_ru = ui.download_checkout_extension_zip(pro_raw_session.io.downloads)
+    with zipfile.ZipFile(zip_ru, "r") as zf:
+        assert zf.testzip() is None
+        names = set(zf.namelist())
+        assert {"manifest.json", "dist/popup.bundle.js"}.issubset(names)
+        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+        assert manifest.get("manifest_version") == 3
+        all_hosts = " ".join(
+            list(manifest.get("host_permissions", []))
+            + [m for cs in (manifest.get("content_scripts") or []) for m in cs.get("matches", [])]
+        )
+        for dom in expected_domains:
+            assert dom in all_hosts
+        for member in zf.namelist():
+            if member.endswith((".js", ".json", ".html", ".css", ".txt")):
+                body = zf.read(member).decode("utf-8", errors="replace")
+                for marker in ("BEGIN PRIVATE KEY", "PV-CLIENT-"):
+                    assert marker not in body
+                assert re.search(r"PV1\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}", body) is None
+
+    # 2. Return to / -> verify Pro Active, process .docx batch, Zero-Retention Proof & RU purity
+    pro_raw_session.net.phase = "load"
+    ui.return_to_workbench_from_checkout()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    assert ui.get_pro_badge_text() == "Pro Активен"
+
+    batch_doc = make_synthetic_docx(
+        pro_raw_session.io.uploads / "acc18_batch.docx",
+        paragraphs=["Confidential contact acc18.secret@example.ru"],
+    )
+    ui.upload_files([batch_doc])
+    assert len(ui.get_batch_queue_items()) == 1
+    assert "acc18.secret@example.ru" not in ui.get_batch_queue_panel().inner_text()
+    ui.click_batch_rehydrate()
+    assert "acc18.secret@example.ru" in ui.get_rehydrate_output_text()
+
+    verify_allowed_local_storage_keys(page)
+    proof = ui.open_privacy_proof_modal("header")
+    ui.run_privacy_proof_check()
+    proof_txt = proof.inner_text()
+    assert "неизвестные ключи: 0" in proof_txt
+    assert "0 байт" in proof_txt
+    assert "0 запросов" in proof_txt
+    assert "нарушений CSP в документе приложения: 0" in proof_txt
+    ui.close_active_modal()
+    verify_russian_purity(page)
+
+    # 3. EN flow: /en/ -> /en/pro/#code={tok_en} -> return to /en/ -> deactivate -> Free
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/en/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    ui.open_pricing()
+    assert ui.get_pricing_pro_checkout_link().is_visible()
+
+    tok_en = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-ACC-CHK-EN",
+        label="Acceptance EN",
+    )
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/en/pro/#code={tok_en}", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    page.wait_for_timeout(250)
+
+    assert tok_en in page.locator("[data-testid='checkout-token-input'], #checkout-token-input").first.input_value()
+    assert "PV-ACC-CHK-EN" in ui.get_checkout_token_diagnostics()
+    if page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") != tok_en:
+        ui.activate_checkout_token()
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    pro_raw_session.net.phase = "load"
+    ui.return_to_workbench_from_checkout()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    assert ui.get_pro_badge_text() == "Pro Active"
+
+    ui.open_pro_license_modal("header")
+    ui.remove_pro_key()
+    ui.close_active_modal()
+    assert ui.get_pro_badge_text() == "Free"
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    for req in pro_raw_session.net.requests:
+        hay = f"{req.url} {req.post_data or ''}"
+        assert "#code=" not in hay
+        for secret in (tok_ru, tok_en, "artem.acc18@example.ru", "acc18.secret@example.ru"):
+            assert secret not in hay
+    pro_raw_session.net.assert_zero_egress(
+        [tok_ru, tok_en, "artem.acc18@example.ru", "acc18.secret@example.ru", "PV-ACC-CHK-RU", "PV-ACC-CHK-EN"]
+    )
+    pro_raw_session.console.assert_no_errors()

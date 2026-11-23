@@ -193,26 +193,38 @@ export async function applyLanguage(lang, hooks = {}) {
   }
 
   const next = setLang(targetLang);
+  const metaPrefix =
+    typeof hooks.metaPrefix === "string" && hooks.metaPrefix.trim()
+      ? hooks.metaPrefix.trim()
+      : "meta";
   if (typeof document !== "undefined") {
     if (document.documentElement) {
       document.documentElement.lang = next;
     }
-    document.title = t("meta.title", {}, next);
+    document.title = t(`${metaPrefix}.title`, {}, next);
 
     const metaBindings = [
-      ['meta[name="description"]', "content", "meta.description"],
+      ['meta[name="description"]', "content", `${metaPrefix}.description`],
       ['meta[property="og:locale"]', "content", "meta.ogLocale"],
       ['meta[property="og:locale:alternate"]', "content", "meta.ogLocaleAlternate"],
-      ['meta[property="og:title"]', "content", "meta.ogTitle"],
-      ['meta[property="og:description"]', "content", "meta.ogDescription"],
-      ['meta[name="twitter:title"]', "content", "meta.twitterTitle"],
-      ['meta[name="twitter:description"]', "content", "meta.twitterDescription"],
+      ['meta[property="og:title"]', "content", `${metaPrefix}.ogTitle`],
+      ['meta[property="og:description"]', "content", `${metaPrefix}.ogDescription`],
+      ['meta[name="twitter:title"]', "content", `${metaPrefix}.twitterTitle`],
+      ['meta[name="twitter:description"]', "content", `${metaPrefix}.twitterDescription`],
     ];
     for (const [selector, attr, key] of metaBindings) {
       const metaEl = document.querySelector(selector);
       if (metaEl) {
         metaEl.setAttribute(attr, t(key, {}, next));
       }
+    }
+
+    const checkoutCta =
+      typeof document.querySelector === "function"
+        ? document.querySelector("#pricing-pro-checkout-link")
+        : null;
+    if (checkoutCta) {
+      checkoutCta.setAttribute("href", next === "en" ? "/en/pro/" : "/pro/");
     }
 
     const ruBtn = document.querySelector('[data-testid="lang-ru"]');

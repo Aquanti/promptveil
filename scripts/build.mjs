@@ -219,7 +219,10 @@ async function build() {
   const cssFile = cssOutputs[0];
 
   const jsResult = await esbuild.build({
-    entryPoints: [path.join(STATIC_DIR, "js", "app.js")],
+    entryPoints: [
+      path.join(STATIC_DIR, "js", "app.js"),
+      path.join(STATIC_DIR, "js", "pro-checkout.js"),
+    ],
     bundle: true,
     splitting: true,
     format: "esm",
@@ -235,18 +238,26 @@ async function build() {
   });
 
   let jsEntryFile = null;
+  let checkoutEntryFile = null;
   const jsFiles = [];
   for (const [outPath, meta] of Object.entries(jsResult.metafile.outputs)) {
     const fileName = path.basename(outPath);
     if (!fileName.endsWith(".js")) continue;
     jsFiles.push(fileName);
-    if (meta.entryPoint && path.resolve(ROOT_DIR, meta.entryPoint) === path.join(STATIC_DIR, "js", "app.js")) {
-      jsEntryFile = fileName;
+    if (meta.entryPoint) {
+      const absEntry = path.resolve(ROOT_DIR, meta.entryPoint);
+      if (absEntry === path.join(STATIC_DIR, "js", "app.js")) {
+        jsEntryFile = fileName;
+      } else if (absEntry === path.join(STATIC_DIR, "js", "pro-checkout.js")) {
+        checkoutEntryFile = fileName;
+      }
     }
   }
   jsFiles.sort();
-  if (!jsEntryFile) {
-    throw new Error("Could not determine entry JS bundle filename from esbuild metafile");
+  if (!jsEntryFile || !checkoutEntryFile) {
+    throw new Error(
+      `Could not determine entry JS bundle filenames from esbuild metafile (app=${jsEntryFile}, checkout=${checkoutEntryFile})`
+    );
   }
   const enChunkFile = jsFiles.find((f) => f.startsWith("i18n-en-"));
   const ruChunkFile = jsFiles.find((f) => f.startsWith("i18n-ru-"));
@@ -322,9 +333,11 @@ async function build() {
   const buildHash = hash.digest("hex").slice(0, 10);
 
   const cssLinkPattern =
-    /<link\s+rel="stylesheet"\s+href="(?:\.?\/styles\.css|\/dist\/styles\.[A-Za-z0-9_-]+\.css)"\s*\/>/;
+    /<link\s+rel="stylesheet"\s+href="(?:(?:\.\.?\/|\/)?styles\.css|\/dist\/styles\.[A-Za-z0-9_-]+\.css)"\s*\/>/;
   const jsScriptPattern =
     /<script\s+type="module"\s+src="(?:\.?\/js\/app\.js|\/dist\/app\.[A-Za-z0-9_-]+\.js)"\s*><\/script>(?:\r?\n\s*<link\s+rel="modulepreload"\s+href="\/dist\/i18n-(?:en|ru)-[A-Za-z0-9_-]+\.js"\s*\/>)?/;
+  const checkoutScriptPattern =
+    /<script\s+type="module"\s+src="(?:(?:\.\.?\/|\/)?js\/pro-checkout\.js|\/dist\/pro-checkout\.[A-Za-z0-9_-]+\.js)"\s*><\/script>(?:\r?\n\s*<link\s+rel="modulepreload"\s+href="\/dist\/i18n-(?:en|ru)-[A-Za-z0-9_-]+\.js"\s*\/>)?/;
 
   for (const [htmlRel, preloadChunk] of [
     ["index.html", ruChunkFile],
@@ -343,6 +356,27 @@ async function build() {
       jsScriptPattern,
       `<script type="module" src="/dist/${jsEntryFile}"></script>\n  <link rel="modulepreload" href="/dist/${preloadChunk}" />`,
       `${htmlRel} module script`
+    );
+    fs.writeFileSync(htmlPath, htmlSrc, "utf8");
+  }
+
+  for (const [htmlRel, preloadChunk] of [
+    [path.join("pro", "index.html"), ruChunkFile],
+    [path.join("en", "pro", "index.html"), enChunkFile],
+  ]) {
+    const htmlPath = path.join(STATIC_DIR, htmlRel);
+    let htmlSrc = fs.readFileSync(htmlPath, "utf8");
+    htmlSrc = replaceOnce(
+      htmlSrc,
+      cssLinkPattern,
+      `<link rel="stylesheet" href="/dist/${cssFile}" />`,
+      `${htmlRel} stylesheet`
+    );
+    htmlSrc = replaceOnce(
+      htmlSrc,
+      checkoutScriptPattern,
+      `<script type="module" src="/dist/${checkoutEntryFile}"></script>\n  <link rel="modulepreload" href="/dist/${preloadChunk}" />`,
+      `${htmlRel} checkout module script`
     );
     fs.writeFileSync(htmlPath, htmlSrc, "utf8");
   }
@@ -369,6 +403,8 @@ async function build() {
   const precacheUrls = [
     "/",
     "/en/",
+    "/pro/",
+    "/en/pro/",
     "/404.html",
     "/manifest.webmanifest",
     "/favicon.svg",
@@ -387,7 +423,7 @@ async function build() {
   fs.writeFileSync(swPath, swSrc, "utf8");
 
   console.log(
-    `Built PromptVeil dist (${buildHash}): ${cssFile}, ${jsEntryFile} (+${jsFiles.length - 1} chunk(s))`
+    `Built PromptVeil dist (${buildHash}): ${cssFile}, ${jsEntryFile}, ${checkoutEntryFile} (+${jsFiles.length - 2} chunk(s))`
   );
 }
 

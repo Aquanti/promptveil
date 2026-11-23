@@ -104,6 +104,7 @@ class DomNode {
     this.disabled = false;
     this.checked = false;
     this._value = "";
+    this.files = [];
     this.listeners = new Map();
     this.shadowRoot = null;
     this.options = [];
@@ -723,4 +724,864 @@ test("adapters.isElementVisible rejects opacity:0 and hidden/aria-hidden/display
   assert.equal(isElementVisible(opacityZeroTa), false);
   assert.equal(isElementVisible(visibleCe), true);
   assert.equal(findPromptBox(doc, "chatgpt.com"), visibleCe);
+});
+
+test("popup smart extraction activates noisy receipts, #code= fragments, and .pvkey text without storing wrapper text", async () => {
+  const { local, onChanged, store } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+  const doc = buildPopupDomFromHtml();
+
+  const popup = await initPopupController({
+    doc,
+    storageArea: local,
+    tabsApi: { query: (_q, cb) => cb([]) },
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+  });
+
+  const token = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-TEST-EXTRACT-01",
+    label: "Test Receipt User",
+    issuedAt: "2026-06-01T00:00:00Z",
+    exp: "2099-06-01T00:00:00Z",
+  });
+
+  const receiptText = [
+    "# PromptVeil Pro Offline License Key",
+    "# Order: PV-ORD-TEST01",
+    `Activation link: #code=${encodeURIComponent(token)}&plan=pro-annual`,
+  ].join("\n");
+
+  const keyInput = doc.getElementById("popup-pro-key-input");
+  keyInput.value = receiptText;
+  doc.getElementById("popup-pro-activate-btn").click();
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(popup.getState().license.isPro, true);
+  assert.equal(popup.getState().license.keyId, "PV-TEST-EXTRACT-01");
+  assert.equal(store.get(EXT_PRO_LICENSE_STORAGE_KEY), token);
+  assert.equal(keyInput.value, "");
+  assert.equal(doc.getElementById("popup-pro-diagnostics").hidden, false);
+  assert.equal(doc.getElementById("popup-pro-diagnostics").classList.contains("is-valid"), true);
+  assert.match(doc.getElementById("popup-pro-diagnostics").textContent, /PV-TEST-EXTRACT-01/);
+
+  popup.destroy();
+});
+
+test("popup 1-click Paste & Activate handles success, empty clipboard, non-token text, and denied permission", async () => {
+  const { local, onChanged, store } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+
+  let clipMode = "denied";
+  let clipText = "";
+  const clipboard = {
+    readText: async () => {
+      if (clipMode === "denied") {
+        throw new Error("Permission denied");
+      }
+      return clipText;
+    },
+  };
+
+  const doc = buildPopupDomFromHtml();
+  const popup = await initPopupController({
+    doc,
+    storageArea: local,
+    tabsApi: { query: (_q, cb) => cb([]) },
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+    clipboard,
+  });
+
+  const pasteBtn = doc.getElementById("popup-pro-paste-btn");
+  const keyInput = doc.getElementById("popup-pro-key-input");
+  const proAlert = doc.getElementById("popup-pro-alert");
+
+  // 1) Permission denied
+  pasteBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(popup.getState().license.isPro, false);
+  assert.equal(proAlert.hidden, false);
+  assert.equal(doc.activeElement, keyInput);
+
+  // 2) Empty clipboard
+  clipMode = "text";
+  clipText = "   ";
+  pasteBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(popup.getState().license.isPro, false);
+  assert.equal(proAlert.hidden, false);
+  assert.equal(doc.activeElement, keyInput);
+
+  // 3) Unrelated non-token text (must not clobber input or unlock)
+  clipText = "hello world order without key";
+  pasteBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(popup.getState().license.isPro, false);
+  assert.equal(keyInput.value, "");
+  assert.equal(doc.activeElement, keyInput);
+
+  // 4) Valid .pvkey clipboard content
+  const validToken = kp.signPayload({
+    v: 1,
+    tier: "owner",
+    keyId: "PV-TEST-PASTE-01",
+    label: "Clipboard Owner",
+    issuedAt: "2026-06-01T00:00:00Z",
+  });
+  clipText = `# PromptVeil Pro\n# Key ID: PV-TEST-PASTE-01\n${validToken}\n`;
+  pasteBtn.click();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(popup.getState().license.isPro, true);
+  assert.equal(popup.getState().license.isOwner, true);
+  assert.equal(store.get(EXT_PRO_LICENSE_STORAGE_KEY), validToken);
+
+  popup.destroy();
+});
+
+test("popup .pvkey file import activates valid files and rejects oversized or binary/invalid files", async () => {
+  const { local, onChanged, store } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+  const doc = buildPopupDomFromHtml();
+
+  const popup = await initPopupController({
+    doc,
+    storageArea: local,
+    tabsApi: { query: (_q, cb) => cb([]) },
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+  });
+
+  const fileInput = doc.getElementById("popup-pro-file-input");
+  const proAlert = doc.getElementById("popup-pro-alert");
+  const diag = doc.getElementById("popup-pro-diagnostics");
+
+  // 1) Oversized file (> 256 KB) rejected before reading
+  let oversizedReadCalled = false;
+  fileInput.files = [
+    {
+      name: "huge.pvkey",
+      size: 300 * 1024,
+      arrayBuffer: async () => {
+        oversizedReadCalled = true;
+        return new ArrayBuffer(0);
+      },
+    },
+  ];
+  fileInput.dispatchEvent({ type: "change", target: fileInput });
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(oversizedReadCalled, false);
+  assert.equal(popup.getState().license.isPro, false);
+  assert.equal(proAlert.hidden, false);
+  assert.equal(diag.classList.contains("is-error"), true);
+
+  // 2) NUL-byte binary file rejected
+  fileInput.files = [
+    {
+      name: "binary.pvkey",
+      size: 8,
+      arrayBuffer: async () => new Uint8Array([0x50, 0x56, 0x00, 0x31]).buffer,
+    },
+  ];
+  fileInput.dispatchEvent({ type: "change", target: fileInput });
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(popup.getState().license.isPro, false);
+  assert.equal(diag.classList.contains("is-error"), true);
+
+  // 3) Text file without PV1 token rejected
+  const noTokBytes = new TextEncoder().encode("# empty comment file\nno key here\n");
+  fileInput.files = [
+    {
+      name: "empty.txt",
+      size: noTokBytes.length,
+      arrayBuffer: async () => noTokBytes.buffer,
+    },
+  ];
+  fileInput.dispatchEvent({ type: "change", target: fileInput });
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(popup.getState().license.isPro, false);
+
+  // 4) Valid .pvkey file activates Pro
+  const validToken = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-TEST-FILE-01",
+    label: "File License",
+    issuedAt: "2026-06-01T00:00:00Z",
+    exp: "2099-12-31T00:00:00Z",
+  });
+  const pvkeyBytes = new TextEncoder().encode(
+    `# PromptVeil Pro Offline License Key\n# Key ID: PV-TEST-FILE-01\n${validToken}\n`
+  );
+  fileInput.files = [
+    {
+      name: "license.pvkey",
+      size: pvkeyBytes.length,
+      arrayBuffer: async () => pvkeyBytes.buffer,
+    },
+  ];
+  fileInput.dispatchEvent({ type: "change", target: fileInput });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(popup.getState().license.isPro, true);
+  assert.equal(popup.getState().license.keyId, "PV-TEST-FILE-01");
+  assert.equal(store.get(EXT_PRO_LICENSE_STORAGE_KEY), validToken);
+
+  popup.destroy();
+});
+
+test("popup Verify button inspects tokens without persisting and diagnoses format/encoding/signature/payload/expired", async () => {
+  const { local, onChanged, store } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+  const otherKp = createEphemeralKeypair();
+  const doc = buildPopupDomFromHtml();
+  const fixedNowMs = Date.parse("2026-07-01T00:00:00Z");
+
+  const popup = await initPopupController({
+    doc,
+    storageArea: local,
+    tabsApi: { query: (_q, cb) => cb([]) },
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+    nowMs: fixedNowMs,
+  });
+
+  const keyInput = doc.getElementById("popup-pro-key-input");
+  const verifyBtn = doc.getElementById("popup-pro-verify-btn");
+  const diag = doc.getElementById("popup-pro-diagnostics");
+
+  // 1) Format error
+  keyInput.value = "NOT-A-PV1-TOKEN";
+  verifyBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(diag.hidden, false);
+  assert.equal(diag.classList.contains("is-error"), true);
+  assert.equal(store.has(EXT_PRO_LICENSE_STORAGE_KEY), false);
+
+  // 2) Encoding error (invalid base64url char '!')
+  keyInput.value = "PV1.abc!def.sig!123";
+  verifyBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(diag.classList.contains("is-error"), true);
+
+  // 3) Length error (short signature)
+  keyInput.value = `PV1.${toB64Url(Buffer.from("{}", "utf8"))}.${toB64Url(Buffer.from("short"))}`;
+  verifyBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(diag.classList.contains("is-error"), true);
+
+  // 4) Wrong-key signature error (shows unverified claims keyId)
+  const wrongKeyTok = otherKp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-WRONG-KEY-01",
+    label: "Wrong Key",
+    issuedAt: "2026-06-01T00:00:00Z",
+  });
+  keyInput.value = wrongKeyTok;
+  verifyBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(diag.classList.contains("is-error"), true);
+  assert.match(diag.textContent, /PV-WRONG-KEY-01/);
+  assert.equal(popup.getState().license.isPro, false);
+
+  // 5) Payload error (valid signature from kp, missing required claims)
+  const badPayloadTok = kp.signPayload({ v: 1, tier: "pro" });
+  keyInput.value = badPayloadTok;
+  verifyBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(diag.classList.contains("is-error"), true);
+
+  // 6) Expired token (numeric timestamp in the past)
+  const expiredTok = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-EXPIRED-01",
+    label: "Expired Key",
+    issuedAt: "2025-01-01T00:00:00Z",
+    exp: Math.floor(Date.parse("2026-01-15T00:00:00Z") / 1000),
+  });
+  keyInput.value = expiredTok;
+  verifyBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(diag.classList.contains("is-warn"), true);
+  assert.match(diag.textContent, /PV-EXPIRED-01/);
+  assert.equal(store.has(EXT_PRO_LICENSE_STORAGE_KEY), false);
+
+  // 7) Valid token verified WITHOUT persisting to storage
+  const validTok = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-VERIFY-ONLY-01",
+    label: "Verify Only",
+    issuedAt: "2026-06-01T00:00:00Z",
+    exp: "2099-06-01T00:00:00Z",
+  });
+  keyInput.value = validTok;
+  verifyBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(diag.classList.contains("is-valid"), true);
+  assert.match(diag.textContent, /PV-VERIFY-ONLY-01/);
+  assert.equal(popup.getState().license.isPro, false, "Verify must not activate/persist");
+  assert.equal(store.has(EXT_PRO_LICENSE_STORAGE_KEY), false);
+
+  // 8) Activate, clear input, then Verify with empty input re-verifies stored license
+  doc.getElementById("popup-pro-activate-btn").click();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(popup.getState().license.isPro, true);
+  assert.equal(keyInput.value, "");
+
+  verifyBtn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.equal(diag.classList.contains("is-valid"), true);
+  assert.match(diag.textContent, /PV-VERIFY-ONLY-01/);
+
+  popup.destroy();
+});
+
+test("popup locked Pro hints focus #popup-pro-key-input and content pill syncs & displays diagnostics on click", async () => {
+  const { local, onChanged } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+  const popupDoc = buildPopupDomFromHtml();
+  const fixedNowMs = Date.parse("2026-07-01T00:00:00Z");
+
+  let scrollCalls = 0;
+  const proSection = popupDoc.getElementById("popup-pro-section");
+  proSection.scrollIntoView = () => {
+    scrollCalls += 1;
+  };
+
+  const popup = await initPopupController({
+    doc: popupDoc,
+    storageArea: local,
+    tabsApi: { query: (_q, cb) => cb([]) },
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+    nowMs: fixedNowMs,
+  });
+
+  const keyInput = popupDoc.getElementById("popup-pro-key-input");
+
+  // Locked category badge click focuses key input
+  popupDoc.activeElement = null;
+  popupDoc.getElementById("popup-categories-lock").click();
+  assert.equal(popupDoc.activeElement, keyInput);
+  assert.equal(scrollCalls > 0, true);
+
+  // Locked packs badge click focuses key input
+  popupDoc.activeElement = null;
+  popupDoc.getElementById("popup-packs-lock").click();
+  assert.equal(popupDoc.activeElement, keyInput);
+
+  // Custom rule limit alert click focuses key input
+  const termInput = popupDoc.getElementById("popup-custom-term");
+  const form = popupDoc.getElementById("popup-custom-form");
+  for (let i = 1; i <= 6; i += 1) {
+    termInput.value = `Term${i}`;
+    form.dispatchEvent({ type: "submit", preventDefault() {} });
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  popupDoc.activeElement = null;
+  const customAlert = popupDoc.getElementById("popup-custom-alert");
+  assert.equal(customAlert.hidden, false);
+  assert.equal(customAlert.classList.contains("is-actionable"), true);
+  customAlert.click();
+  assert.equal(popupDoc.activeElement, keyInput);
+
+  // Mount content controller sharing chrome.storage.local + onChanged
+  const contentDoc = createContentDoc();
+  const promptBox = contentDoc.createElement("textarea", { id: "chat-input" });
+  contentDoc.body.appendChild(promptBox);
+  const ctrl = await createContentController({
+    win: { getSelection: () => null },
+    doc: contentDoc,
+    hostname: "chat.deepseek.com",
+    clipboard: { writeText: async () => {}, readText: async () => "" },
+    storageArea: local,
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+    nowMs: fixedNowMs,
+  });
+
+  const tierChip = ctrl.shadow.querySelector(".pv-tier-chip");
+  const toast = ctrl.shadow.querySelector(".pv-toast");
+  assert.equal(tierChip.tagName, "BUTTON");
+  assert.equal(tierChip.textContent, "Free");
+  assert.equal(Boolean(tierChip.getAttribute("title")), true);
+  assert.equal(Boolean(tierChip.getAttribute("aria-label")), true);
+
+  // Click Free tier chip -> info toast with toolbar activation hint
+  tierChip.click();
+  assert.equal(toast.hidden, false);
+  assert.match(toast.textContent, /Free/);
+
+  // Activate Pro via popup -> content pill updates live & click shows keyId
+  const activeProTok = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-SYNC-PRO-01",
+    label: "Sync Pro",
+    issuedAt: "2026-06-01T00:00:00Z",
+    exp: "2099-06-01T00:00:00Z",
+  });
+  keyInput.value = activeProTok;
+  popupDoc.getElementById("popup-pro-activate-btn").click();
+  await new Promise((r) => setTimeout(r, 25));
+
+  assert.equal(ctrl.getState().license.isPro, true);
+  assert.equal(tierChip.textContent, "Pro Активен");
+  assert.equal(tierChip.classList.contains("is-pro"), true);
+  assert.equal(tierChip.classList.contains("is-expired"), false);
+  tierChip.click();
+  assert.equal(toast.hidden, false);
+  assert.equal(toast.classList.contains("is-success"), true);
+  assert.match(toast.textContent, /PV-SYNC-PRO-01/);
+
+  // Expired stored token in storage enforces Free gating & shows warning pill + toast
+  const expiredStoredTok = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-EXPIRED-SYNC-02",
+    label: "Expired Sync",
+    issuedAt: "2025-01-01T00:00:00Z",
+    exp: "2026-02-01T00:00:00Z",
+  });
+  await local.set({
+    [EXT_PRO_LICENSE_STORAGE_KEY]: expiredStoredTok,
+    [EXT_SETTINGS_STORAGE_KEY]: {
+      lang: "en",
+      theme: "light",
+      overlayVisible: true,
+      disabledCategories: ["EMAIL"],
+      customRules: [],
+    },
+  });
+  await new Promise((r) => setTimeout(r, 25));
+
+  assert.equal(ctrl.getState().license.isPro, false);
+  assert.equal(ctrl.getState().license.reason, "expired");
+  assert.equal(tierChip.textContent, "Free");
+  assert.equal(tierChip.classList.contains("is-pro"), false);
+  assert.equal(tierChip.classList.contains("is-expired"), true);
+  tierChip.click();
+  assert.equal(toast.classList.contains("is-warn"), true);
+  assert.match(toast.textContent, /PV-EXPIRED-SYNC-02/);
+
+  // Verify Free gating still masks EMAIL even though disabledCategories has EMAIL
+  promptBox.value = "Contact ivan@acme.ru";
+  const sanRes = await ctrl.handleSanitize();
+  assert.equal(sanRes.result.maskedCount, 1);
+
+  ctrl.destroy();
+  popup.destroy();
+});
+
+test("popup keeps #popup-pro-remove-btn enabled for expired and invalid stored tokens and clears storage on click", async () => {
+  const { local, onChanged, store } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+  const otherKp = createEphemeralKeypair();
+  const doc = buildPopupDomFromHtml();
+  const fixedNowMs = Date.parse("2026-07-01T00:00:00Z");
+
+  const expiredTok = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-STORED-EXP-01",
+    label: "Expired Stored",
+    issuedAt: "2025-01-01T00:00:00Z",
+    exp: "2026-02-01T00:00:00Z",
+  });
+  await local.set({ [EXT_PRO_LICENSE_STORAGE_KEY]: expiredTok });
+
+  const popup = await initPopupController({
+    doc,
+    storageArea: local,
+    tabsApi: { query: (_q, cb) => cb([]) },
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+    nowMs: fixedNowMs,
+  });
+
+  const removeBtn = doc.getElementById("popup-pro-remove-btn");
+  assert.equal(popup.getState().license.isPro, false);
+  assert.equal(popup.getState().license.reason, "expired");
+  assert.equal(popup.getState().hasStoredLicenseToken, true);
+  assert.equal(removeBtn.disabled, false);
+
+  removeBtn.click();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(store.has(EXT_PRO_LICENSE_STORAGE_KEY), false);
+  assert.equal(popup.getState().hasStoredLicenseToken, false);
+  assert.equal(popup.getState().license.isPro, false);
+  assert.equal(removeBtn.disabled, true);
+
+  // Invalid signature stored token also enables #popup-pro-remove-btn
+  const wrongKeyTok = otherKp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-STORED-BADSIG-01",
+    label: "Invalid Stored",
+    issuedAt: "2026-06-01T00:00:00Z",
+  });
+  await local.set({ [EXT_PRO_LICENSE_STORAGE_KEY]: wrongKeyTok });
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(popup.getState().license.isPro, false);
+  assert.equal(popup.getState().license.reason, "signature");
+  assert.equal(popup.getState().hasStoredLicenseToken, true);
+  assert.equal(removeBtn.disabled, false);
+
+  removeBtn.click();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(store.has(EXT_PRO_LICENSE_STORAGE_KEY), false);
+  assert.equal(popup.getState().hasStoredLicenseToken, false);
+  assert.equal(removeBtn.disabled, true);
+
+  popup.destroy();
+});
+
+test("popup proActionSeq drops stale slow .pvkey uploads and stale concurrent Paste clicks", async () => {
+  const { local, onChanged, store } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+  const doc = buildPopupDomFromHtml();
+
+  let resolveSlowClip;
+  let clipCallCount = 0;
+  const tokPasteFast = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-PASTE-FAST-02",
+    label: "Paste Fast",
+    issuedAt: "2026-06-01T00:00:00Z",
+  });
+  const clipboard = {
+    readText: () => {
+      clipCallCount += 1;
+      if (clipCallCount === 1) {
+        return new Promise((_resolve, reject) => {
+          resolveSlowClip = () => reject(new Error("NotAllowedError"));
+        });
+      }
+      return Promise.resolve(tokPasteFast);
+    },
+  };
+
+  const popup = await initPopupController({
+    doc,
+    storageArea: local,
+    tabsApi: { query: (_q, cb) => cb([]) },
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+    clipboard,
+  });
+
+  const fileInput = doc.getElementById("popup-pro-file-input");
+  const pasteBtn = doc.getElementById("popup-pro-paste-btn");
+  const proAlert = doc.getElementById("popup-pro-alert");
+  const diag = doc.getElementById("popup-pro-diagnostics");
+
+  const tokFileOld = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-FILE-OLD-01",
+    label: "File Slow",
+    issuedAt: "2026-06-01T00:00:00Z",
+  });
+  const tokFileNew = kp.signPayload({
+    v: 1,
+    tier: "owner",
+    keyId: "PV-FILE-NEW-02",
+    label: "File Fast",
+    issuedAt: "2026-06-01T00:00:00Z",
+  });
+
+  let resolveSlowFile;
+  const oldBytes = new TextEncoder().encode(tokFileOld);
+  const newBytes = new TextEncoder().encode(tokFileNew);
+
+  fileInput.files = [
+    {
+      name: "slow.pvkey",
+      size: oldBytes.length,
+      arrayBuffer: () =>
+        new Promise((resolve) => {
+          resolveSlowFile = () => resolve(oldBytes.buffer);
+        }),
+    },
+  ];
+  fileInput.dispatchEvent({ type: "change", target: fileInput });
+
+  fileInput.files = [
+    {
+      name: "fast.pvkey",
+      size: newBytes.length,
+      arrayBuffer: async () => newBytes.buffer,
+    },
+  ];
+  fileInput.dispatchEvent({ type: "change", target: fileInput });
+
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(popup.getState().license.keyId, "PV-FILE-NEW-02");
+  assert.equal(store.get(EXT_PRO_LICENSE_STORAGE_KEY), tokFileNew);
+
+  // Late resolution of slow file upload must NOT clobber newer activation
+  resolveSlowFile();
+  await new Promise((r) => setTimeout(r, 25));
+  assert.equal(popup.getState().license.keyId, "PV-FILE-NEW-02");
+  assert.equal(store.get(EXT_PRO_LICENSE_STORAGE_KEY), tokFileNew);
+  assert.match(diag.textContent, /PV-FILE-NEW-02/);
+  assert.match(proAlert.textContent, /PV-FILE-NEW-02/);
+
+  // Concurrent Paste & Activate: slow denial followed by fast valid paste
+  pasteBtn.click();
+  pasteBtn.click();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(popup.getState().license.keyId, "PV-PASTE-FAST-02");
+  assert.equal(store.get(EXT_PRO_LICENSE_STORAGE_KEY), tokPasteFast);
+  assert.equal(diag.hidden, false);
+  assert.equal(diag.classList.contains("is-valid"), true);
+  assert.equal(proAlert.classList.contains("is-success"), true);
+
+  resolveSlowClip();
+  await new Promise((r) => setTimeout(r, 25));
+  assert.equal(popup.getState().license.keyId, "PV-PASTE-FAST-02");
+  assert.equal(store.get(EXT_PRO_LICENSE_STORAGE_KEY), tokPasteFast);
+  assert.equal(diag.hidden, false);
+  assert.equal(diag.classList.contains("is-valid"), true);
+  assert.equal(proAlert.classList.contains("is-success"), true);
+  assert.match(proAlert.textContent, /PV-PASTE-FAST-02/);
+
+  popup.destroy();
+});
+
+test("popup re-translates #popup-pro-alert in lockstep with #popup-pro-diagnostics on RU/EN switch and formats exp: 0 consistently", async () => {
+  const { local, onChanged } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+  const otherKp = createEphemeralKeypair();
+  const doc = buildPopupDomFromHtml();
+  const fixedNowMs = Date.parse("2026-07-01T00:00:00Z");
+
+  const popup = await initPopupController({
+    doc,
+    storageArea: local,
+    tabsApi: { query: (_q, cb) => cb([]) },
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+    nowMs: fixedNowMs,
+  });
+
+  const keyInput = doc.getElementById("popup-pro-key-input");
+  const verifyBtn = doc.getElementById("popup-pro-verify-btn");
+  const proAlert = doc.getElementById("popup-pro-alert");
+  const diag = doc.getElementById("popup-pro-diagnostics");
+  const langEn = doc.getElementById("popup-lang-en");
+  const langRu = doc.getElementById("popup-lang-ru");
+
+  // 1) Expired token with exp: 0 renders 1970 UTC date in both alert and diagnostics and re-translates on RU <-> EN
+  const expZeroTok = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-EXP-ZERO-01",
+    label: "Epoch Zero",
+    issuedAt: "1969-12-31T00:00:00Z",
+    exp: 0,
+  });
+  keyInput.value = expZeroTok;
+  verifyBtn.click();
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.match(proAlert.textContent, /истёк/i);
+  assert.match(proAlert.textContent, /1970/);
+  assert.equal((diag.textContent.match(/1970/g) || []).length >= 2, true);
+
+  langEn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.match(proAlert.textContent, /expired/i);
+  assert.match(proAlert.textContent, /Jan 1, 1970/);
+  assert.equal(proAlert.textContent.includes("истёк"), false);
+  assert.match(diag.textContent, /Jan 1, 1970/);
+
+  langRu.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.match(proAlert.textContent, /истёк/i);
+  assert.match(proAlert.textContent, /1970/);
+
+  // 2) Signature error alert also re-translates on RU -> EN switch
+  const wrongKeyTok = otherKp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-WRONG-LANG-01",
+    label: "Wrong Key",
+    issuedAt: "2026-06-01T00:00:00Z",
+  });
+  keyInput.value = wrongKeyTok;
+  verifyBtn.click();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.match(proAlert.textContent, /Ed25519/i);
+  assert.match(proAlert.textContent, /подпис/i);
+
+  langEn.click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.match(proAlert.textContent, /Ed25519 signature verification failed/i);
+  assert.equal(proAlert.textContent.includes("подпис"), false);
+
+  popup.destroy();
+
+  // 3) Active status card with exp: 0 (when nowMs < 0) formats 1970 UTC date instead of lifetime
+  const { local: local2, onChanged: onChanged2 } = createMockChromeStorage();
+  const doc2 = buildPopupDomFromHtml();
+  const popup2 = await initPopupController({
+    doc: doc2,
+    storageArea: local2,
+    tabsApi: { query: (_q, cb) => cb([]) },
+    storageEvents: onChanged2,
+    publicKeyB64U: kp.publicKeyB64U,
+    nowMs: -1000,
+  });
+  doc2.getElementById("popup-pro-key-input").value = expZeroTok;
+  doc2.getElementById("popup-pro-activate-btn").click();
+  await new Promise((r) => setTimeout(r, 20));
+
+  const metaList = doc2.getElementById("popup-pro-meta-list");
+  assert.equal(popup2.getState().license.isPro, true);
+  assert.match(metaList.textContent, /1970/);
+  assert.equal(metaList.textContent.includes("бессрочная"), false);
+
+  doc2.getElementById("popup-lang-en").click();
+  await new Promise((r) => setTimeout(r, 15));
+  assert.match(metaList.textContent, /Jan 1, 1970/);
+  assert.equal(metaList.textContent.includes("lifetime"), false);
+
+  popup2.destroy();
+});
+
+test("content controller settingsRefreshSeq drops out-of-order settingsChanged resolutions", async () => {
+  const { local, onChanged } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+  const doc = createContentDoc();
+  const promptBox = doc.createElement("textarea", { id: "chat-input" });
+  doc.body.appendChild(promptBox);
+
+  let settingsGetCalls = 0;
+  let resolveSlowSettingsGet;
+  const wrappedStorage = {
+    get(keys, cb) {
+      const list = Array.isArray(keys) ? keys : [keys];
+      if (list.includes(EXT_SETTINGS_STORAGE_KEY)) {
+        settingsGetCalls += 1;
+        if (settingsGetCalls === 2) {
+          return new Promise((resolve) => {
+            resolveSlowSettingsGet = () => {
+              const out = {
+                [EXT_SETTINGS_STORAGE_KEY]: {
+                  lang: "ru",
+                  theme: "light",
+                  overlayVisible: true,
+                },
+              };
+              if (typeof cb === "function") cb(out);
+              resolve(out);
+            };
+          });
+        }
+      }
+      return local.get(keys, cb);
+    },
+    set: (items, cb) => local.set(items, cb),
+    remove: (key, cb) => local.remove(key, cb),
+  };
+
+  const ctrl = await createContentController({
+    win: { getSelection: () => null },
+    doc,
+    hostname: "chat.deepseek.com",
+    clipboard: { writeText: async () => {}, readText: async () => "" },
+    storageArea: wrappedStorage,
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+  });
+
+  // Trigger slow settingsChanged #1 (calls wrappedStorage.get #2), then fast settingsChanged #2 (#3)
+  await local.set({
+    [EXT_SETTINGS_STORAGE_KEY]: { lang: "ru", theme: "light", overlayVisible: true },
+  });
+  await local.set({
+    [EXT_SETTINGS_STORAGE_KEY]: { lang: "en", theme: "dark", overlayVisible: false },
+  });
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(ctrl.getState().settings.lang, "en");
+  assert.equal(ctrl.getState().settings.theme, "dark");
+  assert.equal(ctrl.host.getAttribute("data-pv-theme"), "dark");
+  assert.equal(ctrl.host.getAttribute("data-pv-hidden"), "true");
+
+  // Resolve slow settingsChanged #1 late -> MUST NOT revert newer EN/dark/hidden settings
+  resolveSlowSettingsGet();
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(ctrl.getState().settings.lang, "en");
+  assert.equal(ctrl.getState().settings.theme, "dark");
+  assert.equal(ctrl.host.getAttribute("data-pv-theme"), "dark");
+  assert.equal(ctrl.host.getAttribute("data-pv-hidden"), "true");
+
+  ctrl.destroy();
+});
+
+test("popup clears stale #popup-pro-diagnostics and #popup-pro-alert on external chrome.storage.onChanged downgrade", async () => {
+  const { local, onChanged } = createMockChromeStorage();
+  const kp = createEphemeralKeypair();
+  const doc = buildPopupDomFromHtml();
+
+  const popup = await initPopupController({
+    doc,
+    storageArea: local,
+    tabsApi: { query: (_q, cb) => cb([]) },
+    storageEvents: onChanged,
+    publicKeyB64U: kp.publicKeyB64U,
+  });
+
+  const validTok = kp.signPayload({
+    v: 1,
+    tier: "pro",
+    keyId: "PV-EXT-ONCHG-01",
+    label: "OnChanged Test",
+    issuedAt: "2026-06-01T00:00:00Z",
+    exp: "2099-06-01T00:00:00Z",
+  });
+
+  doc.getElementById("popup-pro-key-input").value = validTok;
+  doc.getElementById("popup-pro-activate-btn").click();
+  await new Promise((r) => setTimeout(r, 20));
+
+  const badge = doc.getElementById("popup-pro-badge");
+  const diag = doc.getElementById("popup-pro-diagnostics");
+  const alertEl = doc.getElementById("popup-pro-alert");
+  assert.equal(badge.textContent, "Pro Активен");
+  assert.equal(diag.hidden, false);
+  assert.equal(alertEl.hidden, false);
+
+  // External tamper / downgrade -> Free badge AND diagnostics/alert cleared
+  await local.set({ [EXT_PRO_LICENSE_STORAGE_KEY]: "PV1.forged.sig" });
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(popup.getState().license.isPro, false);
+  assert.equal(badge.textContent, "Free");
+  assert.equal(diag.hidden, true);
+  assert.equal(alertEl.hidden, true);
+  assert.equal(popup.getState().proInspection, null);
+  assert.equal(popup.getState().proFeedback, null);
+
+  // External activation -> Pro active, then external removal -> Free AND diagnostics/alert cleared
+  await local.set({ [EXT_PRO_LICENSE_STORAGE_KEY]: validTok });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(badge.textContent, "Pro Активен");
+
+  await local.remove(EXT_PRO_LICENSE_STORAGE_KEY);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(badge.textContent, "Free");
+  assert.equal(diag.hidden, true);
+  assert.equal(alertEl.hidden, true);
+
+  popup.destroy();
 });

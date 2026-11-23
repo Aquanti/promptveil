@@ -1,4 +1,4 @@
-"""Tier 3: Cross-Feature Pairwise & Multi-Feature Combinations (14 Tests: T3-01..T3-14)."""
+"""Tier 3: Cross-Feature Pairwise & Multi-Feature Combinations (18 Tests: T3-01..T3-18)."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from locators import PromptVeilUI
 from monitors import (
     ConsoleErrorMonitor,
     verify_allowed_local_storage_keys,
+    verify_responsive_layout,
     verify_russian_purity,
 )
 
@@ -674,3 +675,274 @@ def test_T3_14_pro_downloads_modal_extension_zip_headers_and_sw_offline(
     finally:
         sw_console.detach()
         sw_page.close()
+
+
+def test_T3_15_landing_to_pro_checkout_activate_and_return_unlocked_ru_and_en(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    # RU leg: / -> /pro/ -> activate -> /
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    ui.open_pricing()
+    pro_raw_session.net.phase = "load"
+    ui.open_pro_checkout_from_pricing()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert page.url.rstrip("/").endswith("/pro")
+    assert ui.get_document_lang().lower() == "ru"
+
+    tok_ru = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-T3-CHK-RU",
+        label="Покупатель Т3",
+    )
+    ui.activate_checkout_token(tok_ru)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") == tok_ru
+
+    pro_raw_session.net.phase = "load"
+    ui.return_to_workbench_from_checkout()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert ui.get_pro_badge_text() == "Pro Активен"
+    assert page.locator("[data-testid='pricing-pro-badge']").inner_text().strip() == "Pro Активен"
+    ui.click_prompt_template("contract_review")
+    assert ui.get_sanitize_output_text().strip()
+
+    # EN leg: /en/ -> /en/pro/ -> activate -> /en/
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/en/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    ui.open_pricing()
+    pro_raw_session.net.phase = "load"
+    ui.open_pro_checkout_from_pricing()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert page.url.rstrip("/").endswith("/en/pro")
+    assert ui.get_document_lang().lower() == "en"
+
+    tok_en = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-T3-CHK-EN",
+        label="Buyer T3 EN",
+    )
+    ui.activate_checkout_token(tok_en)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    pro_raw_session.net.phase = "load"
+    ui.return_to_workbench_from_checkout()
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert ui.get_pro_badge_text() == "Pro Active"
+    verify_allowed_local_storage_keys(page)
+
+    for req in pro_raw_session.net.requests:
+        hay = f"{req.url} {req.post_data or ''}"
+        for secret in (tok_ru, tok_en, "PV-T3-CHK-RU", "PV-T3-CHK-EN"):
+            assert secret not in hay
+    pro_raw_session.net.assert_zero_egress([tok_ru, tok_en, "PV-T3-CHK-RU", "PV-T3-CHK-EN"])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T3_16_pro_checkout_ru_en_language_switch_preserves_state_and_purity(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert ui.get_document_lang().lower() == "ru"
+    verify_russian_purity(page)
+
+    ui.select_checkout_plan("pro-annual")
+    ui.select_checkout_payment("sbp")
+    ui.fill_checkout_buyer(
+        name="Дарья Соколова",
+        email="daria.t3@example.ru",
+        accept_terms=True,
+    )
+    ui.submit_checkout_order()
+    assert ui.get_checkout_order_panel().is_visible()
+    assert ui.get_checkout_order_id().startswith("PV-ORD-")
+    verify_russian_purity(page)
+
+    pro_raw_session.net.phase = "load"
+    ui.switch_checkout_language("en")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    assert ui.get_document_lang().lower() == "en"
+
+    pro_raw_session.net.phase = "load"
+    ui.switch_checkout_language("ru")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    assert ui.get_document_lang().lower() == "ru"
+    verify_russian_purity(page)
+
+    # Cross-route Pro license continuity (/pro/ -> /en/pro/ -> /pro/)
+    tok = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-T3-LANG",
+        label="Кросс Язык",
+    )
+    ui.activate_checkout_token(tok)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/en/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    assert ui.get_document_lang().lower() == "en"
+    assert ui.get_checkout_unlocked_panel().is_visible()
+    assert "PV-T3-LANG" in ui.get_checkout_token_diagnostics()
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    verify_russian_purity(page)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    pro_raw_session.net.assert_zero_egress(["daria.t3@example.ru", tok, "PV-T3-LANG"])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T3_17_pro_checkout_theme_toggle_and_activation_persistence_across_reload(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert (page.evaluate("() => document.documentElement.dataset.theme") or "light") == "light"
+    theme_btn = page.locator("[data-testid='theme-toggle-btn'], #theme-toggle-btn").first
+    theme_btn.click()
+    assert page.evaluate("() => document.documentElement.dataset.theme") == "dark"
+    assert page.evaluate("() => localStorage.getItem('promptveil_theme_v1')") == "dark"
+
+    tok = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-T3-THM",
+        label="Тёмная Тема",
+    )
+    ui.activate_checkout_token(tok)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") == tok
+
+    pro_raw_session.net.phase = "load"
+    page.reload(wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert page.evaluate("() => document.documentElement.dataset.theme") == "dark"
+    assert page.evaluate("() => localStorage.getItem('promptveil_theme_v1')") == "dark"
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") == tok
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    verify_responsive_layout(page, 1440, 900)
+    verify_responsive_layout(page, 390, 844)
+
+    theme_btn.click()
+    assert page.evaluate("() => document.documentElement.dataset.theme") == "light"
+    verify_allowed_local_storage_keys(page)
+    pro_raw_session.net.assert_zero_egress([tok, "PV-T3-THM"])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T3_18_pro_checkout_interop_with_existing_license_modal_and_pricing_hooks(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    ui.open_pricing()
+    assert ui.get_pricing_pro_checkout_link().is_visible()
+    assert page.locator("[data-testid='open-pro-modal-btn'], #open-pro-modal-btn").first.is_visible()
+    assert ui.get_pricing_activate_pro_btn().is_visible()
+
+    plan_modal = ui.open_plan_request_modal("pro")
+    assert plan_modal.is_visible()
+    ui.close_active_modal()
+
+    tok_mod = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-T3-MOD1",
+        label="Модальный Ключ",
+    )
+    ui.open_pro_license_modal("pricing")
+    ui.activate_pro_key(tok_mod)
+    ui.close_active_modal()
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    assert ui.get_checkout_unlocked_panel().is_visible()
+    assert "PV-T3-MOD1" in ui.get_checkout_token_diagnostics()
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    ui.open_pro_license_modal("header")
+    ui.remove_pro_key()
+    ui.close_active_modal()
+    assert ui.get_pro_badge_text() == "Free"
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    assert not page.locator("[data-testid='checkout-pro-unlocked'], #checkout-pro-unlocked").is_visible()
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    tok_chk = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-T3-CHK2",
+        label="Оформление Ключ",
+    )
+    ui.activate_checkout_token(tok_chk)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    assert "PV-T3-CHK2" in ui.get_pro_status_card_text()
+    ui.close_active_modal()
+
+    pro_raw_session.net.assert_zero_egress([tok_mod, tok_chk, "PV-T3-MOD1", "PV-T3-CHK2"])
+    pro_raw_session.console.assert_no_errors()

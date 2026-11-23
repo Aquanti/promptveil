@@ -5,7 +5,11 @@
  * - Independently verifies Pro license tokens via verifyProLicenseToken().
  */
 
-import { verifyProLicenseToken, createFreeLicenseState } from "../../app/static/js/pro-license.js";
+import {
+  createFreeLicenseState,
+  extractProToken,
+  verifyProLicenseToken,
+} from "../../app/static/js/pro-license.js";
 import { SessionVault } from "../../app/static/js/vault.js";
 import {
   PROMPTVEIL_HOST_ID,
@@ -16,6 +20,7 @@ import {
 } from "./adapters.js";
 import { t } from "./i18n-ext.js";
 import {
+  FREE_CUSTOM_RULE_LIMIT,
   getChromeStorageLocal,
   getEffectiveMaskingConfig,
   loadExtProLicenseToken,
@@ -230,17 +235,37 @@ export const SHADOW_CSS = `
 }
 
 .pv-tier-chip {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-family: inherit;
   font-size: 10px;
   font-weight: 700;
+  line-height: 1.2;
   padding: 2px 7px;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
+  cursor: pointer;
+}
+
+.pv-tier-chip:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .pv-tier-chip.is-pro {
   background: #b4f105;
+  border-color: #b4f105;
   color: #051c12;
+}
+
+.pv-tier-chip.is-pro:hover {
+  background: #c1f824;
+}
+
+.pv-tier-chip.is-expired {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
 }
 
 .pv-vault-chip {
@@ -374,6 +399,127 @@ async function copyTextSafely(text, clipboard) {
   return false;
 }
 
+function normalizeLicenseTimestampMs(value) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return NaN;
+    return value > 1e12 ? value : value * 1000;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return NaN;
+    if (/^[+-]?\d+(?:\.\d+)?$/.test(trimmed)) {
+      const num = Number(trimmed);
+      if (Number.isFinite(num)) {
+        return num > 1e12 ? num : num * 1000;
+      }
+    }
+    return Date.parse(trimmed);
+  }
+  return NaN;
+}
+
+function formatLicenseExpDate(exp, lang) {
+  if (exp === null || exp === undefined || exp === "") return "";
+  const ms = normalizeLicenseTimestampMs(exp);
+  if (Number.isNaN(ms)) return String(exp);
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return String(exp);
+  try {
+    return new Intl.DateTimeFormat(lang === "en" ? "en-US" : "ru-RU", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    }).format(date);
+  } catch {
+    return date.toISOString().slice(0, 10);
+  }
+}
+
+function buildTierSummary(lang, license) {
+  if (license?.isPro) {
+    const badgeText = license.isOwner ? t(lang, "pro.badgeOwner") : t(lang, "pro.badgePro");
+    const keyId = license.keyId || "PV1";
+    const hasExp =
+      license.exp !== null &&
+      license.exp !== undefined &&
+      (typeof license.exp !== "string" || license.exp.trim() !== "");
+    const toastText = hasExp
+      ? t(lang, "pill.tierInfoProExp", {
+          badge: badgeText,
+          keyId,
+          date: formatLicenseExpDate(license.exp, lang),
+        })
+      : t(lang, "pill.tierInfoProLifetime", {
+          badge: badgeText,
+          keyId,
+        });
+    const ariaText = t(lang, "pill.tierAriaPro", { badge: badgeText, keyId });
+    return {
+      badgeText,
+      titleText: toastText,
+      ariaText,
+      toastText,
+      toastTone: "success",
+      isPro: true,
+      isExpired: false,
+    };
+  }
+
+  const badgeText = t(lang, "pro.badgeFree");
+  const reason = String(license?.reason || "");
+
+  if (reason === "expired") {
+    const keyId = license?.keyId || "PV1";
+    const hasExp =
+      license?.exp !== null &&
+      license?.exp !== undefined &&
+      (typeof license.exp !== "string" || license.exp.trim() !== "");
+    const toastText = hasExp
+      ? t(lang, "pill.tierHintExpired", {
+          keyId,
+          date: formatLicenseExpDate(license.exp, lang),
+        })
+      : t(lang, "pill.tierHintExpiredNoDate", { keyId });
+    const ariaText = t(lang, "pill.tierAriaExpired", { keyId });
+    return {
+      badgeText,
+      titleText: toastText,
+      ariaText,
+      toastText,
+      toastTone: "warn",
+      isPro: false,
+      isExpired: true,
+    };
+  }
+
+  if (reason && reason !== "empty" && reason !== "none" && reason !== "removed") {
+    const toastText = t(lang, "pill.tierHintInvalid");
+    const ariaText = t(lang, "pill.tierAriaInvalid");
+    return {
+      badgeText,
+      titleText: toastText,
+      ariaText,
+      toastText,
+      toastTone: "warn",
+      isPro: false,
+      isExpired: false,
+    };
+  }
+
+  const toastText = t(lang, "pill.tierHintFree", { limit: FREE_CUSTOM_RULE_LIMIT });
+  const ariaText = t(lang, "pill.tierAriaFree");
+  return {
+    badgeText,
+    titleText: toastText,
+    ariaText,
+    toastText,
+    toastTone: "info",
+    isPro: false,
+    isExpired: false,
+  };
+}
+
 export async function createContentController({
   win = globalThis.window,
   doc = globalThis.document,
@@ -382,6 +528,7 @@ export async function createContentController({
   storageArea = getChromeStorageLocal(),
   storageEvents = globalThis.chrome?.storage?.onChanged,
   publicKeyB64U,
+  nowMs,
 } = {}) {
   if (!doc || !doc.createElement) {
     return null;
@@ -453,7 +600,8 @@ export async function createContentController({
   pillBrand.className = "pv-pill-brand";
   const brandTitle = doc.createElement("span");
   brandTitle.className = "pv-pill-title";
-  const tierChip = doc.createElement("span");
+  const tierChip = doc.createElement("button");
+  tierChip.type = "button";
   tierChip.className = "pv-tier-chip";
   const vaultChip = doc.createElement("span");
   vaultChip.className = "pv-vault-chip";
@@ -503,16 +651,24 @@ export async function createContentController({
     toastTimer: null,
   };
 
+  let licenseRefreshSeq = 0;
+  let settingsRefreshSeq = 0;
+
   async function refreshLicense() {
-    const token = await loadExtProLicenseToken(storageArea);
-    if (!token) {
+    const seq = ++licenseRefreshSeq;
+    const rawToken = await loadExtProLicenseToken(storageArea);
+    if (seq !== licenseRefreshSeq) return;
+    if (!rawToken) {
       state.license = createFreeLicenseState("empty");
       return;
     }
-    state.license = await verifyProLicenseToken(
-      token,
-      publicKeyB64U ? { publicKeyB64U } : undefined
-    );
+    const candidate = extractProToken(rawToken) || rawToken;
+    const verifyOpts = {};
+    if (publicKeyB64U) verifyOpts.publicKeyB64U = publicKeyB64U;
+    if (typeof nowMs === "number" && Number.isFinite(nowMs)) verifyOpts.nowMs = nowMs;
+    const verified = await verifyProLicenseToken(candidate, verifyOpts);
+    if (seq !== licenseRefreshSeq) return;
+    state.license = verified;
   }
 
   function showToast(text, tone = "info") {
@@ -535,12 +691,12 @@ export async function createContentController({
     host.setAttribute("data-pv-hidden", state.settings.overlayVisible ? "false" : "true");
 
     brandTitle.textContent = t(lang, "pill.title");
-    tierChip.classList.toggle("is-pro", state.license.isPro);
-    tierChip.textContent = state.license.isOwner
-      ? t(lang, "pro.badgeOwner")
-      : state.license.isPro
-        ? t(lang, "pro.badgePro")
-        : t(lang, "pro.badgeFree");
+    const tierInfo = buildTierSummary(lang, state.license);
+    tierChip.classList.toggle("is-pro", tierInfo.isPro);
+    tierChip.classList.toggle("is-expired", tierInfo.isExpired);
+    tierChip.textContent = tierInfo.badgeText;
+    tierChip.setAttribute("title", tierInfo.titleText);
+    tierChip.setAttribute("aria-label", tierInfo.ariaText);
     vaultChip.textContent = t(lang, "pill.vaultCount", {
       count: tabVault.tokenToEntry.size,
     });
@@ -663,6 +819,11 @@ export async function createContentController({
     return { ok: true, result: res, copied };
   }
 
+  tierChip.addEventListener("click", () => {
+    const tierInfo = buildTierSummary(state.settings.lang, state.license);
+    showToast(tierInfo.toastText, tierInfo.toastTone);
+  });
+
   sanitizeBtn.addEventListener("click", () => {
     handleSanitize();
   });
@@ -696,13 +857,21 @@ export async function createContentController({
   });
 
   const unsubscribe = subscribeExtStorageChanges(async ({ settingsChanged, licenseChanged }) => {
-    if (settingsChanged) {
-      state.settings = await loadExtSettings(storageArea);
+    try {
+      if (settingsChanged) {
+        const seq = ++settingsRefreshSeq;
+        const nextSettings = await loadExtSettings(storageArea);
+        if (seq === settingsRefreshSeq) {
+          state.settings = nextSettings;
+        }
+      }
+      if (licenseChanged) {
+        await refreshLicense();
+      }
+      renderPill();
+    } catch {
+      // Ignore storage errors if extension context is invalidated on reload.
     }
-    if (licenseChanged) {
-      await refreshLicense();
-    }
-    renderPill();
   }, storageEvents);
 
   await refreshLicense();

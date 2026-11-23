@@ -1,22 +1,26 @@
 /* PromptVeil Self-Hosted Offline Service Worker (Network-First HTML, Cache-First /dist/*, SWR Static) */
 
-const CACHE_NAME = "promptveil-build-79b93523d5";
+const CACHE_NAME = "promptveil-build-caae73027c";
 
 const PRECACHE_URLS = [
   "/",
   "/en/",
+  "/pro/",
+  "/en/pro/",
   "/404.html",
   "/manifest.webmanifest",
   "/favicon.svg",
   "/apple-touch-icon.png",
   "/icon-192.png",
   "/icon-512.png",
-  "/dist/styles.JESASSVA.css",
-  "/dist/app.EKRICVL4.js",
-  "/dist/chunk-I4BKNUC6.js",
-  "/dist/i18n-en-I3KELLX7.js",
-  "/dist/i18n-ru-55RIANXC.js",
-  "/dist/pro-documents-3CP6ASOG.js"
+  "/dist/styles.33F4J2G4.css",
+  "/dist/app.2WRYAKBR.js",
+  "/dist/chunk-QGSFLC2X.js",
+  "/dist/chunk-WTZKIRLZ.js",
+  "/dist/i18n-en-MGIBIQSQ.js",
+  "/dist/i18n-ru-5KBQW4ZO.js",
+  "/dist/pro-checkout.F3FLKHD7.js",
+  "/dist/pro-documents-CVYJF6MZ.js"
 ];
 
 self.addEventListener("install", (event) => {
@@ -77,7 +81,13 @@ self.addEventListener("fetch", (event) => {
         .catch(async () => {
           const cached = await caches.match(req, { ignoreSearch: true });
           if (cached) return cached;
-          const fallbackUrl = reqUrl.pathname.startsWith("/en") ? "/en/" : "/";
+          const fallbackUrl = reqUrl.pathname.startsWith("/en/pro")
+            ? "/en/pro/"
+            : reqUrl.pathname.startsWith("/pro")
+              ? "/pro/"
+              : reqUrl.pathname.startsWith("/en")
+                ? "/en/"
+                : "/";
           const fallback = await caches.match(fallbackUrl);
           if (fallback) return fallback;
           return Response.error();

@@ -1,4 +1,4 @@
-"""Tier 1: Isolated Happy-Path E2E Feature Coverage (93 Tests: T1-F1-01..T1-F13-05)."""
+"""Tier 1: Isolated Happy-Path E2E Feature Coverage (103 Tests: T1-F1-01..T1-F14-10)."""
 
 from __future__ import annotations
 
@@ -1948,3 +1948,437 @@ def test_T1_F8_15_privacy_proof_zero_bytes_user_text_with_profiles_and_pro(
     assert "0 байт" in txt
     assert "0 запросов" in txt
     ui.close_active_modal()
+
+
+# ---------------------------------------------------------------------------
+# F14: Dedicated /pro/ & /en/pro/ Checkout & Activation Page (R1-R3 — 10 Tests)
+# ---------------------------------------------------------------------------
+
+
+_FORBIDDEN_CHECKOUT_LEGACY_STRINGS: tuple[str, ...] = (
+    "30 дней бесплатно",
+    "30 days free",
+    "490 ₽",
+    "390 ₽",
+    "1 990 ₽",
+    "1 590 ₽",
+    "billing-month-btn",
+)
+
+
+def test_T1_F14_01_pro_checkout_routes_render_ru_en_csp_and_static_parity(
+    raw_session: E2ESession,
+) -> None:
+    page = raw_session.page
+    base = raw_session.base_url.rstrip("/")
+
+    verify_csp_and_security_headers(f"{base}/pro/")
+    verify_csp_and_security_headers(f"{base}/en/pro/")
+
+    raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    assert raw_session.ui.get_document_lang().lower() == "ru"
+    verify_russian_purity(page)
+    hreflangs_ru = page.evaluate(
+        "() => Array.from(document.querySelectorAll('link[rel=\"alternate\"][hreflang]')).map(el => el.getAttribute('hreflang'))"
+    )
+    assert {"ru", "en", "x-default"}.issubset(set(hreflangs_ru))
+    assert not page.locator("[data-testid='checkout-order-panel'], #checkout-order-panel").is_visible()
+    assert raw_session.ui.get_checkout_activation_panel().is_visible()
+    ru_body = page.evaluate("() => document.body.innerText || ''")
+    for legacy in _FORBIDDEN_CHECKOUT_LEGACY_STRINGS:
+        assert legacy not in ru_body
+
+    raw_session.net.phase = "load"
+    page.goto(f"{base}/en/pro/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    assert raw_session.ui.get_document_lang().lower() == "en"
+    hreflangs_en = page.evaluate(
+        "() => Array.from(document.querySelectorAll('link[rel=\"alternate\"][hreflang]')).map(el => el.getAttribute('hreflang'))"
+    )
+    assert {"ru", "en", "x-default"}.issubset(set(hreflangs_en))
+    assert not page.locator("[data-testid='checkout-order-panel'], #checkout-order-panel").is_visible()
+    assert raw_session.ui.get_checkout_activation_panel().is_visible()
+    en_body = page.evaluate("() => document.body.innerText || ''")
+    for legacy in _FORBIDDEN_CHECKOUT_LEGACY_STRINGS:
+        assert legacy not in en_body
+
+    raw_session.console.assert_no_errors()
+
+
+def test_T1_F14_02_main_page_pricing_links_navigate_to_pro_checkout_ru_en(
+    raw_session: E2ESession,
+) -> None:
+    page = raw_session.page
+    ui = raw_session.ui
+    base = raw_session.base_url.rstrip("/")
+
+    raw_session.net.phase = "load"
+    page.goto(f"{base}/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    ui.open_pricing()
+    ru_link = ui.get_pricing_pro_checkout_link()
+    assert ru_link.is_visible()
+    assert (ru_link.get_attribute("href") or "").rstrip("/").endswith("/pro")
+    assert page.locator("[data-testid='open-pro-modal-btn'], #open-pro-modal-btn").first.is_visible()
+    assert page.locator("[data-testid='pricing-activate-pro-btn'], #pricing-activate-pro-btn").first.is_visible()
+    assert page.locator("[data-testid='open-team-modal-btn'], #open-team-modal-btn").first.is_visible()
+
+    raw_session.net.phase = "load"
+    ui.open_pro_checkout_from_pricing()
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+    assert page.url.rstrip("/").endswith("/pro")
+    assert ui.get_document_lang().lower() == "ru"
+
+    raw_session.net.phase = "load"
+    page.goto(f"{base}/en/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    ui.open_pricing()
+    en_link = ui.get_pricing_pro_checkout_link()
+    assert en_link.is_visible()
+    assert (en_link.get_attribute("href") or "").rstrip("/").endswith("/en/pro")
+    assert page.locator("[data-testid='open-pro-modal-btn'], #open-pro-modal-btn").first.is_visible()
+    assert page.locator("[data-testid='pricing-activate-pro-btn'], #pricing-activate-pro-btn").first.is_visible()
+    assert page.locator("[data-testid='open-team-modal-btn'], #open-team-modal-btn").first.is_visible()
+
+    raw_session.net.phase = "load"
+    ui.open_pro_checkout_from_pricing()
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+    assert page.url.rstrip("/").endswith("/en/pro")
+    assert ui.get_document_lang().lower() == "en"
+    raw_session.console.assert_no_errors()
+
+
+def test_T1_F14_03_checkout_tariff_selection_updates_active_plan_state(
+    raw_session: E2ESession,
+) -> None:
+    page = raw_session.page
+    ui = raw_session.ui
+    base = raw_session.base_url.rstrip("/")
+
+    raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    plans = ("pro-monthly", "pro-annual", "pro-lifetime", "team-pack")
+    for plan in plans:
+        ui.select_checkout_plan(plan)
+        assert ui.is_checkout_option_active(ui.get_checkout_plan_locator(plan))
+        for other in plans:
+            if other != plan:
+                assert not ui.is_checkout_option_active(ui.get_checkout_plan_locator(other))
+
+    raw_session.net.assert_zero_egress()
+    raw_session.console.assert_no_errors()
+
+
+def test_T1_F14_04_checkout_payment_method_selection_card_sbp_invoice(
+    raw_session: E2ESession,
+) -> None:
+    page = raw_session.page
+    ui = raw_session.ui
+    base = raw_session.base_url.rstrip("/")
+
+    raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    methods = ("card", "sbp", "invoice")
+    for method in methods:
+        ui.select_checkout_payment(method)
+        assert ui.is_checkout_option_active(ui.get_checkout_payment_locator(method))
+        for other in methods:
+            if other != method:
+                assert not ui.is_checkout_option_active(ui.get_checkout_payment_locator(other))
+
+    raw_session.net.assert_zero_egress()
+    raw_session.console.assert_no_errors()
+
+
+def test_T1_F14_05_checkout_submit_generates_pv_ord_receipt_zero_egress(
+    raw_session: E2ESession,
+) -> None:
+    page = raw_session.page
+    ui = raw_session.ui
+    base = raw_session.base_url.rstrip("/")
+
+    raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    ui.select_checkout_plan("team-pack")
+    ui.select_checkout_payment("invoice")
+    ui.fill_checkout_buyer(
+        name="Алексей Вектор",
+        email="alexey.checkout@example.com",
+        company="ООО Вектор",
+        accept_terms=True,
+    )
+    ui.submit_checkout_order()
+
+    order_panel = ui.get_checkout_order_panel()
+    assert order_panel.is_visible()
+    order_id = ui.get_checkout_order_id()
+    assert re.match(r"^PV-ORD-[A-Za-z0-9-]+$", order_id)
+    assert "ООО Вектор" in order_panel.inner_text()
+
+    verify_allowed_local_storage_keys(page)
+    all_storage = page.evaluate(
+        "() => Object.keys(localStorage).map(k => localStorage.getItem(k) || '').join('\\n')"
+    )
+    assert "PV-ORD-" not in all_storage
+    assert "alexey.checkout@example.com" not in all_storage
+    assert "Алексей Вектор" not in all_storage
+
+    for req in raw_session.net.requests:
+        hay = f"{req.url} {req.post_data or ''}"
+        for pii in ("alexey.checkout@example.com", "Алексей Вектор", "ООО Вектор", order_id):
+            assert pii not in hay
+    raw_session.net.assert_zero_egress(["alexey.checkout@example.com", "ООО Вектор", order_id])
+    raw_session.console.assert_no_errors()
+
+
+def test_T1_F14_06_checkout_copy_and_download_receipt_with_ru_en_parity(
+    raw_session: E2ESession,
+) -> None:
+    page = raw_session.page
+    ui = raw_session.ui
+    base = raw_session.base_url.rstrip("/")
+
+    raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    ui.select_checkout_plan("pro-annual")
+    ui.select_checkout_payment("sbp")
+    ui.fill_checkout_buyer(
+        name="Мария Соколова",
+        email="maria.receipt@example.com",
+        accept_terms=True,
+    )
+    ui.submit_checkout_order()
+
+    ru_order_id = ui.get_checkout_order_id()
+    assert ru_order_id.startswith("PV-ORD-")
+    ui.copy_checkout_receipt()
+    clip_ru = ui.read_clipboard_text()
+    if clip_ru is not None:
+        assert ru_order_id in clip_ru
+        assert "maria.receipt@example.com" in clip_ru
+
+    ru_receipt = ui.download_checkout_receipt(raw_session.io.downloads)
+    assert ru_receipt.is_file() and ru_receipt.stat().st_size > 20
+    ru_receipt_txt = ru_receipt.read_text(encoding="utf-8")
+    assert ru_order_id in ru_receipt_txt
+    assert "maria.receipt@example.com" in ru_receipt_txt
+    raw_session.net.assert_zero_egress(["maria.receipt@example.com", ru_order_id])
+
+    raw_session.net.phase = "load"
+    page.goto(f"{base}/en/pro/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    ui.select_checkout_plan("pro-monthly")
+    ui.select_checkout_payment("card")
+    ui.fill_checkout_buyer(
+        name="John Doe",
+        email="john.receipt@example.com",
+        accept_terms=True,
+    )
+    ui.submit_checkout_order()
+
+    en_order_id = ui.get_checkout_order_id()
+    assert en_order_id.startswith("PV-ORD-")
+    ui.copy_checkout_receipt()
+    clip_en = ui.read_clipboard_text()
+    if clip_en is not None:
+        assert en_order_id in clip_en
+        assert "john.receipt@example.com" in clip_en
+
+    en_receipt = ui.download_checkout_receipt(raw_session.io.downloads)
+    assert en_receipt.is_file() and en_receipt.stat().st_size > 20
+    en_receipt_txt = en_receipt.read_text(encoding="utf-8")
+    assert en_order_id in en_receipt_txt
+    assert "john.receipt@example.com" in en_receipt_txt
+    raw_session.net.assert_zero_egress(["john.receipt@example.com", en_order_id])
+    raw_session.console.assert_no_errors()
+
+
+def test_T1_F14_07_checkout_offline_pv1_verify_only_and_activate(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    token = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-E2E-CHK-01",
+        label="Покупатель Оформление",
+    )
+    ui.verify_checkout_token_only(token)
+    diag = ui.get_checkout_token_diagnostics()
+    assert "PV-E2E-CHK-01" in diag
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+    assert not page.locator("[data-testid='checkout-pro-unlocked'], #checkout-pro-unlocked").is_visible()
+
+    ui.activate_checkout_token()
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") == token
+    assert "PV-E2E-CHK-01" in ui.get_checkout_token_diagnostics()
+    assert ui.get_checkout_unlocked_panel().is_visible()
+    verify_allowed_local_storage_keys(page)
+
+    for req in pro_raw_session.net.requests:
+        assert token not in f"{req.url} {req.post_data or ''}"
+    pro_raw_session.net.assert_zero_egress([token, "PV-E2E-CHK-01"])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T1_F14_08_checkout_url_fragment_code_autofill_and_auto_verify(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    token = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-E2E-FRAG-01",
+        label="Фрагмент Покупатель",
+    )
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/#code={token}", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    page.wait_for_timeout(250)
+
+    inp_val = page.locator("[data-testid='checkout-token-input'], #checkout-token-input").first.input_value()
+    assert token in inp_val
+    assert "PV-E2E-FRAG-01" in ui.get_checkout_token_diagnostics()
+
+    for req in pro_raw_session.net.requests:
+        hay = f"{req.url} {req.post_data or ''}"
+        assert token not in hay
+        assert "#code=" not in hay
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/en/pro/#code={token}", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    page.wait_for_timeout(250)
+
+    en_inp_val = page.locator("[data-testid='checkout-token-input'], #checkout-token-input").first.input_value()
+    assert token in en_inp_val
+    assert "PV-E2E-FRAG-01" in ui.get_checkout_token_diagnostics()
+
+    for req in pro_raw_session.net.requests:
+        hay = f"{req.url} {req.post_data or ''}"
+        assert token not in hay
+        assert "#code=" not in hay
+    pro_raw_session.net.assert_zero_egress([token, "PV-E2E-FRAG-01"])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T1_F14_09_checkout_pvkey_upload_and_download_roundtrip(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    token = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-E2E-PVKEY-01",
+        label="Файл Покупатель",
+    )
+    pvkey_upload = pro_raw_session.io.uploads / "license.pvkey"
+    pvkey_upload.write_text(
+        f"# PromptVeil Pro License\n# Key ID: PV-E2E-PVKEY-01\n{token}\n",
+        encoding="utf-8",
+    )
+
+    ui.upload_checkout_pvkey(pvkey_upload)
+    inp_val = page.locator("[data-testid='checkout-token-input'], #checkout-token-input").first.input_value()
+    assert token in inp_val
+    assert "PV-E2E-PVKEY-01" in ui.get_checkout_token_diagnostics()
+
+    if page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") != token:
+        ui.activate_checkout_token()
+
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") == token
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    dl_pvkey = ui.download_checkout_pvkey(pro_raw_session.io.downloads)
+    assert dl_pvkey.is_file() and dl_pvkey.suffix.lower() == ".pvkey"
+    assert token in dl_pvkey.read_text(encoding="utf-8")
+
+    for req in pro_raw_session.net.requests:
+        assert token not in f"{req.url} {req.post_data or ''}"
+    pro_raw_session.net.assert_zero_egress([token, "PV-E2E-PVKEY-01"])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T1_F14_10_checkout_activation_unlocks_extension_zip_download(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    assert not page.locator("[data-testid='checkout-pro-unlocked'], #checkout-pro-unlocked").is_visible()
+
+    token = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-E2E-ZIP-01",
+        label="Архив Покупатель",
+    )
+    ui.activate_checkout_token(token)
+    unlocked = ui.get_checkout_unlocked_panel()
+    assert unlocked.is_visible()
+    assert unlocked.locator("a[href*='promptveil-pro-extension.zip']").count() >= 1
+    assert unlocked.locator("a[href='/'], a[href='../']").count() >= 1
+
+    zip_path = ui.download_checkout_extension_zip(pro_raw_session.io.downloads)
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        assert zf.testzip() is None
+        names = zf.namelist()
+        assert "manifest.json" in names
+        assert len(names) == 9
+
+    pro_raw_session.net.assert_zero_egress([token, "PV-E2E-ZIP-01"])
+    pro_raw_session.console.assert_no_errors()

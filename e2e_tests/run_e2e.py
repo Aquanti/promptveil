@@ -1,8 +1,8 @@
 """Dual-mode CLI runner for PromptVeil Opaque-Box E2E Suite.
 
 Modes:
-- --mode self-test: Runs py_compile, verifies pytest collects all 252 tests
-  (197 Tiers 1-4 [93 Tier 1 + 81 Tier 2 + 14 Tier 3 + 9 Tier 4] + 39 Tier 5 + 16 Acceptance),
+- --mode self-test: Runs py_compile, verifies pytest collects all 292 tests
+  (221 Tiers 1-4 [103 Tier 1 + 89 Tier 2 + 18 Tier 3 + 11 Tier 4] + 53 Tier 5 + 18 Acceptance),
   launches an in-process contract-mock HTTP server (e2e_tests/fixtures/), and runs real
   Playwright + headless Chrome/Edge/Chromium self-tests including positive Russian-first
   contract checks and negative monitor checks.
@@ -157,10 +157,10 @@ def _collect_marker_ids(marker_expr: str | None = None) -> list[str]:
 
 def _step_collect_only() -> None:
     expected_t1_4 = {
-        "tier1": 93,
-        "tier2": 81,
-        "tier3": 14,
-        "tier4": 9,
+        "tier1": 103,
+        "tier2": 89,
+        "tier3": 18,
+        "tier4": 11,
     }
     per_tier_counts: list[int] = []
     for marker, expected in expected_t1_4.items():
@@ -172,25 +172,25 @@ def _step_collect_only() -> None:
         per_tier_counts.append(len(lines))
 
     t1_4_lines = _collect_marker_ids("tier1 or tier2 or tier3 or tier4")
-    if len(t1_4_lines) != 197 or len(set(t1_4_lines)) != 197:
+    if len(t1_4_lines) != 221 or len(set(t1_4_lines)) != 221:
         raise RuntimeError(
-            f"Expected 197 unique Tiers 1-4 tests, got {len(t1_4_lines)} (unique={len(set(t1_4_lines))})."
+            f"Expected 221 unique Tiers 1-4 tests, got {len(t1_4_lines)} (unique={len(set(t1_4_lines))})."
         )
     t5_lines = _collect_marker_ids("tier5")
-    if len(t5_lines) != 39 or len(set(t5_lines)) != 39:
+    if len(t5_lines) != 53 or len(set(t5_lines)) != 53:
         raise RuntimeError(
-            f"Expected 39 unique Tier 5 tests, got {len(t5_lines)} (unique={len(set(t5_lines))})."
+            f"Expected 53 unique Tier 5 tests, got {len(t5_lines)} (unique={len(set(t5_lines))})."
         )
     acc_lines = _collect_marker_ids("acceptance")
-    if len(acc_lines) != 16 or len(set(acc_lines)) != 16:
+    if len(acc_lines) != 18 or len(set(acc_lines)) != 18:
         raise RuntimeError(
-            f"Expected 16 unique Acceptance tests, got {len(acc_lines)} (unique={len(set(acc_lines))})."
+            f"Expected 18 unique Acceptance tests, got {len(acc_lines)} (unique={len(set(acc_lines))})."
         )
     all_lines = _collect_marker_ids()
     expected_total = len(t1_4_lines) + len(t5_lines) + len(acc_lines)
-    if expected_total != 252 or len(all_lines) != len(set(all_lines)) or len(all_lines) != expected_total:
+    if expected_total != 292 or len(all_lines) != len(set(all_lines)) or len(all_lines) != expected_total:
         raise RuntimeError(
-            f"Unexpected total collected tests: total={len(all_lines)}, unique={len(set(all_lines))}, expected=252"
+            f"Unexpected total collected tests: total={len(all_lines)}, unique={len(set(all_lines))}, expected=292"
         )
     tier_breakdown = "+".join(str(c) for c in per_tier_counts)
     print(
@@ -1156,9 +1156,93 @@ def _run_negative_monitor_checks(browser: Browser, base_url: str) -> None:
         ext_server.shutdown()
         ext_server.server_close()
 
+    # (a4) Favicon exemption vs strict leak flagging
+    net_fav_ok = NetworkMonitor(page=page)
+    net_fav_ok.requests.append(
+        RecordedRequest(
+            phase="interactive",
+            url=f"{base_url}/favicon.svg",
+            method="GET",
+            resource_type="other",
+            post_data=None,
+            is_navigation=False,
+            page_url=f"{base_url}/#pricing-section",
+            has_post_data=False,
+            is_main_frame=True,
+        )
+    )
+    net_fav_ok.assert_zero_egress()
+
+    for bad_fav_label, bad_fav_req in (
+        (
+            "fetch /favicon.svg",
+            RecordedRequest(
+                phase="interactive",
+                url=f"{base_url}/favicon.svg",
+                method="GET",
+                resource_type="fetch",
+                post_data=None,
+                is_navigation=False,
+                page_url=f"{base_url}/",
+                has_post_data=False,
+                is_main_frame=True,
+            ),
+        ),
+        (
+            "query ?leak=1 on /favicon.svg",
+            RecordedRequest(
+                phase="interactive",
+                url=f"{base_url}/favicon.svg?leak=1",
+                method="GET",
+                resource_type="other",
+                post_data=None,
+                is_navigation=False,
+                page_url=f"{base_url}/",
+                has_post_data=False,
+                is_main_frame=True,
+            ),
+        ),
+        (
+            "POST /favicon.svg",
+            RecordedRequest(
+                phase="interactive",
+                url=f"{base_url}/favicon.svg",
+                method="POST",
+                resource_type="other",
+                post_data="secret=1",
+                is_navigation=False,
+                page_url=f"{base_url}/",
+                has_post_data=True,
+                is_main_frame=True,
+            ),
+        ),
+        (
+            "cross-origin /favicon.svg",
+            RecordedRequest(
+                phase="interactive",
+                url="https://evil.example/favicon.svg",
+                method="GET",
+                resource_type="other",
+                post_data=None,
+                is_navigation=False,
+                page_url=f"{base_url}/",
+                has_post_data=False,
+                is_main_frame=True,
+            ),
+        ),
+    ):
+        net_fav_bad = NetworkMonitor(page=page)
+        net_fav_bad.requests.append(bad_fav_req)
+        caught_fav_bad = False
+        try:
+            net_fav_bad.assert_zero_egress()
+        except AssertionError:
+            caught_fav_bad = True
+        assert caught_fav_bad, f"Negative monitor check failed: {bad_fav_label} was not flagged"
+
     print(
         "[self-test] Negative & edge monitor checks OK "
-        "(http/ws egress, ext-zip exemption/negative, console/pageerror, 390x844 overflow, overlap/clipping/overlay-layer, RU purity, exact CSP/COOP/CORP, chip disambiguation)"
+        "(http/ws egress, ext-zip/favicon exemption/negative, console/pageerror, 390x844 overflow, overlap/clipping/overlay-layer, RU purity, exact CSP/COOP/CORP, chip disambiguation)"
     )
 
 

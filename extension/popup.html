@@ -156,7 +156,7 @@
           <div class="pv-card-head">
             <div class="pv-card-head-left">
               <h2 class="pv-card-title" id="popup-categories-title">Категории детектора</h2>
-              <span class="pv-lock-badge" id="popup-categories-lock">Pro</span>
+              <button type="button" class="pv-lock-badge" id="popup-categories-lock">Pro</button>
             </div>
             <button type="button" class="pv-btn-link" id="popup-categories-reset">
               Включить все
@@ -207,7 +207,7 @@
           <div class="pv-packs-block">
             <div class="pv-packs-head">
               <span class="pv-packs-title" id="popup-packs-title">Отраслевые наборы слов</span>
-              <span class="pv-lock-badge" id="popup-packs-lock">Только Pro</span>
+              <button type="button" class="pv-lock-badge" id="popup-packs-lock">Только Pro</button>
             </div>
             <div class="pv-packs-grid" id="popup-packs-list"></div>
           </div>
@@ -226,20 +226,45 @@
             <ul class="pv-pro-meta-list" id="popup-pro-meta-list" hidden></ul>
           </div>
 
+          <div class="pv-pro-import-row">
+            <button type="button" class="pv-btn pv-btn-secondary" id="popup-pro-paste-btn">
+              Вставить и активировать
+            </button>
+            <input
+              type="file"
+              id="popup-pro-file-input"
+              accept=".pvkey,.txt,text/plain"
+              hidden
+            />
+            <button type="button" class="pv-btn pv-btn-secondary" id="popup-pro-file-btn">
+              Загрузить .pvkey
+            </button>
+          </div>
+
           <textarea
             class="pv-textarea"
             id="popup-pro-key-input"
             rows="2"
-            placeholder="Вставьте ключ вида PV1...."
+            placeholder="Вставьте ключ PV1..., текст квитанции или #code=..."
             spellcheck="false"
             autocomplete="off"
           ></textarea>
 
           <div class="pv-inline-alert" id="popup-pro-alert" role="alert" hidden></div>
+          <div
+            class="pv-pro-diagnostics"
+            id="popup-pro-diagnostics"
+            role="status"
+            aria-live="polite"
+            hidden
+          ></div>
 
           <div class="pv-pro-actions">
             <button type="button" class="pv-btn pv-btn-lime" id="popup-pro-activate-btn">
               Активировать
+            </button>
+            <button type="button" class="pv-btn pv-btn-secondary" id="popup-pro-verify-btn">
+              Проверить
             </button>
             <button type="button" class="pv-btn pv-btn-danger-ghost" id="popup-pro-remove-btn" disabled>
               Удалить ключ

@@ -12,7 +12,13 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Browser, Locator, Page
 
-from conftest import E2ESession, EphemeralProKeys, STATIC_APP_DIR, start_static_dir_server
+from conftest import (
+    E2ESession,
+    EphemeralProKeys,
+    STATIC_APP_DIR,
+    TempIODirs,
+    start_static_dir_server,
+)
 from doc_fixtures import make_synthetic_docx
 from locators import PromptVeilUI
 from monitors import (
@@ -2379,6 +2385,7 @@ def test_T5_36_token_shape_with_digits_ipv4_rehydrate_env_and_strict_entropy(
     pro_raw_session.console.assert_no_errors()
 
 
+
 def test_T5_37_rulebook_pro_pack_alert_and_banner_retranslate_on_lang_toggle(
     e2e_session: E2ESession,
 ) -> None:
@@ -2529,5 +2536,1245 @@ def test_T5_39_extension_zip_headers_download_isolation_and_privacy_proof_after_
 
     pro_raw_session.net.assert_zero_egress()
     pro_raw_session.console.assert_no_errors()
+
+
+def test_T5_40_pro_checkout_signed_claim_xss_prototype_pollution_and_pvkey_header_injection(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R1/R2 Tier 5: Signed-claim XSS, __proto__ payload, and .pvkey header-injection redaction."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    inj_tok = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="<img src=x onerror=window.__xssKey=1>",
+        label="<svg onload=window.__xssLbl=1>\n# Tier: owner\nPV1.forgedPayload.forgedSig1234567890",
+    )
+    proto_tok = ephemeral_pro_keys.sign_raw_payload(
+        {
+            "v": 1,
+            "tier": "pro",
+            "keyId": "PV-PROTO-SAFE",
+            "label": "Proto Safe",
+            "issuedAt": "2026-11-21T00:00:00.000Z",
+            "__proto__": {"pvPolluted": True},
+        }
+    )
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/#code={inj_tok}", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    ui.activate_checkout_token()
+    assert ui.get_checkout_unlocked_panel().is_visible()
+    assert page.evaluate("() => window.__xssKey === undefined && window.__xssLbl === undefined") is True
+    assert page.locator("img[src='x'], svg[onload]").count() == 0
+
+    exported_pvkey = pro_raw_session.io.downloads / "injected_roundtrip.pvkey"
+    saved_path = ui.download_checkout_pvkey(pro_raw_session.io.downloads)
+    pvkey_text = saved_path.read_text(encoding="utf-8")
+    assert "[REDACTED]" in pvkey_text
+    assert "PV1.forgedPayload.forgedSig1234567890" not in pvkey_text
+    assert pvkey_text.strip().splitlines()[-1] == inj_tok
+    exported_pvkey.write_text(pvkey_text, encoding="utf-8")
+
+    ui.upload_checkout_pvkey(exported_pvkey)
+    assert page.locator("#checkout-token-input").input_value() == inj_tok
+
+    ui.activate_checkout_token(proto_tok)
+    assert page.evaluate("() => ({}).pvPolluted === undefined") is True
+
+    ui.fill_checkout_buyer(
+        name="__proto__",
+        email="proto.safe@example.com",
+        company="constructor",
+        accept_terms=True,
+    )
+    ui.submit_checkout_order()
+    assert ui.get_checkout_order_panel().is_visible()
+    assert page.evaluate("() => ({}).pvPolluted === undefined") is True
+
+    pro_raw_session.net.assert_zero_egress([inj_tok, proto_tok, "proto.safe@example.com"])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T5_41_pro_checkout_purejs_ed25519_fallback_and_exp_boundary_matrix(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R1/R2 Tier 5: Pure-JS Ed25519 fallback on /pro/, exp/schema boundaries, diagnostics coercion (B3), and %2E fragment."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+
+    # Exact exp == nowMs boundary check via direct verifyProLicenseToken import (loaded during load phase)
+    eq_now_tok = ephemeral_pro_keys.sign_raw_payload(
+        {
+            "v": 1,
+            "tier": "pro",
+            "keyId": "PV-EQNOW",
+            "label": "EqNow",
+            "issuedAt": "2026-11-21T00:00:00Z",
+            "exp": 1795435200000,
+        }
+    )
+    eq_res = page.evaluate(
+        """async (tok) => {
+            const { verifyProLicenseToken } = await import('/js/pro-license.js');
+            const atBoundary = await verifyProLicenseToken(tok, { nowMs: 1795435200000 });
+            const beforeBoundary = await verifyProLicenseToken(tok, { nowMs: 1795435199999 });
+            return { atValid: atBoundary.valid, atReason: atBoundary.reason, beforeValid: beforeBoundary.valid };
+        }""",
+        eq_now_tok,
+    )
+    assert eq_res == {"atValid": False, "atReason": "expired", "beforeValid": True}
+    pro_raw_session.net.assert_clean_load()
+
+    pro_raw_session.net.start_interactive_phase()
+
+    page.evaluate(
+        """() => {
+            if (window.crypto && window.crypto.subtle) {
+                window.crypto.subtle.verify = () => Promise.reject(new Error('Ed25519 unsupported'));
+            }
+        }"""
+    )
+
+    valid_tok = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-T5-PJS", label="PureJS Test")
+    ui.activate_checkout_token(valid_tok)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+    assert "pure-js" in ui.get_checkout_token_diagnostics().lower()
+
+    page.locator("#checkout-deactivate-btn").click()
+    page.wait_for_timeout(100)
+
+    prefix, payload_b64, sig_b64 = valid_tok.split(".")
+    flipped = "A" if sig_b64[0] != "A" else "B"
+    exp_empty_tok = ephemeral_pro_keys.sign_raw_payload(
+        {"v": 1, "tier": "pro", "keyId": "PV-EXPE", "label": "ExpEmpty", "issuedAt": "0", "exp": ""}
+    )
+    bad_tier_tok = ephemeral_pro_keys.sign_raw_payload(
+        {"v": 1, "tier": 123, "keyId": "PV-T123", "label": "BadTier", "issuedAt": "2026-11-21T00:00:00Z"}
+    )
+    bad_vectors = [
+        f"{prefix}.{payload_b64}.{flipped}{sig_b64[1:]}",
+        f"{valid_tok}=",
+        f"{valid_tok}.extra",
+        ephemeral_pro_keys.sign_raw_payload(
+            {"v": 1, "tier": "pro", "keyId": "PV-EXP0", "label": "Exp0", "issuedAt": "2026-11-21T00:00:00Z", "exp": 0}
+        ),
+        ephemeral_pro_keys.sign_raw_payload(
+            {"v": 1, "tier": "pro", "keyId": "PV-EXPN", "label": "ExpNeg", "issuedAt": "2026-11-21T00:00:00Z", "exp": -100}
+        ),
+        exp_empty_tok,
+        ephemeral_pro_keys.sign_raw_payload(
+            {"v": 1, "tier": "pro", "keyId": "PV-EXPB", "label": "ExpBool", "issuedAt": "2026-11-21T00:00:00Z", "exp": False}
+        ),
+        bad_tier_tok,
+        ephemeral_pro_keys.sign_raw_payload(
+            {"v": 1, "tier": "pro", "keyId": 456, "label": "BadId", "issuedAt": "2026-11-21T00:00:00Z"}
+        ),
+    ]
+    for vec in bad_vectors:
+        ui.activate_checkout_token(vec)
+        assert not page.locator("#checkout-pro-unlocked").is_visible()
+        assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    # B3 checks: empty exp must not render "бессрочный"/"never", and non-string tier must not coerce to "pro"
+    ui.activate_checkout_token(exp_empty_tok)
+    diag_exp_empty = ui.get_checkout_token_diagnostics().lower()
+    assert "бессроч" not in diag_exp_empty and "never" not in diag_exp_empty
+    assert "1970" not in diag_exp_empty
+
+    ui.activate_checkout_token(bad_tier_tok)
+    diag_bad_tier = ui.get_checkout_token_diagnostics().lower()
+    assert "уровень: pro" not in diag_bad_tier and "tier: pro" not in diag_bad_tier
+
+    # Percent-encoded fragment with literal 100% (malformed percent elsewhere)
+    encoded_tok = valid_tok.replace(".", "%2E")
+    page.evaluate("(h) => { window.location.hash = h; }", f"#code={encoded_tok}&note=100%")
+    page.wait_for_timeout(200)
+    assert page.locator("#checkout-token-input").input_value() == valid_tok
+
+    pro_raw_session.net.assert_zero_egress([valid_tok])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T5_42_pro_checkout_pvkey_256kb_boundary_nul_tail_utf8_and_bom(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R1 Tier 5: .pvkey upload enforces 256 KB exact cap, UTF-8 BOM support, NUL-byte & invalid UTF-8 rejection."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    tok = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-T5-256K", label="Boundary File")
+    tok_bytes = (tok + "\n").encode("utf-8")
+
+    exact_file = pro_raw_session.io.uploads / "exact_256k.pvkey"
+    exact_file.write_bytes(tok_bytes + b" " * (262144 - len(tok_bytes)))
+
+    bom_file = pro_raw_session.io.uploads / "utf8_bom.pvkey"
+    bom_file.write_bytes(b"\xef\xbb\xbf" + tok_bytes)
+
+    over_file = pro_raw_session.io.uploads / "over_256k.pvkey"
+    over_file.write_bytes(tok_bytes + b" " * (262145 - len(tok_bytes)))
+
+    nul_tail_file = pro_raw_session.io.uploads / "nul_tail.pvkey"
+    nul_tail_file.write_bytes(tok.encode("utf-8") + b"\x00")
+
+    bad_utf8_file = pro_raw_session.io.uploads / "bad_utf8.pvkey"
+    bad_utf8_file.write_bytes(tok.encode("utf-8") + b"\n\xc3\x28")
+
+    utf16_file = pro_raw_session.io.uploads / "utf16.pvkey"
+    utf16_file.write_bytes(b"\xff\xfe" + tok.encode("utf-16-le"))
+
+    for ok_file in (exact_file, bom_file):
+        ui.upload_checkout_pvkey(ok_file)
+        assert page.locator("#checkout-token-input").input_value() == tok
+        assert "PV-T5-256K" in ui.get_checkout_token_diagnostics()
+
+    for bad_file in (over_file, nul_tail_file, bad_utf8_file, utf16_file):
+        ui.upload_checkout_pvkey(bad_file)
+        assert page.locator("#checkout-token-diagnostics").is_visible()
+        assert not page.locator("#checkout-pro-unlocked").is_visible()
+        assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    pro_raw_session.net.assert_zero_egress([tok])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T5_43_pro_checkout_localstorage_tamper_whitespace_json_and_active_license_preservation(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R1/R2 Tier 5: Tampered localStorage payloads purge cleanly; failed re-activation preserves active Pro license; QuotaExceededError warns cleanly (B2)."""
+    from monitors import verify_allowed_local_storage_keys
+
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    for route in ("/pro/", "/en/pro/", "/"):
+        for tampered in ('{"valid":true,"isPro":true,"tier":"owner"}', "[null]", "   "):
+            pro_raw_session.net.phase = "load"
+            page.goto(f"{base}{route}", wait_until="networkidle")
+            page.evaluate("(v) => localStorage.setItem('promptveil_pro_license_v1', v)", tampered)
+            page.reload(wait_until="networkidle")
+            pro_raw_session.net.assert_clean_load()
+            assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+            if route == "/":
+                assert ui.get_pro_badge_text().lower() in ("free", "бесплатно")
+            else:
+                assert page.locator("#checkout-pro-status-badge").get_attribute("data-pro-state") == "free"
+                assert not page.locator("#checkout-pro-unlocked").is_visible()
+
+    valid_tok = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-T5-KEEP", label="Keep Valid")
+    expired_tok = ephemeral_pro_keys.issue_token(
+        tier="pro", key_id="PV-T5-EXPP", label="Expired", exp="2020-01-01T00:00:00.000Z"
+    )
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    ui.activate_checkout_token(valid_tok)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    # Failed activation of an expired token must NOT destroy existing active license
+    ui.activate_checkout_token(expired_tok)
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") == valid_tok
+    assert ui.get_checkout_unlocked_panel().is_visible()
+    assert page.locator("#checkout-pro-status-badge").get_attribute("data-pro-state") == "pro"
+    verify_allowed_local_storage_keys(page)
+
+    # B2: QuotaExceededError during activation surfaces storageWarning alert banner cleanly
+    page.locator("#checkout-deactivate-btn").click()
+    page.wait_for_timeout(100)
+    page.evaluate(
+        """() => {
+            window.__origSetItem = Storage.prototype.setItem;
+            Storage.prototype.setItem = () => {
+                throw new DOMException('Quota exceeded', 'QuotaExceededError');
+            };
+        }"""
+    )
+    try:
+        ui.activate_checkout_token(valid_tok)
+        banner = page.locator("#global-status-banner")
+        assert banner.is_visible()
+        assert banner.get_attribute("role") == "alert"
+        assert "заполнено" in banner.inner_text().lower() or "storage" in banner.inner_text().lower()
+        assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+    finally:
+        page.evaluate(
+            """() => {
+                if (window.__origSetItem) {
+                    Storage.prototype.setItem = window.__origSetItem;
+                    delete window.__origSetItem;
+                }
+            }"""
+        )
+
+    pro_raw_session.net.assert_zero_egress([valid_tok, expired_tok])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T5_44_pro_checkout_sw_offline_routes_and_lang_switch_resilience(
+    playwright_browser: Browser,
+) -> None:
+    """R1 Tier 5: Service Worker precaches /pro/ & /en/pro/ + dynamic i18n chunks and syncs footer links (B4) offline."""
+    with start_static_dir_server(STATIC_APP_DIR) as static_url:
+        ctx = playwright_browser.new_context(viewport={"width": 1440, "height": 900})
+        page = ctx.new_page()
+        console = ConsoleErrorMonitor(page=page)
+        console.attach()
+        try:
+            page.goto(f"{static_url}/pro/", wait_until="networkidle")
+            ready = page.evaluate(
+                """async () => {
+                    const reg = await navigator.serviceWorker.ready;
+                    if (!reg || !reg.active) return false;
+                    if (reg.active.state === 'activated') return true;
+                    await new Promise((resolve) => {
+                        reg.active.addEventListener('statechange', () => {
+                            if (reg.active.state === 'activated') resolve();
+                        });
+                    });
+                    return true;
+                }"""
+            )
+            assert ready is True
+            page.reload(wait_until="networkidle")
+            assert page.evaluate("() => Boolean(navigator.serviceWorker.controller)") is True
+
+            ctx.set_offline(True)
+            page.reload(wait_until="domcontentloaded")
+            page.wait_for_timeout(200)
+            assert page.locator("#checkout-hero-title").is_visible()
+
+            page.locator("#lang-en-btn").click()
+            page.wait_for_timeout(200)
+            assert page.evaluate("() => document.documentElement.lang") == "en"
+            # B4: Footer links stay synced with RU/EN toggle
+            footer_hrefs = page.evaluate(
+                "() => Array.from(document.querySelectorAll('.footer-links-row a')).map(a => a.getAttribute('href'))"
+            )
+            assert "/en/" in footer_hrefs and "/en/#pricing-section" in footer_hrefs
+
+            page.goto(f"{static_url}/en/pro/", wait_until="domcontentloaded")
+            page.wait_for_timeout(200)
+            assert "Checkout" in page.locator("#checkout-hero-title").inner_text()
+
+            page.goto(f"{static_url}/pro", wait_until="domcontentloaded")
+            page.wait_for_timeout(200)
+            assert page.locator("#checkout-hero-title").is_visible()
+
+            page.goto(f"{static_url}/pro/#code=PV1.bad.sig", wait_until="domcontentloaded")
+            page.wait_for_timeout(200)
+            assert page.locator("#checkout-token-input").input_value() == "PV1.bad.sig"
+            assert page.locator("#checkout-token-diagnostics").is_visible()
+
+            console.assert_no_errors()
+        finally:
+            ctx.set_offline(False)
+            console.detach()
+            ctx.close()
+
+
+def test_T5_45_pro_checkout_active_csp_all_egress_sinks_and_allowlist_hygiene(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R1 Tier 5: Active CSP enforcement across fetch/XHR/sendBeacon/WebSocket/script/img on /pro/ & /en/pro/ + storage allowlist."""
+    from monitors import verify_allowed_local_storage_keys
+
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    for route in ("/pro/", "/en/pro/"):
+        pro_raw_session.net.phase = "load"
+        page.goto(f"{base}{route}", wait_until="networkidle")
+        pro_raw_session.net.assert_clean_load()
+
+        with pro_raw_session.console.allow_expected_csp_errors():
+            probe = page.evaluate(
+                """async () => {
+                    const violated = [];
+                    const onV = (e) => violated.push(e.effectiveDirective || e.violatedDirective || '');
+                    document.addEventListener('securitypolicyviolation', onV);
+                    try {
+                        let fetchErr = false;
+                        try { await fetch('https://example.com/t5-csp'); } catch { fetchErr = true; }
+                        let beaconOk = true;
+                        try { beaconOk = navigator.sendBeacon('https://example.com/t5-beacon', 'x'); } catch { beaconOk = false; }
+                        let wsErr = false;
+                        try { new WebSocket('wss://example.com/t5-ws'); } catch { wsErr = true; }
+                        const img = document.createElement('img');
+                        img.src = 'https://example.com/t5-pixel.png';
+                        document.body.appendChild(img);
+                        await new Promise((r) => setTimeout(r, 150));
+                        img.remove();
+                        return { fetchErr, beaconOk, wsErr, violated };
+                    } finally {
+                        document.removeEventListener('securitypolicyviolation', onV);
+                    }
+                }"""
+            )
+        assert probe["fetchErr"] is True
+        assert probe["beaconOk"] is False or any("connect-src" in d for d in probe["violated"])
+        assert len(probe["violated"]) >= 2
+        assert ("https://example.com/t5-pixel.png", "csp") in pro_raw_session.net.failed_requests
+        pro_raw_session.net.failed_requests = [
+            f for f in pro_raw_session.net.failed_requests if f[0] != "https://example.com/t5-pixel.png"
+        ]
+
+    pro_raw_session.net.start_interactive_phase()
+    tok = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-T5-CSP", label="CSP Clean")
+    ui.activate_checkout_token(tok)
+    verify_allowed_local_storage_keys(page)
+    pro_raw_session.net.assert_zero_egress([tok])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T5_46_pro_checkout_async_verify_activate_deactivate_race_regression(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """R1 Tier 5 Regression (B1 fix in pro-checkout.js): Async activate vs deactivate & verify races."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    tok_a = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-RACE-A", label="Race A")
+    tok_b = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-RACE-B", label="Race B")
+    ui.activate_checkout_token(tok_a)
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    # Slow down first subtle.verify call, trigger activate(tok_b), then deactivate before resolve
+    page.evaluate(
+        """() => {
+            const orig = crypto.subtle.verify.bind(crypto.subtle);
+            let delayOnce = true;
+            crypto.subtle.verify = async (...args) => {
+                if (delayOnce) {
+                    delayOnce = false;
+                    await new Promise((r) => setTimeout(r, 250));
+                }
+                return orig(...args);
+            };
+        }"""
+    )
+    ui.enter_checkout_token(tok_b)
+    page.locator("#checkout-activate-btn").click()
+    page.wait_for_timeout(30)
+    page.locator("#checkout-deactivate-btn").click()
+    page.wait_for_timeout(350)
+
+    assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+    assert not page.locator("#checkout-pro-unlocked").is_visible()
+    assert page.locator("#checkout-pro-status-badge").get_attribute("data-pro-state") == "free"
+
+    # Slow verify(tok_a) overtaken by fast verify('PV1.bad.sig') must not overwrite diagnostics
+    page.evaluate(
+        """() => {
+            const orig = crypto.subtle.verify.bind(crypto.subtle);
+            let call = 0;
+            crypto.subtle.verify = async (...args) => {
+                call += 1;
+                if (call === 1) await new Promise((r) => setTimeout(r, 250));
+                return orig(...args);
+            };
+        }"""
+    )
+    ui.enter_checkout_token(tok_a)
+    page.locator("#checkout-verify-only-btn").click()
+    page.wait_for_timeout(30)
+    ui.enter_checkout_token("PV1.bad.sig")
+    page.locator("#checkout-verify-only-btn").click()
+    page.wait_for_timeout(350)
+
+    assert "PV-RACE-A" not in ui.get_checkout_token_diagnostics()
+    pro_raw_session.net.assert_zero_egress([tok_a, tok_b])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T5_47_owner_cli_adversarial_verify_redact_bundle_and_bounds(
+    temp_io_dir: TempIODirs,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """Owner CLI: --verify tampering/--now, --verify-bundle mismatch/empty/non-array, --redact leak check, batch/days bounds, and --key-id traversal."""
+    import subprocess
+    from conftest import WORKSPACE_ROOT, _resolve_node_exe
+
+    node_exe = str(_resolve_node_exe())
+    issue_script = str(WORKSPACE_ROOT / "scripts" / "issue-pro-key.mjs")
+    bundle_path = temp_io_dir.root / "ephem_bundle.json"
+    pv_dir = temp_io_dir.root / "pvkeys"
+
+    def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [node_exe, issue_script, *args],
+            cwd=str(WORKSPACE_ROOT),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=15,
+        )
+
+    gen = _run_cli("--generate-bundle", "--out", str(bundle_path), "--json")
+    assert gen.returncode == 0, gen.stderr
+    ephem_pub = json.loads(gen.stdout)["publicKeyB64U"]
+
+    # 1. --verify-bundle rejects wrong --pub, tampered bundle entries, non-array clientKeys, and empty bundle
+    wrong_pub = ephemeral_pro_keys.public_key_b64u
+    assert _run_cli("--verify-bundle", "--bundle", str(bundle_path), "--pub", wrong_pub, "--json").returncode != 0
+
+    tampered_bundle = temp_io_dir.root / "tampered_bundle.json"
+    b_obj = json.loads(bundle_path.read_text(encoding="utf-8"))
+    b_obj["clientKeys"][0]["keyId"] = "PV-MISMATCH-99"
+    tampered_bundle.write_text(json.dumps(b_obj), encoding="utf-8")
+    tb_res = _run_cli("--verify-bundle", "--bundle", str(tampered_bundle), "--pub", ephem_pub, "--json")
+    assert tb_res.returncode != 0
+    assert any(f["reason"] == "keyId_mismatch" for f in json.loads(tb_res.stdout)["failures"])
+
+    non_arr_bundle = temp_io_dir.root / "non_arr_bundle.json"
+    b_non_arr = json.loads(bundle_path.read_text(encoding="utf-8"))
+    b_non_arr["clientKeys"] = "not-an-array"
+    non_arr_bundle.write_text(json.dumps(b_non_arr), encoding="utf-8")
+    na_res = _run_cli("--verify-bundle", "--bundle", str(non_arr_bundle), "--pub", ephem_pub, "--json")
+    assert na_res.returncode != 0
+    assert json.loads(na_res.stdout)["ok"] is False
+
+    empty_bundle = temp_io_dir.root / "empty_bundle.json"
+    empty_bundle.write_text(
+        json.dumps(
+            {
+                "publicKeyB64U": b_non_arr["publicKeyB64U"],
+                "privateKeyPkcs8Pem": b_non_arr["privateKeyPkcs8Pem"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    emp_res = _run_cli("--verify-bundle", "--bundle", str(empty_bundle), "--pub", ephem_pub, "--json")
+    assert emp_res.returncode != 0
+    assert json.loads(emp_res.stdout)["ok"] is False
+
+    # 2. --issue + --redact never leaks raw PV1. tokens or private keys across JSON, MD, CSV, --verify, or --inspect-bundle
+    now_iso = "2026-11-23T00:00:00.000Z"
+    md_table = temp_io_dir.root / "redacted.md"
+    csv_table = temp_io_dir.root / "redacted.csv"
+    iss = _run_cli(
+        "--issue", "--bundle", str(bundle_path), "--pub", ephem_pub,
+        "--plan", "pro-monthly", "--count", "2", "--prefix", "PV-T547",
+        "--now", now_iso, "--out-pvkey", str(pv_dir),
+        "--out-table", str(md_table), "--redact", "--json",
+    )
+    assert iss.returncode == 0, iss.stderr
+    assert "BEGIN PRIVATE KEY" not in iss.stdout
+    for item in json.loads(iss.stdout)["items"]:
+        assert "..." in item["token"]
+
+    iss_csv = _run_cli(
+        "--issue", "--bundle", str(bundle_path), "--pub", ephem_pub,
+        "--key-id", "../../evil", "--out-pvkey", str(pv_dir) + "/",
+        "--out-table", str(csv_table), "--redact", "--json",
+    )
+    assert iss_csv.returncode == 0, iss_csv.stderr
+    assert (pv_dir / ".._.._evil.pvkey").is_file()
+    assert not (temp_io_dir.root / "evil.pvkey").exists()
+    assert re.search(r"PV1\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}", md_table.read_text(encoding="utf-8")) is None
+    assert re.search(r"PV1\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}", csv_table.read_text(encoding="utf-8")) is None
+
+    # 3. --verify tampered sig, padded token, wrong pub, and --now boundary (1ms before vs exact exp)
+    pv_file = pv_dir / "PV-T547-01.pvkey"
+    raw_tok = [ln.strip() for ln in pv_file.read_text(encoding="utf-8").splitlines() if ln.startswith("PV1.")][0]
+    exp_iso = json.loads(iss.stdout)["items"][0]["exp"]
+
+    tampered_tok = raw_tok[:-2] + ("AA" if not raw_tok.endswith("AA") else "BB")
+    assert _run_cli("--verify", tampered_tok, "--pub", ephem_pub, "--json").returncode == 1
+    assert _run_cli("--verify", raw_tok + "=", "--pub", ephem_pub, "--json").returncode == 1
+    assert _run_cli("--verify", raw_tok, "--pub", wrong_pub, "--json").returncode == 1
+
+    ver_ok = _run_cli("--verify", raw_tok, "--pub", ephem_pub, "--now", "2026-12-22T23:59:59.999Z", "--redact", "--json")
+    assert ver_ok.returncode == 0
+    assert raw_tok not in ver_ok.stdout
+    ver_exp = _run_cli("--verify", raw_tok, "--pub", ephem_pub, "--now", exp_iso, "--json")
+    assert ver_exp.returncode == 1
+    assert json.loads(ver_exp.stdout)["reason"] == "expired"
+
+    # 4. Invalid batch / days boundaries
+    for bad_args in (
+        ("--count", "0"),
+        ("--count", "-1"),
+        ("--count", "1.5"),
+        ("--count", "1001"),
+        ("--days", "0"),
+        ("--days", "-2"),
+        ("--days", "1e-10"),
+        ("--days", "10", "--exp", "2028-01-01T00:00:00Z"),
+    ):
+        fail = _run_cli("--issue", "--bundle", str(bundle_path), "--pub", ephem_pub, *bad_args, "--json")
+        assert fail.returncode != 0, f"Expected failure for {bad_args}"
+
+
+def test_T5_48_owner_console_http_security_boundaries_and_csrf(
+    temp_io_dir: TempIODirs,
+) -> None:
+    """Owner Console HTTP server: non-loopback rejection, Host DNS-rebinding, Origin/Referer CSRF, // URL, corrupt ledger, favicon 204, 413 >64KB, 400 JSON."""
+    import http.client
+    import subprocess
+    import urllib.parse
+    from conftest import WORKSPACE_ROOT, _resolve_node_exe
+
+    node_exe = str(_resolve_node_exe())
+    issue_script = str(WORKSPACE_ROOT / "scripts" / "issue-pro-key.mjs")
+    console_script = str(WORKSPACE_ROOT / "scripts" / "owner-console.mjs")
+    bundle_path = temp_io_dir.root / "bundle.json"
+    ledger_path = temp_io_dir.root / "ledger.json"
+
+    gen = subprocess.run(
+        [node_exe, issue_script, "--generate-bundle", "--out", str(bundle_path), "--json"],
+        cwd=str(WORKSPACE_ROOT), capture_output=True, text=True, encoding="utf-8", check=True, timeout=15,
+    )
+    pub = json.loads(gen.stdout)["publicKeyB64U"]
+
+    # Non-loopback bind refusal
+    non_loopback = subprocess.run(
+        [node_exe, console_script, "--host", "0.0.0.0", "--port", "0", "--bundle", str(bundle_path)],
+        cwd=str(WORKSPACE_ROOT), capture_output=True, text=True, encoding="utf-8", check=False, timeout=10,
+    )
+    assert non_loopback.returncode != 0
+
+    proc = subprocess.Popen(
+        [
+            node_exe, console_script, "--host", "127.0.0.1", "--port", "0",
+            "--bundle", str(bundle_path), "--ledger", str(ledger_path), "--pub", pub,
+        ],
+        cwd=str(WORKSPACE_ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+    )
+    try:
+        assert proc.stdout is not None
+        line = proc.stdout.readline().strip()
+        base_url = line.split("listening at ", 1)[1].strip().rstrip("/")
+        parsed = urllib.parse.urlparse(base_url)
+        host_port = f"{parsed.hostname}:{parsed.port}"
+
+        def _raw_http(method: str, req_path: str, headers: dict[str, str], body: bytes = b"") -> tuple[int, str]:
+            conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=10)
+            try:
+                conn.request(method, req_path, body=body, headers=headers)
+                resp = conn.getresponse()
+                return resp.status, resp.read().decode("utf-8", errors="replace")
+            finally:
+                conn.close()
+
+        # DNS-rebinding Host headers -> 403
+        for bad_host in ("evil.com", "127.0.0.1.evil.com:80", "127.0.0.1:80@evil.com"):
+            st, _ = _raw_http("GET", "/api/health", {"Host": bad_host})
+            assert st == 403, f"Expected 403 for Host={bad_host}, got {st}"
+
+        # Sec-Fetch-Site: cross-site -> 403
+        st_sfs, _ = _raw_http("GET", "/api/status", {"Host": host_port, "Sec-Fetch-Site": "cross-site"})
+        assert st_sfs == 403
+
+        # Protocol-relative req.url //evil.com -> 400
+        st_proto, _ = _raw_http("GET", "//evil.com/api/health", {"Host": host_port})
+        assert st_proto == 400
+
+        # GET /favicon.ico -> 204
+        st_fav, fav_body = _raw_http("GET", "/favicon.ico", {"Host": host_port})
+        assert st_fav == 204 and fav_body == ""
+
+        # Cross-origin / cross-host loopback / null / https / wrong-port Origin on POST -> 403
+        for bad_origin in (
+            "https://evil.example",
+            "null",
+            f"https://127.0.0.1:{parsed.port}",
+            "http://127.0.0.1:1",
+            f"http://localhost:{parsed.port}",
+        ):
+            st_csrf, _ = _raw_http(
+                "POST", "/api/issue",
+                {"Host": host_port, "Origin": bad_origin, "Content-Type": "application/json"},
+                b'{"plan":"pro-monthly"}',
+            )
+            assert st_csrf == 403, f"Expected 403 for Origin={bad_origin}, got {st_csrf}"
+
+        # Omitted Origin + cross-origin Referer -> 403; matching Referer -> 200
+        st_ref_bad, _ = _raw_http(
+            "POST", "/api/issue",
+            {"Host": host_port, "Referer": "https://evil.com/attack.html", "Content-Type": "application/json"},
+            b'{"plan":"pro-monthly"}',
+        )
+        assert st_ref_bad == 403
+
+        st_ref_ok, _ = _raw_http(
+            "POST", "/api/verify",
+            {"Host": host_port, "Referer": f"http://{host_port}/", "Content-Type": "application/json"},
+            b'{"rawText":"PV2.bad.sig"}',
+        )
+        assert st_ref_ok == 200
+
+        # Corrupt JSON & invalid schema in ledger_path -> 400/409 (no 500, no OS ledgerPath leak)
+        for bad_ledger in ("{corrupt json", json.dumps({"format": "PV1-LEDGER", "entries": "not-an-array"})):
+            ledger_path.write_text(bad_ledger, encoding="utf-8")
+            st_led, led_body = _raw_http(
+                "POST", "/api/issue",
+                {"Host": host_port, "Content-Type": "application/json"},
+                b'{"plan":"pro-monthly","appendLedger":true}',
+            )
+            assert st_led in (400, 409), f"Expected 400/409 for corrupt ledger, got {st_led}: {led_body}"
+            assert str(ledger_path) not in led_body
+            assert str(temp_io_dir.root) not in led_body
+
+        # Oversized POST (> 64 KB) -> 413
+        big_body = json.dumps({"rawText": "A" * (70 * 1024)}).encode("utf-8")
+        st_big, _ = _raw_http(
+            "POST", "/api/verify",
+            {"Host": host_port, "Content-Type": "application/json"},
+            big_body,
+        )
+        assert st_big == 413
+
+        # Malformed & non-object JSON -> 400
+        for bad_json in (b"{bad", b"null", b"[]", b"123", b'"str"'):
+            st_bad, _ = _raw_http(
+                "POST", "/api/issue",
+                {"Host": host_port, "Content-Type": "application/json"},
+                bad_json,
+            )
+            assert st_bad == 400
+
+        # /api/status default redacts & never exposes private key
+        st_stat, stat_body = _raw_http("GET", "/api/status", {"Host": host_port})
+        assert st_stat == 200
+        assert "BEGIN PRIVATE KEY" not in stat_body
+        assert "privateKeyPkcs8Pem" not in stat_body
+        assert "..." in json.loads(stat_body)["ownerKey"]["token"]
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+
+
+def test_T5_49_owner_console_browser_ui_csp_and_xss_inertness(
+    temp_io_dir: TempIODirs,
+    playwright_browser: Browser,
+) -> None:
+    """Owner Console UI in Chromium: strict CSP, real /favicon.ico 204, zero console errors/violations, and inert XSS rendering in keyId/label/orderId."""
+    import subprocess
+    from conftest import WORKSPACE_ROOT, _resolve_node_exe
+
+    node_exe = str(_resolve_node_exe())
+    issue_script = str(WORKSPACE_ROOT / "scripts" / "issue-pro-key.mjs")
+    console_script = str(WORKSPACE_ROOT / "scripts" / "owner-console.mjs")
+    bundle_path = temp_io_dir.root / "bundle.json"
+    ledger_path = temp_io_dir.root / "ledger.json"
+
+    gen = subprocess.run(
+        [node_exe, issue_script, "--generate-bundle", "--out", str(bundle_path), "--json"],
+        cwd=str(WORKSPACE_ROOT), capture_output=True, text=True, encoding="utf-8", check=True, timeout=15,
+    )
+    pub = json.loads(gen.stdout)["publicKeyB64U"]
+
+    proc = subprocess.Popen(
+        [
+            node_exe, console_script, "--host", "127.0.0.1", "--port", "0",
+            "--bundle", str(bundle_path), "--ledger", str(ledger_path), "--pub", pub,
+        ],
+        cwd=str(WORKSPACE_ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8",
+    )
+    ctx = playwright_browser.new_context(viewport={"width": 1280, "height": 800})
+    try:
+        assert proc.stdout is not None
+        url = proc.stdout.readline().strip().split("listening at ", 1)[1].strip()
+        page = ctx.new_page()
+        console = ConsoleErrorMonitor(page=page)
+        console.attach()
+        dialogs: list[str] = []
+        page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+        page.add_init_script(
+            "window.__cspViolations = []; document.addEventListener('securitypolicyviolation', e => window.__cspViolations.push(e.violatedDirective));"
+        )
+
+        page.goto(url, wait_until="networkidle")
+        assert page.locator("#health-pill").inner_text() == "Loopback Active"
+        assert "Matches PRO_PUBLIC_KEY_B64U" in page.locator("#status-match").inner_text()
+
+        xss_payload = "<img src=x onerror=alert(1)>"
+        page.fill("#issue-key-id", f"PV-XSS-{xss_payload}")
+        page.fill("#issue-label", f"Buyer {xss_payload}")
+        page.fill("#issue-order", f"PV-ORD-{xss_payload}")
+        page.click("#issue-submit-btn")
+        page.locator(".issued-item").first.wait_for(state="visible", timeout=5000)
+        assert xss_payload in page.locator("#issued-results").inner_text()
+
+        page.locator(".issued-item button", has_text="Send to Validator").click()
+        page.locator("#verify-output pre").wait_for(state="visible", timeout=5000)
+        verify_txt = page.locator("#verify-output").inner_text()
+        assert "VALID (pro)" in verify_txt
+        assert xss_payload in verify_txt
+
+        assert dialogs == []
+        assert page.evaluate("() => window.__cspViolations") == []
+        console.assert_no_errors()
+        console.detach()
+    finally:
+        ctx.close()
+        proc.terminate()
+        proc.wait(timeout=5)
+
+
+def _serve_extension_dir(ext_dir: Path):
+    """Context manager serving extension/ on 127.0.0.1:0 with MV3 CSP header."""
+    import contextlib
+    import functools
+    import http.server
+    import socketserver
+    import threading
+
+    class _ExtHandler(http.server.SimpleHTTPRequestHandler):
+        def end_headers(self) -> None:
+            self.send_header("Content-Security-Policy", "script-src 'self'; object-src 'none'")
+            super().end_headers()
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            _ = (format, args)
+
+    class _Srv(socketserver.ThreadingMixIn, http.server.HTTPServer):
+        daemon_threads = True
+        allow_reuse_address = True
+
+    @contextlib.contextmanager
+    def _ctx():
+        srv = _Srv(("127.0.0.1", 0), functools.partial(_ExtHandler, directory=str(ext_dir)))
+        th = threading.Thread(target=srv.serve_forever, daemon=True)
+        th.start()
+        try:
+            yield f"http://127.0.0.1:{srv.server_address[1]}"
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    return _ctx()
+
+
+def test_T5_50_extension_popup_bundle_csp_pvkey_bounds_and_xss(
+    temp_io_dir: TempIODirs,
+    ephemeral_pro_keys: EphemeralProKeys,
+    playwright_browser: Browser,
+) -> None:
+    """Bundled extension/popup.html + dist/popup.bundle.js in Chromium under MV3 CSP: .pvkey bounds, XSS inertness, and external storage tamper clearing diagnostics."""
+    from conftest import WORKSPACE_ROOT
+
+    ext_dir = WORKSPACE_ROOT / "extension"
+    prod_pub = "Fsb_LKEZCuhkazGVQd18WiV34EQmpUUkxR9-Rc20YCY"
+    ephem_pub = ephemeral_pro_keys.public_key_b64u
+
+    with _serve_extension_dir(ext_dir) as ext_url:
+        ctx = playwright_browser.new_context(viewport={"width": 420, "height": 720})
+        page = ctx.new_page()
+        dialogs: list[str] = []
+        page_errors: list[str] = []
+        page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+        page.on("pageerror", lambda e: page_errors.append(str(e)))
+        page.add_init_script(
+            """(() => {
+                window.__cspV = [];
+                document.addEventListener('securitypolicyviolation', e => window.__cspV.push(e.violatedDirective));
+                const store = new Map();
+                const listeners = new Set();
+                window.chrome = window.chrome || {};
+                window.chrome.runtime = { id: 'pv-e2e-ext' };
+                window.chrome.tabs = {
+                    query: (_q, cb) => {
+                        const r = [{ url: 'https://chatgpt.com/c/1' }];
+                        if (cb) cb(r);
+                        return Promise.resolve(r);
+                    },
+                };
+                window.chrome.storage = {
+                    local: {
+                        get(keys, cb) {
+                            const list = Array.isArray(keys) ? keys : [keys];
+                            const out = {};
+                            for (const k of list) if (store.has(k)) out[k] = structuredClone(store.get(k));
+                            if (cb) cb(out);
+                            return Promise.resolve(out);
+                        },
+                        set(items, cb) {
+                            const changes = {};
+                            for (const [k, v] of Object.entries(items)) {
+                                const oldValue = store.has(k) ? structuredClone(store.get(k)) : undefined;
+                                store.set(k, structuredClone(v));
+                                changes[k] = { oldValue, newValue: structuredClone(v) };
+                            }
+                            if (cb) cb();
+                            for (const fn of listeners) fn(changes, 'local');
+                            return Promise.resolve();
+                        },
+                        remove(key, cb) {
+                            const oldValue = store.has(key) ? structuredClone(store.get(key)) : undefined;
+                            store.delete(key);
+                            if (cb) cb();
+                            for (const fn of listeners) fn({ [key]: { oldValue, newValue: undefined } }, 'local');
+                            return Promise.resolve();
+                        },
+                    },
+                    onChanged: {
+                        addListener: fn => listeners.add(fn),
+                        removeListener: fn => listeners.delete(fn),
+                    },
+                };
+            })();"""
+        )
+
+        def _patch_ext_bundle(route: object) -> None:
+            resp = route.fetch()  # type: ignore[attr-defined]
+            body = resp.body().decode("utf-8", errors="replace").replace(prod_pub, ephem_pub)
+            hdrs = {k: v for k, v in resp.headers.items() if k.lower() not in ("content-length", "content-encoding")}
+            route.fulfill(status=resp.status, headers=hdrs, body=body.encode("utf-8"))  # type: ignore[attr-defined]
+
+        page.route("**/dist/*.bundle.js", _patch_ext_bundle)
+        page.route("**/favicon.ico", lambda r: r.fulfill(status=204, body=b""))
+        try:
+            page.goto(f"{ext_url}/popup.html", wait_until="networkidle")
+            page.wait_for_timeout(120)
+            assert "ChatGPT" in page.locator("#popup-site-status").inner_text()
+            assert page.locator("#popup-pro-badge").inner_text() == "Free"
+
+            xss = "<img src=x onerror=alert(1)>"
+            xss_tok = ephemeral_pro_keys.issue_token(tier="pro", key_id=f"PV-EXT-{xss}", label=f"Ext {xss}")
+
+            # 1. Exact 256 KB .pvkey succeeds
+            exact_file = temp_io_dir.uploads / "exact_256k.pvkey"
+            pad_len = 256 * 1024 - len(xss_tok.encode("utf-8")) - 1
+            exact_file.write_bytes(b"#" * pad_len + b"\n" + xss_tok.encode("utf-8"))
+            page.set_input_files("#popup-pro-file-input", str(exact_file))
+            page.wait_for_timeout(150)
+            assert page.locator("#popup-pro-badge").inner_text() == "Pro Активен"
+            assert xss in page.locator("#popup-pro-meta-list").inner_text()
+
+            # 2. 256 KB + 1 byte rejected; NUL binary rejected; invalid UTF-8 rejected; UTF-8 BOM accepted
+            over_file = temp_io_dir.uploads / "over_256k.pvkey"
+            over_file.write_bytes(b"#" * (256 * 1024 + 1))
+            page.set_input_files("#popup-pro-file-input", str(over_file))
+            page.wait_for_timeout(120)
+            assert "256" in page.locator("#popup-pro-alert").inner_text()
+
+            nul_file = temp_io_dir.uploads / "nul.pvkey"
+            nul_file.write_bytes(b"PV1\x00" + xss_tok.encode("utf-8"))
+            page.set_input_files("#popup-pro-file-input", str(nul_file))
+            page.wait_for_timeout(120)
+            assert page.locator("#popup-pro-diagnostics.is-error").is_visible()
+
+            bad_utf8 = temp_io_dir.uploads / "bad_utf8.pvkey"
+            bad_utf8.write_bytes(b"\xff\xfe\xfd" + xss_tok.encode("utf-8"))
+            page.set_input_files("#popup-pro-file-input", str(bad_utf8))
+            page.wait_for_timeout(120)
+            assert page.locator("#popup-pro-diagnostics.is-error").is_visible()
+
+            bom_file = temp_io_dir.uploads / "bom.pvkey"
+            bom_file.write_bytes(b"\xef\xbb\xbf# BOM\n" + xss_tok.encode("utf-8"))
+            page.set_input_files("#popup-pro-file-input", str(bom_file))
+            page.wait_for_timeout(150)
+            assert page.locator("#popup-pro-diagnostics.is-valid").is_visible()
+            assert page.locator("#popup-pro-alert").is_visible()
+
+            # 3. External chrome.storage.onChanged downgrade clears stale diagnostics & alert
+            page.evaluate("() => window.chrome.storage.local.set({ promptveil_pro_license_v1: 'PV1.forged.sig' })")
+            page.wait_for_timeout(150)
+            assert page.locator("#popup-pro-badge").inner_text() == "Free"
+            assert not page.locator("#popup-pro-diagnostics").is_visible()
+            assert not page.locator("#popup-pro-alert").is_visible()
+
+            # Zero localStorage usage in extension popup
+            assert page.evaluate("() => localStorage.length") == 0
+            assert dialogs == []
+            assert page_errors == []
+            assert page.evaluate("() => window.__cspV") == []
+        finally:
+            page.close()
+            ctx.close()
+
+
+def test_T5_51_extension_storage_tamper_downgrade_and_shadow_dom_sync(
+    ephemeral_pro_keys: EphemeralProKeys,
+    playwright_browser: Browser,
+) -> None:
+    """Bundled extension content.bundle.js Shadow DOM in Chromium: XSS inertness, zero <style>, and live storage tamper downgrade to Free."""
+    from conftest import WORKSPACE_ROOT
+
+    ext_dir = WORKSPACE_ROOT / "extension"
+    prod_pub = "Fsb_LKEZCuhkazGVQd18WiV34EQmpUUkxR9-Rc20YCY"
+    ephem_pub = ephemeral_pro_keys.public_key_b64u
+
+    xss = "<img src=x onerror=alert(1)>"
+    pro_tok = ephemeral_pro_keys.issue_token(tier="pro", key_id=f"PV-SHD-{xss}", label=f"Shadow {xss}")
+    exp_tok = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-SHD-EXP", exp="2020-01-01T00:00:00.000Z")
+
+    with _serve_extension_dir(ext_dir) as ext_url:
+        ctx = playwright_browser.new_context(viewport={"width": 1280, "height": 800})
+        page = ctx.new_page()
+        dialogs: list[str] = []
+        page_errors: list[str] = []
+        page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+        page.on("pageerror", lambda e: page_errors.append(str(e)))
+        page.add_init_script(
+            f"""(() => {{
+                window.__cspV = [];
+                document.addEventListener('securitypolicyviolation', e => window.__cspV.push(e.violatedDirective));
+                const store = new Map([
+                    ['promptveil_pro_license_v1', {json.dumps(pro_tok)}],
+                    ['promptveil_ext_settings_v1', {{
+                        lang: 'en',
+                        theme: 'light',
+                        overlayVisible: true,
+                        sensitivity: 'normal',
+                        disabledCategories: ['EMAIL'],
+                        customRules: Array.from({{ length: 7 }}, (_, i) => ({{ id: 'r' + i, term: 'CustTerm' + i, category: 'CUSTOM', enabled: true }})),
+                    }}],
+                ]);
+                const listeners = new Set();
+                window.chrome = window.chrome || {{}};
+                window.chrome.runtime = {{ id: 'pv-e2e-content' }};
+                window.chrome.storage = {{
+                    local: {{
+                        get(keys, cb) {{
+                            const list = Array.isArray(keys) ? keys : [keys];
+                            const out = {{}};
+                            for (const k of list) if (store.has(k)) out[k] = structuredClone(store.get(k));
+                            if (cb) cb(out);
+                            return Promise.resolve(out);
+                        }},
+                        set(items, cb) {{
+                            const changes = {{}};
+                            for (const [k, v] of Object.entries(items)) {{
+                                const oldValue = store.has(k) ? structuredClone(store.get(k)) : undefined;
+                                store.set(k, structuredClone(v));
+                                changes[k] = {{ oldValue, newValue: structuredClone(v) }};
+                            }}
+                            if (cb) cb();
+                            for (const fn of listeners) fn(changes, 'local');
+                            return Promise.resolve();
+                        }},
+                    }},
+                    onChanged: {{
+                        addListener: fn => listeners.add(fn),
+                        removeListener: fn => listeners.delete(fn),
+                    }},
+                }};
+            }})();"""
+        )
+
+        def _patch_content_bundle(route: object) -> None:
+            resp = route.fetch()  # type: ignore[attr-defined]
+            body = resp.body().decode("utf-8", errors="replace").replace(prod_pub, ephem_pub)
+            hdrs = {k: v for k, v in resp.headers.items() if k.lower() not in ("content-length", "content-encoding")}
+            route.fulfill(status=resp.status, headers=hdrs, body=body.encode("utf-8"))  # type: ignore[attr-defined]
+
+        page.route("**/dist/content.bundle.js", _patch_content_bundle)
+        page.route(
+            "**/chat_sandbox.html",
+            lambda r: r.fulfill(
+                status=200,
+                headers={
+                    "Content-Type": "text/html; charset=utf-8",
+                    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'",
+                },
+                body="<!doctype html><html><head><meta charset='utf-8'></head><body><textarea id='chat-input'></textarea><script src='/dist/content.bundle.js'></script></body></html>",
+            ),
+        )
+        page.route("**/favicon.ico", lambda r: r.fulfill(status=204, body=b""))
+        try:
+            page.goto(f"{ext_url}/chat_sandbox.html", wait_until="networkidle")
+            page.wait_for_timeout(150)
+
+            # 1. Valid Pro: disabledCategories=['EMAIL'] honored, all 7 custom rules active, zero <style> in Shadow DOM
+            assert page.evaluate("() => document.getElementById('promptveil-ext-host').shadowRoot.querySelectorAll('style').length") == 0
+            assert page.evaluate("() => document.getElementById('promptveil-ext-host').shadowRoot.querySelector('.pv-tier-chip').textContent") == "Pro Active"
+            page.evaluate("() => document.getElementById('promptveil-ext-host').shadowRoot.querySelector('.pv-tier-chip').click()")
+            toast_txt = page.evaluate("() => document.getElementById('promptveil-ext-host').shadowRoot.querySelector('.pv-toast').textContent")
+            assert xss in toast_txt
+
+            page.fill("#chat-input", "alice@example.com CustTerm6")
+            page.evaluate("() => document.getElementById('promptveil-ext-host').shadowRoot.querySelector('[data-pv-action=\"sanitize\"]').click()")
+            page.wait_for_timeout(100)
+            san_pro = page.input_value("#chat-input")
+            assert "alice@example.com" in san_pro and "[CUSTOM_1]" in san_pro
+
+            # 2. Tamper storage -> forged, expired, and non-string downgrade to Free immediately
+            for bad_val in ("PV1.forged.sig", exp_tok, {"isPro": True}):
+                page.evaluate("v => window.chrome.storage.local.set({ promptveil_pro_license_v1: v })", bad_val)
+                page.wait_for_timeout(120)
+                assert page.evaluate("() => document.getElementById('promptveil-ext-host').shadowRoot.querySelector('.pv-tier-chip').textContent") == "Free"
+                page.fill("#chat-input", "alice@example.com CustTerm6")
+                page.evaluate("() => document.getElementById('promptveil-ext-host').shadowRoot.querySelector('[data-pv-action=\"sanitize\"]').click()")
+                page.wait_for_timeout(100)
+                san_free = page.input_value("#chat-input")
+                assert "[EMAIL_" in san_free and "CustTerm6" in san_free
+
+            assert page.evaluate("() => localStorage.length") == 0
+            assert dialogs == []
+            assert page_errors == []
+            assert page.evaluate("() => window.__cspV") == []
+        finally:
+            page.close()
+            ctx.close()
+
+
+def test_T5_52_build_zip_exact_9_file_parity_and_dist_sw_integrity() -> None:
+    """Build integrity: exact 9-file .zip byte-for-byte parity with extension/, zero unsafe/egress patterns in dist/, and sw.js/HTML precache parity."""
+    from conftest import WORKSPACE_ROOT
+
+    ext_dir = WORKSPACE_ROOT / "extension"
+    zip_path = STATIC_APP_DIR / "downloads" / "promptveil-pro-extension.zip"
+    assert zip_path.is_file()
+
+    expected_runtime_files = sorted(
+        [
+            "manifest.json",
+            "popup.html",
+            "popup.css",
+            "content.css",
+            "dist/content.bundle.js",
+            "dist/popup.bundle.js",
+            "icons/icon-16.png",
+            "icons/icon-48.png",
+            "icons/icon-128.png",
+        ]
+    )
+
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        assert zf.testzip() is None
+        assert zf.namelist() == expected_runtime_files
+        for info in zf.infolist():
+            assert info.date_time == (2026, 1, 1, 0, 0, 0), f"Non-deterministic ZIP timestamp for {info.filename}: {info.date_time}"
+            disk_bytes = (ext_dir / info.filename).read_bytes()
+            zip_bytes = zf.read(info.filename)
+            assert hashlib.sha256(zip_bytes).hexdigest() == hashlib.sha256(disk_bytes).hexdigest(), (
+                f"Stale ZIP entry {info.filename}: run npm run build"
+            )
+
+    forbidden_js = (
+        re.compile(r"\b(?:innerHTML|outerHTML|insertAdjacentHTML|document\.write)\b"),
+        re.compile(r"\beval\s*\("),
+        re.compile(r"\bnew\s+Function\s*\("),
+        re.compile(r"\bfetch\s*\("),
+        re.compile(r"\bXMLHttpRequest\b"),
+        re.compile(r"\bsendBeacon\b"),
+        re.compile(r"\bnew\s+WebSocket\s*\("),
+        re.compile(r"\bEventSource\b"),
+        re.compile(r"BEGIN PRIVATE KEY"),
+        re.compile(r"PV-CLIENT-"),
+        re.compile(r"PV1\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{32,}"),
+    )
+    for bundle_name in ("dist/content.bundle.js", "dist/popup.bundle.js"):
+        src = (ext_dir / bundle_name).read_text(encoding="utf-8")
+        assert re.search(r"\blocalStorage\b", src) is None, f"localStorage leaked into {bundle_name}"
+        for pat in forbidden_js:
+            assert pat.search(src) is None, f"{bundle_name} matched forbidden pattern {pat.pattern}"
+
+    dist_dir = STATIC_APP_DIR / "dist"
+    dist_files = sorted(p.name for p in dist_dir.iterdir() if p.is_file())
+    for fname in dist_files:
+        if fname.endswith(".js"):
+            src = (dist_dir / fname).read_text(encoding="utf-8")
+            for pat in forbidden_js:
+                assert pat.search(src) is None, f"dist/{fname} matched forbidden pattern {pat.pattern}"
+
+    sw_src = (STATIC_APP_DIR / "sw.js").read_text(encoding="utf-8")
+    m = re.search(r"const PRECACHE_URLS = (\[[\s\S]*?\]);", sw_src)
+    assert m is not None
+    precache_urls = json.loads(m.group(1))
+    assert "/pro/" in precache_urls and "/en/pro/" in precache_urls
+    assert "/downloads/promptveil-pro-extension.zip" not in precache_urls
+    sw_dist = sorted(u[len("/dist/"):] for u in precache_urls if u.startswith("/dist/"))
+    assert sw_dist == dist_files
+
+    for html_rel in ("index.html", "en/index.html", "pro/index.html", "en/pro/index.html", "404.html"):
+        html = (STATIC_APP_DIR / html_rel).read_text(encoding="utf-8")
+        refs = re.findall(r"/dist/([A-Za-z0-9_.-]+)", html)
+        assert refs, f"Missing /dist/ reference in {html_rel}"
+        for ref in refs:
+            assert ref in dist_files, f"Stale /dist/{ref} in {html_rel}"
+
+
+def test_T5_53_pro_checkout_xss_pvkey_boundaries_and_zip_download_parity(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    """/pro/ checkout adversarial: XSS inertness in buyer/token claims, .pvkey size/NUL/UTF-8 boundaries, #code= non-egress, and downloaded .zip SHA-256 parity."""
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    dialogs: list[str] = []
+    page.on("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+
+    xss = "<img src=x onerror=alert(1)>"
+    tok = ephemeral_pro_keys.issue_token(tier="pro", key_id=f"PV-CHK-{xss}", label=f"Chk {xss}")
+
+    page.goto(f"{base}/pro/#code={tok}", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    page.wait_for_timeout(150)
+
+    # Buyer order receipt XSS inertness
+    ui.fill_checkout_buyer(name=f"Иван {xss}", email="ivan.t553@example.ru", company=f"ООО {xss}", accept_terms=True)
+    ui.submit_checkout_order()
+    assert xss in page.locator("#checkout-order-panel").inner_text()
+
+    # .pvkey boundary uploads in checkout terminal
+    over_file = pro_raw_session.io.uploads / "chk_over.pvkey"
+    over_file.write_bytes(b"#" * (256 * 1024 + 1))
+    page.set_input_files("#checkout-pvkey-file-input", str(over_file))
+    page.wait_for_timeout(120)
+    assert page.locator("#checkout-token-diagnostics.is-error").is_visible()
+
+    bad_utf8 = pro_raw_session.io.uploads / "chk_bad_utf8.pvkey"
+    bad_utf8.write_bytes(b"\xff\xfe\xfd" + tok.encode("utf-8"))
+    page.set_input_files("#checkout-pvkey-file-input", str(bad_utf8))
+    page.wait_for_timeout(120)
+    assert page.locator("#checkout-token-diagnostics.is-error").is_visible()
+
+    bom_file = pro_raw_session.io.uploads / "chk_bom.pvkey"
+    bom_file.write_bytes(b"\xef\xbb\xbf# BOM\n" + tok.encode("utf-8"))
+    page.set_input_files("#checkout-pvkey-file-input", str(bom_file))
+    page.wait_for_timeout(120)
+    assert page.locator("#checkout-token-diagnostics.is-valid").is_visible()
+
+    ui.activate_checkout_token()
+    assert ui.get_checkout_unlocked_panel().is_visible()
+
+    dl_zip = ui.download_checkout_extension_zip(pro_raw_session.io.downloads)
+    disk_zip = STATIC_APP_DIR / "downloads" / "promptveil-pro-extension.zip"
+    assert hashlib.sha256(dl_zip.read_bytes()).hexdigest() == hashlib.sha256(disk_zip.read_bytes()).hexdigest()
+
+    assert dialogs == []
+    for req in pro_raw_session.net.requests:
+        assert "#code=" not in req.url
+    pro_raw_session.net.assert_zero_egress([tok, "ivan.t553@example.ru"])
+    pro_raw_session.console.assert_no_errors()
+
 
 

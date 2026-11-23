@@ -1,4 +1,4 @@
-"""Tier 2: Boundary & Corner Cases (81 Tests: T2-F1-01..T2-F13-05)."""
+"""Tier 2: Boundary & Corner Cases (89 Tests: T2-F1-01..T2-F14-08)."""
 
 from __future__ import annotations
 
@@ -1676,3 +1676,383 @@ def test_T2_F8_12_mobile_390x844_all_new_interactive_controls_44px_and_zero_over
             ui.open_rulebook_drawer()
             verify_responsive_layout(page, 390, 844)
             ui.close_open_drawer()
+
+
+# ---------------------------------------------------------------------------
+# F14 Boundaries: /pro/ & /en/pro/ Checkout Validation, Tokens & Mobile (R1-R3 — 8 Tests)
+# ---------------------------------------------------------------------------
+
+
+def test_T2_F14_01_checkout_rejects_empty_and_invalid_buyer_name_or_email(
+    raw_session: E2ESession,
+) -> None:
+    page = raw_session.page
+    ui = raw_session.ui
+    base = raw_session.base_url.rstrip("/")
+
+    invalid_cases = (
+        ("", "valid@example.com"),
+        ("   ", "valid@example.com"),
+        ("Ivan", ""),
+        ("Ivan", "not-an-email"),
+        ("Ivan", "user@"),
+        ("Ivan", "@domain.com"),
+        ("Ivan", "bad space@example.com"),
+    )
+
+    for route in ("/pro/", "/en/pro/"):
+        raw_session.net.phase = "load"
+        page.goto(f"{base}{route}", wait_until="networkidle")
+        raw_session.net.assert_clean_load()
+        raw_session.net.start_interactive_phase()
+
+        for bad_name, bad_email in invalid_cases:
+            ui.fill_checkout_buyer(name=bad_name, email=bad_email, accept_terms=True)
+            ui.submit_checkout_order()
+            order_panel = page.locator("[data-testid='checkout-order-panel'], #checkout-order-panel")
+            assert not order_panel.is_visible()
+            has_invalid_control = bool(
+                page.evaluate(
+                    """() => {
+                        const n = document.querySelector('#checkout-name, [data-testid="checkout-name"]');
+                        const e = document.querySelector('#checkout-email, [data-testid="checkout-email"]');
+                        return Boolean((n && !n.checkValidity()) || (e && !e.checkValidity()));
+                    }"""
+                )
+            )
+            err_notice = ui.get_visible_error_notice()
+            assert has_invalid_control or bool(err_notice)
+
+    raw_session.net.assert_zero_egress()
+    raw_session.console.assert_no_errors()
+
+
+def test_T2_F14_02_checkout_requires_checked_terms_before_submit(
+    raw_session: E2ESession,
+) -> None:
+    page = raw_session.page
+    ui = raw_session.ui
+    base = raw_session.base_url.rstrip("/")
+
+    raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    raw_session.net.assert_clean_load()
+    raw_session.net.start_interactive_phase()
+
+    ui.fill_checkout_buyer(
+        name="Ольга Смирнова",
+        email="olga.terms@example.com",
+        accept_terms=False,
+    )
+    ui.submit_checkout_order()
+    assert not page.locator("[data-testid='checkout-order-panel'], #checkout-order-panel").is_visible()
+
+    ui.fill_checkout_buyer(accept_terms=True)
+    ui.submit_checkout_order()
+    assert ui.get_checkout_order_panel().is_visible()
+    assert ui.get_checkout_order_id().startswith("PV-ORD-")
+    raw_session.net.assert_zero_egress(["olga.terms@example.com"])
+    raw_session.console.assert_no_errors()
+
+
+def test_T2_F14_03_checkout_rejects_malformed_tampered_and_expired_pv1_tokens(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    valid = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-T2-TOK", label="Граница")
+    prefix, payload_b64, sig_b64 = valid.split(".")
+    pad = "=" * ((4 - len(payload_b64) % 4) % 4)
+    payload_obj = json.loads(base64.urlsafe_b64decode((payload_b64 + pad).encode("ascii")).decode("utf-8"))
+    payload_obj["tier"] = "owner"
+    tampered_payload_b64 = (
+        base64.urlsafe_b64encode(json.dumps(payload_obj, separators=(",", ":")).encode("utf-8"))
+        .decode("ascii")
+        .rstrip("=")
+    )
+    flipped_sig_char = "A" if sig_b64[0] != "A" else "B"
+    tampered_sig = f"{prefix}.{payload_b64}.{flipped_sig_char}{sig_b64[1:]}"
+    expired_token = ephemeral_pro_keys.issue_token(
+        tier="pro",
+        key_id="PV-E2E-T2-EXP",
+        label="Просрочен",
+        exp="2020-01-01T00:00:00.000Z",
+    )
+
+    bad_vectors = (
+        "",
+        "   \n\t  ",
+        f"PV2.{payload_b64}.{sig_b64}",
+        "PV1.onlytwo",
+        "PV1.not!b64!.sig!",
+        f"{prefix}.{tampered_payload_b64}.{sig_b64}",
+        tampered_sig,
+        expired_token,
+    )
+
+    for vec in bad_vectors:
+        ui.verify_checkout_token_only(vec)
+        assert page.locator("[data-testid='checkout-token-diagnostics'], #checkout-token-diagnostics").is_visible()
+        assert not page.locator("[data-testid='checkout-pro-unlocked'], #checkout-pro-unlocked").is_visible()
+        assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+        ui.activate_checkout_token(vec)
+        assert page.locator("[data-testid='checkout-token-diagnostics'], #checkout-token-diagnostics").is_visible()
+        assert not page.locator("[data-testid='checkout-pro-unlocked'], #checkout-pro-unlocked").is_visible()
+        assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    pro_raw_session.net.assert_zero_egress([valid, expired_token])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T2_F14_04_checkout_rejects_invalid_and_empty_pvkey_file_uploads(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+
+    valid = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-T2-FILE", label="Файл")
+    prefix, payload_b64, sig_b64 = valid.split(".")
+    flipped = "A" if sig_b64[0] != "A" else "B"
+    tampered = f"{prefix}.{payload_b64}.{flipped}{sig_b64[1:]}"
+
+    empty_pvkey = pro_raw_session.io.uploads / "empty.pvkey"
+    empty_pvkey.write_text("", encoding="utf-8")
+
+    no_tok_pvkey = pro_raw_session.io.uploads / "no_token.pvkey"
+    no_tok_pvkey.write_text("# comment only\nhello world\n", encoding="utf-8")
+
+    tampered_pvkey = pro_raw_session.io.uploads / "tampered.pvkey"
+    tampered_pvkey.write_text(f"# Tampered\n{tampered}\n", encoding="utf-8")
+
+    corrupt_pvkey = pro_raw_session.io.uploads / "corrupt.pvkey"
+    corrupt_pvkey.write_bytes(b"\x00\xff\xfe\x89PNG\r\n\x1a\n")
+
+    for bad_file in (empty_pvkey, no_tok_pvkey, tampered_pvkey, corrupt_pvkey):
+        ui.upload_checkout_pvkey(bad_file)
+        assert page.locator("[data-testid='checkout-token-diagnostics'], #checkout-token-diagnostics").is_visible()
+        assert not page.locator("[data-testid='checkout-pro-unlocked'], #checkout-pro-unlocked").is_visible()
+        assert page.evaluate("() => localStorage.getItem('promptveil_pro_license_v1')") is None
+
+    pro_raw_session.net.assert_zero_egress([valid, tampered])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T2_F14_05_checkout_zero_raw_card_pan_cvv_fields_and_strict_csp(
+    raw_session: E2ESession,
+) -> None:
+    page = raw_session.page
+    base = raw_session.base_url.rstrip("/")
+
+    for route in ("/pro/", "/en/pro/"):
+        raw_session.net.phase = "load"
+        page.goto(f"{base}{route}", wait_until="networkidle")
+        raw_session.net.assert_clean_load()
+        raw_session.net.start_interactive_phase()
+
+        raw_card_fields = page.evaluate(
+            """() => {
+                const bad = [];
+                const forbiddenAc = new Set(['cc-number', 'cc-csc', 'cc-exp', 'cc-exp-month', 'cc-exp-year']);
+                const forbiddenRe = /\\b(pan|card[-_ ]?number|cvv|cvc|csc|expiry)\\b/i;
+                for (const el of document.querySelectorAll('input, textarea, select')) {
+                    const ac = (el.getAttribute('autocomplete') || '').toLowerCase().trim();
+                    if (forbiddenAc.has(ac)) bad.push(`autocomplete:${ac}`);
+                    const meta = [el.id, el.name, el.getAttribute('data-testid'), el.getAttribute('placeholder')].join(' ');
+                    if (forbiddenRe.test(meta)) bad.push(`attr:${meta}`);
+                }
+                return bad;
+            }"""
+        )
+        assert raw_card_fields == []
+
+        inline_violations = page.evaluate(
+            """() => {
+                const bad = [];
+                const checkRoot = (root, label) => {
+                    for (const el of root.querySelectorAll('*')) {
+                        if (el.tagName === 'SCRIPT' && (!el.hasAttribute('src') || (el.textContent || '').trim())) {
+                            bad.push(`${label}:SCRIPT`);
+                        }
+                        if (el.tagName === 'STYLE') bad.push(`${label}:STYLE`);
+                        for (const attr of el.attributes) {
+                            const n = attr.name.toLowerCase();
+                            if (n === 'style' || n.startsWith('on')) bad.push(`${label}:${n}`);
+                            if ((n === 'href' || n === 'src') && attr.value.trim().toLowerCase().startsWith('javascript:')) {
+                                bad.push(`${label}:js-url`);
+                            }
+                        }
+                    }
+                };
+                checkRoot(document, 'dom');
+                for (const tpl of document.querySelectorAll('template')) {
+                    checkRoot(tpl.content, tpl.id || 'template');
+                }
+                return bad;
+            }"""
+        )
+        assert inline_violations == []
+
+    raw_session.console.assert_no_errors()
+
+
+def test_T2_F14_06_checkout_xss_inputs_and_fragment_escaped_inert(
+    pro_raw_session: E2ESession,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    pro_raw_session.net.phase = "load"
+    page.goto(f"{base}/pro/#code=<img src=x onerror=window.__xssFrag=1>", wait_until="networkidle")
+    pro_raw_session.net.assert_clean_load()
+    pro_raw_session.net.start_interactive_phase()
+    page.wait_for_timeout(150)
+
+    assert page.evaluate("() => window.__xssFrag === undefined") is True
+    assert page.locator("img[src='x']").count() == 0
+
+    ui.fill_checkout_buyer(
+        name="<img src=x onerror=window.__xssName=1>",
+        email="xss.safe@example.com",
+        company="<script>window.__xssComp=1</script>",
+        accept_terms=True,
+    )
+    ui.submit_checkout_order()
+    assert ui.get_checkout_order_panel().is_visible()
+
+    ui.verify_checkout_token_only("<svg onload=window.__xssTok=1>")
+    assert page.evaluate(
+        "() => window.__xssName === undefined && window.__xssComp === undefined && window.__xssTok === undefined"
+    ) is True
+    assert page.locator("img[src='x'], svg[onload]").count() == 0
+    pro_raw_session.net.assert_zero_egress(["xss.safe@example.com"])
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T2_F14_07_checkout_mobile_390x844_zero_overflow_and_44px_tap_targets(
+    pro_raw_session: E2ESession,
+    ephemeral_pro_keys: EphemeralProKeys,
+) -> None:
+    page = pro_raw_session.page
+    ui = pro_raw_session.ui
+    base = pro_raw_session.base_url.rstrip("/")
+
+    def _assert_44px(loc_str: str) -> None:
+        loc = page.locator(loc_str)
+        for idx in range(loc.count()):
+            el = loc.nth(idx)
+            if el.is_visible():
+                box = el.bounding_box()
+                assert box is not None and box["height"] >= 43.5, f"{loc_str}[{idx}] height={box}"
+
+    for route in ("/pro/", "/en/pro/"):
+        pro_raw_session.net.phase = "load"
+        page.goto(f"{base}{route}", wait_until="networkidle")
+        pro_raw_session.net.assert_clean_load()
+        pro_raw_session.net.start_interactive_phase()
+
+        verify_responsive_layout(page, 390, 844)
+        ui.fill_checkout_buyer(
+            name="Mobile Buyer",
+            email="mobile.buyer@example.com",
+            accept_terms=True,
+        )
+        ui.submit_checkout_order()
+        assert ui.get_checkout_order_panel().is_visible()
+        verify_responsive_layout(page, 390, 844)
+
+        token = ephemeral_pro_keys.issue_token(tier="pro", key_id="PV-E2E-MOB-CHK", label="Мобильный")
+        ui.activate_checkout_token(token)
+        assert ui.get_checkout_unlocked_panel().is_visible()
+        verify_responsive_layout(page, 390, 844)
+
+        _assert_44px("[data-plan], [data-payment]")
+        _assert_44px(
+            "#checkout-submit-btn, #checkout-copy-receipt-btn, #checkout-download-receipt-btn, "
+            "#checkout-activate-btn, #checkout-verify-only-btn, #checkout-download-pvkey-btn"
+        )
+
+    pro_raw_session.console.assert_no_errors()
+
+
+def test_T2_F14_08_checkout_dark_light_theme_and_csp_blocks_egress(
+    pro_raw_session: E2ESession,
+) -> None:
+    page = pro_raw_session.page
+    base = pro_raw_session.base_url.rstrip("/")
+
+    for route in ("/pro/", "/en/pro/"):
+        pro_raw_session.net.phase = "load"
+        page.goto(f"{base}{route}", wait_until="networkidle")
+        pro_raw_session.net.assert_clean_load()
+        pro_raw_session.net.start_interactive_phase()
+
+        theme_btn = page.locator("[data-testid='theme-toggle-btn'], #theme-toggle-btn").first
+        theme_btn.click()
+        assert page.evaluate("() => document.documentElement.dataset.theme") == "dark"
+        assert page.evaluate("() => localStorage.getItem('promptveil_theme_v1')") == "dark"
+        verify_responsive_layout(page, 1440, 900)
+
+        theme_btn.click()
+        assert page.evaluate("() => document.documentElement.dataset.theme") == "light"
+        assert page.evaluate("() => localStorage.getItem('promptveil_theme_v1')") == "light"
+
+    with pro_raw_session.console.allow_expected_csp_errors():
+        blocked = page.evaluate(
+            """async () => {
+                const cspEvents = [];
+                const onViolation = (e) => {
+                    cspEvents.push({
+                        effectiveDirective: e.effectiveDirective || '',
+                        violatedDirective: e.violatedDirective || '',
+                    });
+                };
+                document.addEventListener('securitypolicyviolation', onViolation);
+                try {
+                    const s = document.createElement('script');
+                    s.textContent = 'window.__cspCheckoutProbe = 1;';
+                    document.head.appendChild(s);
+                    s.remove();
+
+                    let fetchBlocked = false;
+                    try {
+                        await fetch('https://example.com/csp-probe');
+                    } catch {
+                        fetchBlocked = true;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, 150));
+                    return {
+                        inlineProbeUndefined: window.__cspCheckoutProbe === undefined,
+                        fetchBlocked,
+                        cspEvents,
+                    };
+                } finally {
+                    document.removeEventListener('securitypolicyviolation', onViolation);
+                }
+            }"""
+        )
+    assert blocked["inlineProbeUndefined"] is True
+    assert blocked["fetchBlocked"] is True
+    directives = [
+        (ev.get("effectiveDirective") or ev.get("violatedDirective") or "").lower()
+        for ev in blocked["cspEvents"]
+    ]
+    assert any(d.startswith("script-src") for d in directives)
+    assert any(d.startswith("connect-src") for d in directives)
+    pro_raw_session.console.assert_no_errors()

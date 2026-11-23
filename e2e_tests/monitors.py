@@ -46,6 +46,7 @@ from playwright.sync_api import (
 _EGRESS_SCHEMES = ("http://", "https://", "ws://", "wss://")
 _LOCAL_DOWNLOAD_SCHEMES = ("blob:", "data:")
 _EXEMPT_EXTENSION_ZIP_PATH = "/downloads/promptveil-pro-extension.zip"
+_EXEMPT_FAVICON_PATHS = ("/favicon.svg", "/favicon.ico")
 
 
 def _normalized_origin(url: str) -> tuple[str, str, int] | None:
@@ -323,6 +324,24 @@ class NetworkMonitor:
             return False
         return re.fullmatch(r"/dist/[A-Za-z0-9._-]+\.js", parsed.path) is not None
 
+    @classmethod
+    def _is_exempt_favicon_request(cls, req: RecordedRequest) -> bool:
+        """Allow ONLY clean same-origin GET /favicon.svg or /favicon.ico browser icon fetches."""
+        if req.method.upper() != "GET" or req.is_navigation:
+            return False
+        if req.resource_type not in ("other", "image"):
+            return False
+        if req.post_data is not None or req.has_post_data:
+            return False
+        if not cls._is_same_origin_request(req):
+            return False
+        if "?" in req.url or "#" in req.url:
+            return False
+        parsed = urllib.parse.urlsplit(req.url)
+        if parsed.query or parsed.fragment:
+            return False
+        return parsed.path in _EXEMPT_FAVICON_PATHS
+
     def same_origin_requests(self, phase: str | None = None) -> list[RecordedRequest]:
         """Return recorded http(s) requests matching the current page origin."""
         return [
@@ -338,7 +357,7 @@ class NetworkMonitor:
         self.phase = "interactive"
 
     def interactive_egress_requests(self) -> list[RecordedRequest]:
-        """Return interactive-phase http(s)/ws(s) requests, exempting only same-origin extension ZIP and /dist/*.js chunks."""
+        """Return interactive-phase http(s)/ws(s) requests, exempting only clean same-origin extension ZIP, /dist/*.js chunks, and browser favicon fetches."""
         egress: list[RecordedRequest] = []
         for req in self.requests:
             if req.phase != "interactive":
@@ -346,7 +365,11 @@ class NetworkMonitor:
             low = req.url.lower()
             if low.startswith(_LOCAL_DOWNLOAD_SCHEMES):
                 continue
-            if self._is_exempt_extension_download(req) or self._is_exempt_static_bundle_chunk(req):
+            if (
+                self._is_exempt_extension_download(req)
+                or self._is_exempt_static_bundle_chunk(req)
+                or self._is_exempt_favicon_request(req)
+            ):
                 continue
             if low.startswith(_EGRESS_SCHEMES):
                 egress.append(req)

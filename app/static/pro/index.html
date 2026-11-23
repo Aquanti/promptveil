@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    name="description"
+    content="Выберите тариф PromptVeil Pro, сформируйте квитанцию заказа без передачи данных карты и мгновенно активируйте офлайн-ключ Ed25519."
+  />
+  <meta name="theme-color" content="#051C12" />
+  <title>PromptVeil Pro — оформление заказа и офлайн-активация</title>
+  <link rel="canonical" href="https://promptveil.netlify.app/pro/" />
+  <link rel="alternate" hreflang="ru" href="https://promptveil.netlify.app/pro/" />
+  <link rel="alternate" hreflang="en" href="https://promptveil.netlify.app/en/pro/" />
+  <link rel="alternate" hreflang="x-default" href="https://promptveil.netlify.app/pro/" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta property="og:type" content="website" />
+  <meta property="og:locale" content="ru_RU" />
+  <meta property="og:locale:alternate" content="en_US" />
+  <meta property="og:site_name" content="PromptVeil" />
+  <meta property="og:title" content="PromptVeil Pro — оформление и офлайн-активация" />
+  <meta
+    property="og:description"
+    content="Локальное оформление заявки Pro без серверов и автосписаний: квитанция заказа, терминал проверки Ed25519 и архив расширения."
+  />
+  <meta property="og:url" content="https://promptveil.netlify.app/pro/" />
+  <meta property="og:image" content="https://promptveil.netlify.app/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="PromptVeil Pro — оформление и офлайн-активация ключа Ed25519" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="PromptVeil Pro — оформление и офлайн-активация" />
+  <meta
+    name="twitter:description"
+    content="Оформление PromptVeil Pro и офлайн-активация ключа Ed25519 прямо на устройстве."
+  />
+  <meta name="twitter:image" content="https://promptveil.netlify.app/og-image.png" />
+  <link rel="stylesheet" href="/dist/styles.33F4J2G4.css" />
+  <script type="module" src="/dist/pro-checkout.F3FLKHD7.js"></script>
+  <link rel="modulepreload" href="/dist/i18n-ru-5KBQW4ZO.js" />
+</head>
+<body>
+  <a href="#main-checkout" class="skip-link" data-i18n="checkout.skipLink">Перейти к оформлению Pro</a>
+
+  <header class="top-rail">
+    <div class="rail-brand">
+      <a id="checkout-brand-link" href="/" class="checkout-brand-link" data-testid="checkout-brand-link">
+        <svg class="brand-emblem" viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
+          <rect width="32" height="32" rx="8" fill="#072F1F" stroke="#B4F105" stroke-opacity="0.38" stroke-width="1" />
+          <polygon points="7,8 13.5,8 18.5,19 16,25" fill="#FFFFFF" />
+          <polygon points="18.5,8 25,8 16,25 13.5,19" fill="#B4F105" />
+          <polygon points="16,13.5 18.5,19 16,25 13.5,19" fill="#051C12" />
+        </svg>
+        <span class="brand-name">PromptVeil</span>
+      </a>
+    </div>
+
+    <div class="rail-actions">
+      <nav class="top-rail-nav" aria-label="Разделы" data-i18n-aria="nav.railAria">
+        <a
+          id="checkout-nav-workbench-link"
+          href="/"
+          class="rail-nav-link"
+          data-testid="checkout-nav-workbench-link"
+          data-i18n="checkout.navWorkbench"
+        >Рабочая область</a>
+      </nav>
+      <span
+        id="checkout-pro-status-badge"
+        class="pro-status-badge checkout-status-pill"
+        data-testid="checkout-pro-status-badge"
+        data-pro-state="free"
+        data-i18n="pro.badgeFree"
+      >Free</span>
+      <div
+        class="lang-switch"
+        role="group"
+        aria-label="Переключение языка"
+        data-i18n-aria="lang.switchAria"
+        data-testid="lang-switch"
+      >
+        <button
+          type="button"
+          id="lang-ru-btn"
+          class="lang-btn is-active"
+          aria-pressed="true"
+          data-testid="lang-ru"
+        >RU</button>
+        <button
+          type="button"
+          id="lang-en-btn"
+          class="lang-btn"
+          aria-pressed="false"
+          data-testid="lang-en"
+        >EN</button>
+      </div>
+      <button
+        type="button"
+        id="lang-mobile-toggle"
+        class="lang-mobile-toggle"
+        data-lang="ru"
+        aria-label="Переключить язык на английский (сейчас RU)"
+        title="Переключить язык на английский (сейчас RU)"
+        data-testid="lang-mobile-toggle"
+      >RU</button>
+      <button
+        type="button"
+        id="theme-toggle-btn"
+        class="theme-toggle-btn"
+        aria-pressed="false"
+        aria-label="Включить тёмную тему"
+        title="Включить тёмную тему"
+        data-i18n-aria="theme.toDark"
+        data-i18n-title="theme.toDark"
+        data-testid="theme-toggle-btn"
+      >
+        <svg class="theme-toggle-icon" viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true">
+          <path d="M16.2 12.6A6.8 6.8 0 0 1 7.4 3.8a7 7 0 1 0 8.8 8.8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main-checkout" class="workbench-shell">
+    <div
+      id="global-status-banner"
+      class="status-banner"
+      role="status"
+      aria-live="polite"
+      hidden
+      data-testid="status-banner"
+    ></div>
+
+    <section class="hero-main-card checkout-hero-card" aria-labelledby="checkout-hero-title">
+      <svg class="hero-spark-motif" viewBox="0 0 120 120" aria-hidden="true">
+        <polygon points="18,16 48,16 70,66 60,98" fill="#B4F105" />
+        <polygon points="72,16 102,16 60,98 50,66" fill="#FFFFFF" />
+      </svg>
+      <div class="hero-copy">
+        <span class="checkout-eyebrow" data-i18n="checkout.heroEyebrow">Офлайн-лицензия Ed25519 • 0 сетевых запросов</span>
+        <h1 id="checkout-hero-title" class="hero-title" data-i18n="checkout.heroTitle">Оформление PromptVeil Pro и активация ключа</h1>
+        <p class="hero-lead" data-i18n="checkout.heroSubtitle">
+          Выберите тариф и способ оплаты, получите локальную квитанцию заказа для выдачи ключа PV1... или сразу проверьте и активируйте уже полученный ключ прямо в браузере.
+        </p>
+        <ol class="steps-rail" aria-label="Этапы оформления" data-i18n-aria="hero.stepsAria">
+          <li class="step-pill"><span class="step-num">1</span><span data-i18n="checkout.heroStep1">Выберите тариф и способ оплаты</span></li>
+          <li class="step-pill"><span class="step-num">2</span><span data-i18n="checkout.heroStep2">Сформируйте квитанцию заказа</span></li>
+          <li class="step-pill"><span class="step-num">3</span><span data-i18n="checkout.heroStep3">Активируйте ключ PV1... офлайн</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <div class="checkout-grid">
+      <div class="checkout-col">
+        <section id="checkout-form-section" class="checkout-card" aria-labelledby="checkout-order-heading">
+          <div class="checkout-card-header">
+            <h2 id="checkout-order-heading" class="checkout-section-title" data-i18n="checkout.orderHeading">1. Выбор тарифа и оформление</h2>
+            <p class="checkout-section-subtitle" data-i18n="checkout.orderSubtitle">
+              Все поля формы остаются строго в оперативной памяти вкладки. Данные банковских карт на сайте не вводятся и не сохраняются.
+            </p>
+          </div>
+
+          <div class="checkout-fieldset">
+            <span class="checkout-group-label" data-i18n="checkout.planSectionLabel">Тариф</span>
+            <div class="checkout-plan-grid" role="group" aria-label="Тариф" data-i18n-aria="checkout.planSectionLabel">
+              <button
+                type="button"
+                class="checkout-option-card"
+                data-plan="pro-monthly"
+                data-testid="plan-pro-monthly"
+                aria-pressed="false"
+                data-active="false"
+              >
+                <span class="checkout-option-top">
+                  <span class="checkout-option-title" data-i18n="checkout.planMonthlyName">Месяц</span>
+                  <span class="checkout-option-badge" data-i18n="checkout.planMonthlyBadge">Гибкий старт</span>
+                </span>
+                <span class="checkout-option-price tabular-nums" data-i18n="checkout.planMonthlyPrice">990 ₽ / мес</span>
+                <span class="checkout-option-desc" data-i18n="checkout.planMonthlyDesc">Полный Pro для документов и расширения</span>
+              </button>
+
+              <button
+                type="button"
+                class="checkout-option-card is-active"
+                data-plan="pro-annual"
+                data-testid="plan-pro-annual"
+                aria-pressed="true"
+                data-active="true"
+              >
+                <span class="checkout-option-top">
+                  <span class="checkout-option-title" data-i18n="checkout.planAnnualName">Год</span>
+                  <span class="checkout-option-badge" data-i18n="checkout.planAnnualBadge">Выгоднее на 33%</span>
+                </span>
+                <span class="checkout-option-price tabular-nums" data-i18n="checkout.planAnnualPrice">7 900 ₽ / год</span>
+                <span class="checkout-option-desc" data-i18n="checkout.planAnnualDesc">Оптимально для постоянной работы</span>
+              </button>
+
+              <button
+                type="button"
+                class="checkout-option-card"
+                data-plan="pro-lifetime"
+                data-testid="plan-pro-lifetime"
+                aria-pressed="false"
+                data-active="false"
+              >
+                <span class="checkout-option-top">
+                  <span class="checkout-option-title" data-i18n="checkout.planLifetimeName">Бессрочный</span>
+                  <span class="checkout-option-badge" data-i18n="checkout.planLifetimeBadge">Без продлений</span>
+                </span>
+                <span class="checkout-option-price tabular-nums" data-i18n="checkout.planLifetimePrice">14 900 ₽</span>
+                <span class="checkout-option-desc" data-i18n="checkout.planLifetimeDesc">Разовый ключ без срока действия</span>
+              </button>
+
+              <button
+                type="button"
+                class="checkout-option-card"
+                data-plan="team-pack"
+                data-testid="plan-team-pack"
+                aria-pressed="false"
+                data-active="false"
+              >
+                <span class="checkout-option-top">
+                  <span class="checkout-option-title" data-i18n="checkout.planTeamName">Команда (5 мест)</span>
+                  <span class="checkout-option-badge" data-i18n="checkout.planTeamBadge">Для команды</span>
+                </span>
+                <span class="checkout-option-price tabular-nums" data-i18n="checkout.planTeamPrice">29 900 ₽</span>
+                <span class="checkout-option-desc" data-i18n="checkout.planTeamDesc">Пакет ключей для отдела и пилота</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="checkout-fieldset">
+            <span class="checkout-group-label" data-i18n="checkout.paymentSectionLabel">Способ оплаты</span>
+            <div class="checkout-payment-grid" role="group" aria-label="Способ оплаты" data-i18n-aria="checkout.paymentSectionLabel">
+              <button
+                type="button"
+                class="checkout-option-card is-active"
+                data-payment="card"
+                data-testid="payment-card"
+                aria-pressed="true"
+                data-active="true"
+              >
+                <span class="checkout-option-title" data-i18n="checkout.payCardTitle">Банковская карта</span>
+                <span class="checkout-option-desc" data-i18n="checkout.payCardDesc">Безопасная ссылка или счёт после заказа</span>
+              </button>
+
+              <button
+                type="button"
+                class="checkout-option-card"
+                data-payment="sbp"
+                data-testid="payment-sbp"
+                aria-pressed="false"
+                data-active="false"
+              >
+                <span class="checkout-option-title" data-i18n="checkout.paySbpTitle">СБП</span>
+                <span class="checkout-option-desc" data-i18n="checkout.paySbpDesc">Мгновенный перевод по QR-реквизитам</span>
+              </button>
+
+              <button
+                type="button"
+                class="checkout-option-card"
+                data-payment="invoice"
+                data-testid="payment-invoice"
+                aria-pressed="false"
+                data-active="false"
+              >
+                <span class="checkout-option-title" data-i18n="checkout.payInvoiceTitle">Счёт для юрлица</span>
+                <span class="checkout-option-desc" data-i18n="checkout.payInvoiceDesc">Закрывающие документы и договор</span>
+              </button>
+            </div>
+          </div>
+
+          <form id="checkout-form" class="checkout-form" novalidate>
+            <span class="checkout-group-label" data-i18n="checkout.buyerSectionLabel">Данные для квитанции</span>
+            <div class="checkout-fields-grid">
+              <div class="form-field">
+                <label class="field-label" for="checkout-name" data-i18n="checkout.nameLabel">Имя и фамилия (или контактное лицо)</label>
+                <input
+                  id="checkout-name"
+                  name="buyer_name"
+                  type="text"
+                  class="field-input"
+                  autocomplete="name"
+                  required
+                  placeholder="Например: Анна Петрова"
+                  data-i18n-placeholder="checkout.namePlaceholder"
+                  data-testid="checkout-name"
+                />
+              </div>
+
+              <div class="form-field">
+                <label class="field-label" for="checkout-email" data-i18n="checkout.emailLabel">Эл. почта для получения ключа</label>
+                <input
+                  id="checkout-email"
+                  name="buyer_email"
+                  type="email"
+                  class="field-input"
+                  autocomplete="email"
+                  required
+                  placeholder="name@company.ru"
+                  data-i18n-placeholder="checkout.emailPlaceholder"
+                  data-testid="checkout-email"
+                />
+              </div>
+
+              <div class="form-field checkout-field-full">
+                <label class="field-label" for="checkout-company" data-i18n="checkout.companyLabel">Компания или отдел (необязательно)</label>
+                <input
+                  id="checkout-company"
+                  name="buyer_company"
+                  type="text"
+                  class="field-input"
+                  autocomplete="organization"
+                  placeholder="Например: ООО «Вектор»"
+                  data-i18n-placeholder="checkout.companyPlaceholder"
+                  data-testid="checkout-company"
+                />
+              </div>
+            </div>
+
+            <label class="checkbox-label checkout-terms-label">
+              <input
+                type="checkbox"
+                id="checkout-terms"
+                name="accept_terms"
+                required
+                data-testid="checkout-terms"
+              />
+              <span data-i18n="checkout.termsLabel">Подтверждаю условия офлайн-лицензии и согласен с локальной обработкой формы в памяти вкладки.</span>
+            </label>
+
+            <div id="checkout-form-alert" class="inline-alert inline-alert--error" role="alert" hidden></div>
+
+            <button
+              type="submit"
+              id="checkout-submit-btn"
+              class="btn-lime checkout-submit-btn"
+              data-testid="checkout-submit-btn"
+              data-i18n="checkout.submitBtn"
+            >Сформировать заказ</button>
+          </form>
+        </section>
+
+        <section
+          id="checkout-order-panel"
+          class="checkout-card checkout-order-panel"
+          aria-labelledby="checkout-order-ready-title"
+          hidden
+          data-testid="checkout-order-panel"
+        >
+          <div class="checkout-order-header">
+            <span class="checkout-order-badge" data-i18n="checkout.orderReadyBadge">Квитанция сформирована в RAM</span>
+            <h2 id="checkout-order-ready-title" class="checkout-section-title" data-i18n="checkout.orderReadyTitle">Заказ готов к выдаче ключа</h2>
+          </div>
+
+          <div class="checkout-order-summary">
+            <div class="checkout-summary-item">
+              <span class="checkout-summary-label" data-i18n="checkout.orderIdLabel">Номер заказа</span>
+              <span id="checkout-order-id" class="checkout-summary-value checkout-summary-mono" data-testid="checkout-order-id"></span>
+            </div>
+            <div class="checkout-summary-item">
+              <span class="checkout-summary-label" data-i18n="checkout.orderPlanLabel">Выбранный тариф</span>
+              <span id="checkout-order-plan" class="checkout-summary-value"></span>
+            </div>
+            <div class="checkout-summary-item">
+              <span class="checkout-summary-label" data-i18n="checkout.orderTotalLabel">Сумма</span>
+              <span id="checkout-order-total" class="checkout-summary-value"></span>
+            </div>
+            <div class="checkout-summary-item">
+              <span class="checkout-summary-label" data-i18n="checkout.orderPaymentLabel">Способ оплаты</span>
+              <span id="checkout-order-payment" class="checkout-summary-value"></span>
+            </div>
+            <div class="checkout-summary-item">
+              <span class="checkout-summary-label" data-i18n="checkout.orderBuyerLabel">Покупатель</span>
+              <span id="checkout-order-buyer" class="checkout-summary-value"></span>
+            </div>
+            <div class="checkout-summary-item">
+              <span class="checkout-summary-label" data-i18n="checkout.orderEmailLabel">Эл. почта</span>
+              <span id="checkout-order-email" class="checkout-summary-value checkout-summary-mono"></span>
+            </div>
+            <div class="checkout-summary-item checkout-field-full">
+              <span class="checkout-summary-label" data-i18n="checkout.orderCompanyLabel">Компания</span>
+              <span id="checkout-order-company" class="checkout-summary-value"></span>
+            </div>
+          </div>
+
+          <p id="checkout-order-instruction" class="checkout-order-instruction"></p>
+          <pre id="checkout-receipt-preview" class="checkout-receipt-pre"></pre>
+
+          <div class="checkout-action-row">
+            <button
+              type="button"
+              id="checkout-copy-receipt-btn"
+              class="btn-primary"
+              data-testid="checkout-copy-receipt-btn"
+              data-i18n="checkout.copyReceiptBtn"
+            >Скопировать квитанцию</button>
+            <button
+              type="button"
+              id="checkout-download-receipt-btn"
+              class="btn-secondary"
+              data-testid="checkout-download-receipt-btn"
+              data-i18n="checkout.downloadReceiptBtn"
+            >Скачать квитанцию (.txt)</button>
+          </div>
+        </section>
+      </div>
+
+      <div class="checkout-col">
+        <section
+          id="checkout-activation-panel"
+          class="checkout-card"
+          aria-labelledby="checkout-terminal-heading"
+          data-testid="checkout-activation-panel"
+        >
+          <div class="checkout-card-header">
+            <h2 id="checkout-terminal-heading" class="checkout-section-title" data-i18n="checkout.terminalHeading">2. Терминал проверки и активации ключа</h2>
+            <p class="checkout-section-subtitle" data-i18n="checkout.terminalSubtitle">
+              Вставьте ключ PV1..., откройте ссылку с фрагментом #code=PV1... или загрузите файл .pvkey для мгновенной проверки подписи Ed25519 на устройстве.
+            </p>
+          </div>
+
+          <div class="form-field">
+            <label class="field-label" for="checkout-token-input" data-i18n="checkout.tokenLabel">Ключ активации (PV1... или содержимое .pvkey)</label>
+            <textarea
+              id="checkout-token-input"
+              class="field-input checkout-token-textarea"
+              rows="4"
+              spellcheck="false"
+              placeholder="Вставьте строку PV1.<данные>.<подпись> или текст квитанции..."
+              data-i18n-placeholder="checkout.tokenPlaceholder"
+              data-testid="checkout-token-input"
+            ></textarea>
+          </div>
+
+          <div class="checkout-upload-row">
+            <input
+              id="checkout-pvkey-file-input"
+              type="file"
+              accept=".pvkey,.txt,text/plain"
+              hidden
+              data-testid="checkout-pvkey-file-input"
+            />
+            <button
+              type="button"
+              id="checkout-pvkey-upload-btn"
+              class="btn-secondary"
+              data-testid="checkout-pvkey-upload-btn"
+              data-i18n="checkout.pvkeyUploadBtn"
+            >Загрузить файл .pvkey / .txt</button>
+          </div>
+
+          <div class="checkout-action-row">
+            <button
+              type="button"
+              id="checkout-activate-btn"
+              class="btn-lime"
+              data-testid="checkout-activate-btn"
+              data-i18n="checkout.activateBtn"
+            >Активировать на устройстве</button>
+            <button
+              type="button"
+              id="checkout-verify-only-btn"
+              class="btn-secondary"
+              data-testid="checkout-verify-only-btn"
+              data-i18n="checkout.verifyOnlyBtn"
+            >Только проверить подпись</button>
+          </div>
+
+          <div
+            id="checkout-token-diagnostics"
+            class="checkout-diagnostics-card"
+            role="status"
+            aria-live="polite"
+            hidden
+            data-testid="checkout-token-diagnostics"
+          ></div>
+        </section>
+
+        <section
+          id="checkout-pro-unlocked"
+          class="checkout-card checkout-unlocked-panel"
+          aria-labelledby="checkout-unlocked-title"
+          hidden
+          data-testid="checkout-pro-unlocked"
+        >
+          <span class="checkout-unlocked-badge" data-i18n="checkout.unlockedBadge">Pro разблокирован на устройстве</span>
+          <h2 id="checkout-unlocked-title" class="checkout-section-title" data-i18n="checkout.unlockedTitle">Доступ PromptVeil Pro активен</h2>
+          <p id="checkout-unlocked-summary" class="checkout-section-subtitle"></p>
+
+          <div class="checkout-unlocked-actions">
+            <a
+              id="checkout-download-extension-btn"
+              href="/downloads/promptveil-pro-extension.zip"
+              download="promptveil-pro-extension.zip"
+              class="btn-lime"
+              data-testid="checkout-download-extension-btn"
+              data-i18n="checkout.downloadExtensionBtn"
+            >Скачать архив расширения (.zip)</a>
+            <button
+              type="button"
+              id="checkout-download-pvkey-btn"
+              class="btn-primary"
+              data-testid="checkout-download-pvkey-btn"
+              data-i18n="checkout.downloadPvkeyBtn"
+            >Сохранить резервный .pvkey</button>
+            <a
+              id="checkout-return-workbench-link"
+              href="/"
+              class="btn-secondary"
+              data-testid="checkout-return-workbench-link"
+              data-i18n="checkout.returnWorkbenchLink"
+            >Перейти в рабочую область</a>
+            <button
+              type="button"
+              id="checkout-deactivate-btn"
+              class="btn-danger-ghost"
+              data-testid="checkout-deactivate-btn"
+              data-i18n="checkout.deactivateBtn"
+            >Деактивировать ключ</button>
+          </div>
+
+          <div class="checkout-install-guide">
+            <h3 class="checkout-install-title" data-i18n="checkout.installGuideTitle">Установка расширения Manifest V3 в браузер</h3>
+            <ol class="checkout-steps-list">
+              <li data-i18n="checkout.installStep1">Скачайте архив расширения (.zip) и распакуйте в постоянную папку.</li>
+              <li data-i18n="checkout.installStep2">Откройте chrome://extensions (или edge://extensions), включите режим разработчика и выберите распакованную папку.</li>
+              <li data-i18n="checkout.installStep3">Откройте всплывающее окно расширения и вставьте тот же ключ PV1... или файл .pvkey.</li>
+            </ol>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer" data-testid="site-footer">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <div class="footer-brand">
+          <svg class="footer-brand-emblem" viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="#051C12" />
+            <polygon points="7,8 13.5,8 18.5,19 16,25" fill="#FFFFFF" />
+            <polygon points="18.5,8 25,8 16,25 13.5,19" fill="#B4F105" />
+            <polygon points="16,13.5 18.5,19 16,25 13.5,19" fill="#072F1F" />
+          </svg>
+          <span>PromptVeil</span>
+        </div>
+        <p class="footer-desc" data-i18n="footer.brandDesc">
+          Инструмент защиты персональных и корпоративных данных перед работой с нейросетями.
+        </p>
+        <div class="footer-links-row">
+          <a href="/" class="footer-nav-link" data-i18n="footer.navWorkbench">Рабочая область</a>
+          <a href="/#pricing-section" class="footer-nav-link" data-i18n="footer.navPricing">Тарифы</a>
+          <a
+            id="footer-repo-link"
+            class="footer-nav-link"
+            href="https://github.com/Aquanti/promptveil"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="footer-repo-link"
+            data-i18n="footer.sourceLink"
+          >Исходный код (MIT)</a>
+        </div>
+      </div>
+
+      <div class="footer-col">
+        <h2 class="footer-heading" data-i18n="footer.trustHeading">Архитектура доверия</h2>
+        <div class="trust-badges-grid">
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeTls">HTTPS / TLS</span></span>
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeZero">0 логов ваших текстов</span></span>
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeCsp">Strict CSP</span></span>
+          <span class="trust-badge-pill"><span class="trust-badge-dot" aria-hidden="true"></span><span data-i18n="footer.badgeNoTrack">Без cookies и трекеров</span></span>
+        </div>
+      </div>
+
+      <div class="footer-col" data-testid="footer-contacts">
+        <h2 class="footer-heading" data-i18n="footer.contactsHeading">Контакты и связь</h2>
+        <ul class="footer-contacts-list">
+          <li class="footer-contact-row">
+            <div class="footer-contact-meta">
+              <span class="footer-contact-label" data-i18n="footer.telegramLabel">Telegram</span>
+              <a
+                id="contact-telegram-text"
+                class="footer-contact-value"
+                href="https://t.me/supv1rus"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="contact-telegram-text"
+              >@supv1rus</a>
+            </div>
+            <button
+              type="button"
+              id="copy-contact-telegram-btn"
+              class="btn-copy-xs"
+              data-testid="copy-contact-telegram-btn"
+              data-i18n="action.copy"
+            >Скопировать</button>
+          </li>
+          <li class="footer-contact-row">
+            <div class="footer-contact-meta">
+              <span class="footer-contact-label" data-i18n="footer.emailLabel">Эл. почта / Поддержка</span>
+              <a
+                id="contact-email-link"
+                class="footer-contact-value"
+                href="mailto:kilkauciha@gmail.com"
+                data-testid="contact-email-link"
+              >kilkauciha@gmail.com</a>
+            </div>
+            <button
+              type="button"
+              id="copy-contact-email-btn"
+              class="btn-copy-xs"
+              data-testid="copy-contact-email-btn"
+              data-i18n="action.copy"
+            >Скопировать</button>
+          </li>
+          <li class="footer-contact-row">
+            <div class="footer-contact-meta">
+              <span class="footer-contact-label" data-i18n="footer.githubLabel">GitHub</span>
+              <a
+                id="contact-github-text"
+                class="footer-contact-value"
+                href="https://github.com/Aquanti"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="contact-github-text"
+              >github.com/Aquanti</a>
+            </div>
+            <button
+              type="button"
+              id="copy-contact-github-btn"
+              class="btn-copy-xs"
+              data-testid="copy-contact-github-btn"
+              data-i18n="action.copy"
+            >Скопировать</button>
+          </li>
+        </ul>
+        <p class="footer-contact-note" data-i18n="footer.contactFallbackNote">Если Telegram недоступен в вашей сети, пишите напрямую на почту kilkauciha@gmail.com.</p>
+      </div>
+    </div>
+
+    <div class="footer-bottom-bar">
+      <span id="footer-copyright" data-testid="footer-copyright">© 2026 PromptVeil • Автор проекта: SupV1rus</span>
+      <span data-i18n="footer.zeroNote">Никаких cookies, рекламных трекеров и серверных логов ваших текстов.</span>
+    </div>
+  </footer>
+</body>
+</html>
