@@ -606,6 +606,7 @@ h2 {
 }
 
 .card {
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -638,6 +639,8 @@ h2 {
 }
 
 .status-grid dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
   margin: 0;
   font-size: 13px;
   font-weight: 600;
@@ -655,6 +658,7 @@ h2 {
 }
 
 .form-row {
+  min-width: 0;
   display: grid;
   gap: 4px;
 }
@@ -779,6 +783,7 @@ textarea {
 }
 
 .results-list {
+  min-width: 0;
   margin-top: 14px;
   display: grid;
   gap: 10px;
@@ -786,6 +791,9 @@ textarea {
 
 .issued-item,
 .verify-box {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   margin-top: 12px;
   padding: 12px;
   border-radius: 8px;
