@@ -1,8 +1,8 @@
 # Project Progress — PromptVeil
 
-**Checkpoint Date:** 2026-11-23T15:38Z  
-**Session Status:** v2.3.0 READY FOR DEPLOY — PRO CHECKOUT (`/pro/`, `/en/pro/`), OWNER CLI & LOOPBACK CONSOLE, MV3 EXTENSION v2.2.0, TIER 5 HARDENING & FULL 292-TEST VERIFICATION COMPLETE *(Netlify production deploy & Gmail completion report pending parent Project Orchestrator immediately after M4 Gate)*  
-**Exact Stop Point:** Completed Milestones M1–M3, E2E Track, and Milestone M4 Phases 1–3 (`package.json` `2.3.0`, `CHANGELOG.md`, `README.md`, `PROGRESS.md`): deterministic build `caae73027c` (`promptveil-pro-extension.zip` SHA-256 `ACE82CF96E717AA9581D10DCBE4984AD56B60AA48D9EB2A7456DBC8BE6710E66`), `28/28` pytest, `110/110` web JS tests, `27/27` extension JS tests, `292` E2E self-test checks, `292/292` Live Static-Only E2E, and `292/292` Live FastAPI Start-Server E2E. Netlify deploy (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`) and Gmail report (`kilkauciha@gmail.com`) are queued for the parent Project Orchestrator after M4 Gate.
+**Checkpoint Date:** 2026-11-23T16:53Z  
+**Session Status:** v2.3.0 RELEASED & DEPLOYED — PRO CHECKOUT (`/pro/`, `/en/pro/`), OWNER CLI & LOOPBACK CONSOLE, MV3 EXTENSION v2.2.0, FULL 292-TEST VERIFICATION, NETLIFY PRODUCTION DEPLOY & GMAIL REPORT COMPLETE  
+**Exact Stop Point:** Completed Milestones M1–M4, release commit `ad4b1f5` on `master`, Netlify production deploy (`deployId: 6b046f223f001957c8c2ca5c`, `buildId: 6b046f213f001957c8c2ca5a`) verified live on `https://promptveil.netlify.app` (`200 OK`, strict CSP, `.zip` SHA-256 `ACE82CF96E717AA9581D10DCBE4984AD56B60AA48D9EB2A7456DBC8BE6710E66`), and final Russian summary email sent to `kilkauciha@gmail.com` (`ID=1a2095306951e73c`).
 
 ---
 
@@ -383,4 +383,8 @@
   - **E2E Self-Test (`.\e2e_tests\.venv_e2e\Scripts\python.exe e2e_tests\run_e2e.py --mode self-test`):** **`ALL CHECKS PASSED`** (`221` Tier 1–4 `[103+89+18+11]` + `53` Tier 5 + `18` Acceptance = **`292` unique tests**).
   - **Full Live Static-Only E2E (`--mode live --static-only --tier all`):** **`292 passed, 0 failed, 0 skipped`**.
   - **Full Live FastAPI Start-Server E2E (`--mode live --start-server --tier all`):** **`292 passed, 0 failed, 0 skipped`**.
-  - **Pending Parent Project Orchestrator Actions (Immediately After M4 Gate):** Production deploy to Netlify (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`, `https://promptveil.netlify.app`) and final completion report email to `kilkauciha@gmail.com` (plus Git commit/push if requested by user/orchestrator).
+  - **Release Commit, Netlify Production Deploy & Gmail Report (`2.3.0`):**
+    - **Git (`master`):** Release commit `ad4b1f57f767c58d9a67b81b420de814e2e7109d` (`ad4b1f5`, zero `.secrets/` or private/live keys staged).
+    - **Netlify Production Deploy (`siteId: 12775486-f2aa-4d79-90c2-a85446c2b7a8`):** `deployId: 6b046f223f001957c8c2ca5c`, `buildId: 6b046f213f001957c8c2ca5a`, state `ready`, live URL `https://promptveil.netlify.app` (`https://6b046f223f001957c8c2ca5c--promptveil.netlify.app`).
+    - **Live Production Verification (`https://promptveil.netlify.app`):** Confirmed HTTP `200 OK` and strict `Content-Security-Policy` header across `/`, `/en/`, `/pro/`, `/en/pro/`, and `/downloads/promptveil-pro-extension.zip` (`Content-Type: application/zip`, `79,256` bytes, SHA-256 `ACE82CF96E717AA9581D10DCBE4984AD56B60AA48D9EB2A7456DBC8BE6710E66`).
+    - **Completion Email (`kilkauciha@gmail.com`):** Sent via `gmail mutate send` (`Sent: ID=1a2095306951e73c`, `Thread=1a2095306951e73c`).
